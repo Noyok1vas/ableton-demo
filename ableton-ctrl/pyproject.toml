@@ -1,0 +1,12 @@
+[project]
+name = "ableton-ctrl"
+version = "0.1.0"
+description = "Desktop GUI for controlling Ableton Live device parameters over OSC"
+requires-python = ">=3.10"
+dependencies = [
+    "python-osc>=1.8",
+]
+
+[tool.uv]
+# scripts/ is a plain script directory, not an installable package.
+package = false
