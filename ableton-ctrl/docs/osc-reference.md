@@ -76,6 +76,12 @@
 - 参数:`track_index`
 - 回复:`track_index`, `num_devices` (int)
 
+### `/live/track/get/has_midi_input` / `has_audio_input`
+- 参数:`track_index`
+- 回复:`track_index`, `bool`
+- 实测有用:音频轨(`has_audio_input=True`)上挂 0 个 device 是完全正常的,不是读取失败。
+  用这两个 address 区分 MIDI 轨和音频轨,免得把空音频轨当成 bug。
+
 ---
 
 ## Device
@@ -111,12 +117,43 @@
 `is_quantized` 为 true 表示该参数是离散档位(开关、波形选择器),GUI 应该渲染成
 下拉框或开关而不是连续旋钮。
 
+### 单参数查询
+
+| Address | 参数 | 回复 |
+|---|---|---|
+| `/live/device/get/parameter/value` | `track`, `device`, `param` | `track`, `device`, `param`, `value` (float) |
+| `/live/device/get/parameter/name` | `track`, `device`, `param` | `track`, `device`, `param`, `name` (string) |
+| `/live/device/get/parameter/value_string` | `track`, `device`, `param` | `track`, `device`, `param`, `text` (string) |
+
+**`value_string` 是 GUI 必需的,README 里没写。** 它返回 Live 界面上显示的那个带单位的字符串。
+`value` 到显示值的映射是**非线性的**,GUI 不可能自己从 `[min, max]` 反推出来。实测(Instrument
+Rack 的宏旋钮,范围都是 `0..127`):
+
+| 参数 | `value` | `value_string` |
+|---|---|---|
+| Filter Cutoff | `49.0000` | `290 Hz` |
+| Filter Reso | `14.1111` | `10 %` |
+| Wave Position | `83.8200` | `66 %` |
+| Detune | `117.0781` | `117` |
+
+旋钮的位置用 `value` 算,旁边的数字标签用 `value_string` 显示。
+
 ### 写入
 
 | Address | 参数 | 回复 |
 |---|---|---|
 | `/live/device/set/parameter/value` | `track_index`, `device_index`, `parameter_index`, `value` | 无 |
 | `/live/device/set/parameters/value` | `track_index`, `device_index`, `value₀`, `value₁`, … | 无 |
+
+### 事件订阅(未实测)
+
+| Address | 参数 |
+|---|---|
+| `/live/device/start_listen/parameter/value` | `track`, `device`, `param` |
+| `/live/device/stop_listen/parameter/value` | `track`, `device`, `param` |
+
+订阅之后,用户在 Live 里手动拧旋钮,AbletonOSC 会主动往 11001 推送。GUI 靠这个做双向同步,
+比轮询好得多。README 里也没写。
 
 ⚠️ **set 类 address 不返回任何东西。** 没有 ack、没有错误。想确认写入生效,只能反过来
 `get` 一次。这对 GUI 的影响:参数拖动不能靠 set 的回复来做 optimistic UI 确认。
@@ -127,6 +164,27 @@
 ---
 
 ## 踩坑记录
+
+**0. AbletonOSC 读不到 Rack 内部的设备。**(已实测,这是硬限制)
+`abletonosc/device.py` 里**没有任何 chain / rack 相关的 handler** —— 没有 `num_chains`,
+没有 `chains/name`,没有办法下钻。
+
+一个 Instrument Rack 在 `/live/track/get/num_devices` 里只算 **1 个 device**,
+`class_name` 是 `InstrumentGroupDevice`,它暴露的参数只有:
+
+```
+[0]  Device On
+[1..16]  Macro 1..16      ← rack 作者映射过的宏旋钮
+[17] Chain Selector
+```
+
+Rack 里面真正的 Operator / Wavetable / 滤波器,以及它们的参数,**OSC 完全够不着**。
+Drum Rack 同理。
+
+对 GUI 的影响:遇到 `class_name == "InstrumentGroupDevice"`(以及 `AudioEffectGroupDevice`、
+`DrumGroupDevice`、`MidiEffectGroupDevice`)时,只能把 16 个宏旋钮画出来,不能展开树。
+这其实和 Ableton 的设计意图一致(宏旋钮就是 rack 对外的控制面),但如果 rack 作者没映射宏,
+那这个 rack 对我们就是个黑盒。要突破就得改 AbletonOSC 自己加 handler。
 
 **1. UDP 无重传,突发批量请求可能丢包。**(预防性设计,尚未在本机实测复现)
 OSC 走 UDP,而 Live 的 handler 跑在它自己的消息线程上,一次灌太多 datagram 理论上会丢。
@@ -151,10 +209,19 @@ Live 大概需要一个消息循环周期才会把新值反映出来。做 GUI �
 
 ## 本项目尚未使用、但 GUI 层大概率要用的
 
-- `/live/device/set/parameter/value` —— 核心写入路径,上面已记录格式
 - `/live/song/get/track_names` —— 一次拿全部 track 名,比逐个 `track/get/name` 快
 - `/live/song/start_listen/beat` —— 事件订阅,Live 会主动推送
 - `/live/track/get/volume` / `panning` / `mute` / `solo`
-- `/live/device/get/parameter/value` (单数 `parameter`,参数 `track, device, param_index`)
 
 用到时再补进这份文档,并注明是否实测过。
+
+---
+
+## 实测环境
+
+- Ableton Live **12.4** Standard,macOS
+- AbletonOSC master `0ca6821`(2025-11-19)
+- python-osc 1.10.2 / Python 3.14.0
+
+本文档中标注「实测」的部分,都在上述组合下用 `scripts/` 里的脚本跑通过。
+标注「未实测 / 未验证」的部分来自源码阅读,尚未在真机上确认。

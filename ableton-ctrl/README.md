@@ -53,7 +53,8 @@ python scripts/ping.py
 
 ## 2. 安装 AbletonOSC
 
-> **当前状态:已 clone 到位(见下方 commit)。剩下第 3、4 步需要在 Live 里手动完成。**
+> **当前状态:已安装并跑通。** Live 12.4 + AbletonOSC `0ca6821`,`ping.py` 和 `discover.py`
+> 都对真实 Live 验证过。
 
 **AbletonOSC 没有发布过任何 tagged release**,只能从 `master` 分支拿。所以 commit hash 记录在
 下面第 6 步,以后出问题好回溯。

@@ -1,0 +1,188 @@
+{
+  "num_tracks": 5,
+  "tracks": [
+    {
+      "index": 0,
+      "name": "1-Tech House 123 bpm",
+      "num_devices": 0,
+      "devices": []
+    },
+    {
+      "index": 1,
+      "name": "2-Audio",
+      "num_devices": 0,
+      "devices": []
+    },
+    {
+      "index": 2,
+      "name": "Soft kick",
+      "num_devices": 0,
+      "devices": []
+    },
+    {
+      "index": 3,
+      "name": "Synth",
+      "num_devices": 0,
+      "devices": []
+    },
+    {
+      "index": 4,
+      "name": "5-Reese Filtered",
+      "num_devices": 1,
+      "devices": [
+        {
+          "index": 0,
+          "name": "Reese Filtered",
+          "class_name": "InstrumentGroupDevice",
+          "num_parameters": 18,
+          "parameters": [
+            {
+              "index": 0,
+              "name": "Device On",
+              "value": 1.0,
+              "min": 0.0,
+              "max": 1.0,
+              "is_quantized": true
+            },
+            {
+              "index": 1,
+              "name": "Filter Cutoff",
+              "value": 49.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 2,
+              "name": "Filter Reso",
+              "value": 14.111111640930176,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 3,
+              "name": "Wave Position",
+              "value": 83.81999969482422,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 4,
+              "name": "Chorus",
+              "value": 18.142858505249023,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 5,
+              "name": "Attack",
+              "value": 14.17227840423584,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 6,
+              "name": "Release",
+              "value": 69.7117919921875,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 7,
+              "name": "Detune",
+              "value": 117.078125,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 8,
+              "name": "Sub Gain",
+              "value": 63.650814056396484,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 9,
+              "name": "Macro 9",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 10,
+              "name": "Macro 10",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 11,
+              "name": "Macro 11",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 12,
+              "name": "Macro 12",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 13,
+              "name": "Macro 13",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 14,
+              "name": "Macro 14",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 15,
+              "name": "Macro 15",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 16,
+              "name": "Macro 16",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            },
+            {
+              "index": 17,
+              "name": "Chain Selector",
+              "value": 0.0,
+              "min": 0.0,
+              "max": 127.0,
+              "is_quantized": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
