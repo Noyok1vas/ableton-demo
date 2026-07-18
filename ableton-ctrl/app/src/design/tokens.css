@@ -1,0 +1,77 @@
+/* Design tokens — light black/white/light-gray theme.
+   Per user direction (2026-07-17): black/white/light-gray only, white canvas,
+   no colour accent. Keeps design.md's structure — radius 0, 1px hairlines,
+   8px spacing grid, sentence case, medium-weight titles / heavy small labels.
+   These are the light values from design.md §4.1 [Observed], with the red
+   accent replaced by ink so "state" reads as black on white. */
+
+:root {
+  /* Color */
+  --canvas: #ffffff; /* the infinite workspace surface */
+  --surface: #ffffff; /* window / panel surface */
+  --surface-2: #f3f4f5; /* subtle light-grey fill (title bars, knob bodies) */
+  --line-fine: #eceded; /* 1px hairline dividers / grid */
+  --line-strong: #171a1d; /* 1px strong borders, outlines */
+  --text: #171a1d; /* primary text & filled marks */
+  --text-muted: #8a8f93; /* muted metadata */
+  --ink-pure: #000000;
+  /* "accent" is state, not colour: black instead of the reference red. */
+  --accent: #171a1d;
+
+  /* Typography */
+  --font-ui: Inter, 'Helvetica Neue', -apple-system, system-ui, sans-serif;
+
+  /* Spacing (8px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 40px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Motion */
+  --motion-fast: 0.2s ease-in-out;
+  --motion-base: 0.3s ease-out;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* the canvas owns scrolling/panning */
+}
+
+/* Tabular figures for every numeric readout (design.md §4.2) */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,235 @@
+/* Canvas workspace — white pannable/zoomable surface, floating windows,
+   page-switch dropdown. Black/white/light-grey only, radius 0, 1px lines. */
+
+.workspace {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+/* ── Canvas surface ─────────────────────────────────── */
+
+.surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.surface-bg {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  background-color: var(--canvas);
+}
+
+.surface-bg:active {
+  cursor: grabbing;
+}
+
+.surface-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  /* Empty space falls through to .surface-bg so panning can start anywhere. */
+  pointer-events: none;
+}
+
+/* ── Window ─────────────────────────────────────────── */
+
+.cwindow {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  /* Clip children (black title bar, resize grip) to the rounded frame. */
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.cwindow-titlebar {
+  flex: 0 0 auto;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  /* Title box: black background, white text. */
+  background: var(--ink-pure);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.cwindow-titlebar:active {
+  cursor: grabbing;
+}
+
+.cwindow-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--surface);
+}
+
+.cwindow-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.cwindow-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  touch-action: none;
+  /* Solid triangle filling the bottom-right corner. */
+  background: var(--line-strong);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+/* ── Empty-page hint ────────────────────────────────── */
+
+.workspace-empty {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 300;
+}
+
+/* ── Page menu (top-left) ───────────────────────────── */
+
+.pagemenu {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 10;
+}
+
+.pagemenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 208px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pagemenu-chevron {
+  color: var(--text-muted);
+  transition: transform var(--motion-fast);
+}
+
+.pagemenu-chevron--open {
+  transform: rotate(180deg);
+}
+
+.pagemenu-list {
+  list-style: none;
+  margin: -1px 0 0;
+  padding: 0;
+  min-width: 208px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+}
+
+.pagemenu-item {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.pagemenu-item:hover {
+  background: var(--surface-2);
+}
+
+.pagemenu-item--active {
+  background: var(--ink-pure);
+  color: var(--surface);
+  font-weight: 500;
+}
+
+.pagemenu-item--active:hover {
+  background: var(--ink-pure);
+}
+
+/* ── Zoom control (bottom-right) ────────────────────── */
+
+.zoomctl {
+  position: fixed;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 10;
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+}
+
+.zoomctl-btn,
+.zoomctl-reset {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.zoomctl-btn {
+  width: 36px;
+  font-size: 18px;
+}
+
+.zoomctl-readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-left: 1px solid var(--line-fine);
+  border-right: 1px solid var(--line-fine);
+}
+
+.zoomctl-reset {
+  padding: 0 var(--space-3);
+  border-left: 1px solid var(--line-fine);
+  font-weight: 500;
+}
+
+.zoomctl-btn:hover,
+.zoomctl-reset:hover {
+  background: var(--surface-2);
+}

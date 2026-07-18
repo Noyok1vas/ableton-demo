@@ -1,0 +1,225 @@
+/* Rhythmic Intent screen — geometry per design.md: radius 0, 1px hairlines,
+   8px grid. Fills its canvas window; responds to window (container) width. */
+
+.ri-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  /* Controls respond to the window width, not the viewport. */
+  container-type: inline-size;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+
+.ri-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.ri-statusbar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Connection dot: hollow when offline, filled when Live is connected. */
+.ri-dot {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--text-muted);
+  background: transparent;
+}
+
+.ri-dot--on {
+  border-color: var(--text);
+  background: var(--text);
+}
+
+/* Selected-instrument name (or connection message). */
+.ri-status {
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ri-substatus {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text-muted);
+}
+
+.ri-reset {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.ri-reset:hover {
+  background: var(--surface-2);
+}
+
+/* ── Visualization ──────────────────────────────────── */
+
+.ri-vis {
+  flex: 1 1 auto;
+  min-height: 140px;
+  display: flex;
+  /* Generous breathing room around the one-bar visualization. */
+  padding: var(--space-6) var(--space-7);
+  border-bottom: 1px solid var(--line-fine);
+  background: var(--surface);
+}
+
+/* Scales uniformly to fill the region; default preserveAspectRatio keeps
+   circles round and, at normal window aspect, uses the full width. */
+.rhythm-vis {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.rhythm-vis-beat {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.rhythm-vis-hint {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+/* ── Controls ───────────────────────────────────────── */
+
+.ri-controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.tap-button {
+  flex: 0 0 auto;
+  width: 240px;
+  min-height: 144px;
+  border: 1px solid var(--ink-pure);
+  border-radius: 0;
+  background: var(--ink-pure);
+  color: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 40px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  /* Sharp state change: instant on press, quick fall-off on release. */
+  transition: background-color 0.06s linear, color 0.06s linear;
+}
+
+/* Feedback inverts the black button to white for a sharp, glanceable flash. */
+.tap-button--flash {
+  background: var(--surface);
+  color: var(--ink-pure);
+  transition: none;
+}
+
+.ri-knobs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-left: auto;
+  padding: 0 var(--space-4);
+}
+
+.knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 80px;
+}
+
+.knob-dial {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.knob-label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+.knob-value {
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--text-muted);
+}
+
+.knob--idle .knob-dial {
+  opacity: 0.45;
+}
+
+.knob--idle .knob-label {
+  color: var(--text-muted);
+}
+
+/* ── Description strip ──────────────────────────────── */
+
+.ri-description {
+  flex: 0 0 auto;
+  padding: var(--space-4);
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ── Narrow window: knobs drop below the TAP button ──── */
+
+@container (max-width: 760px) {
+  .ri-controls {
+    flex-direction: column;
+  }
+
+  .tap-button {
+    width: 100%;
+    min-height: 120px;
+  }
+
+  .ri-knobs {
+    margin-left: 0;
+    padding: 0;
+    justify-content: space-between;
+    width: 100%;
+  }
+}
