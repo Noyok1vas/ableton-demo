@@ -9,6 +9,8 @@ export type TapCapture = {
   /** Record one tap. Returns true if the tap was registered. */
   tap: (velocity?: number) => boolean
   reset: () => void
+  /** Replace the current pattern with an already-captured one (state → complete). */
+  load: (taps: readonly Tap[]) => void
 }
 
 /**
@@ -16,16 +18,27 @@ export type TapCapture = {
  * t=0 (not necessarily the musical downbeat); the window closes by itself after
  * `barDuration` seconds. A tap landing after the window has closed is ignored
  * and the next tap starts a fresh bar.
+ *
+ * `onComplete` fires exactly once per recorded bar, when the window closes —
+ * not when a pattern is merely re-loaded via `load()`.
  */
-export function useTapCapture(barDuration: number): TapCapture {
+export function useTapCapture(
+  barDuration: number,
+  onComplete?: (taps: readonly Tap[]) => void,
+): TapCapture {
   const [state, setState] = useState<CaptureState>('ready')
   const [taps, setTaps] = useState<Tap[]>([])
   const [progress, setProgress] = useState(0)
 
   const stateRef = useRef<CaptureState>('ready')
+  const tapsRef = useRef<Tap[]>([])
   const startRef = useRef(0)
   const rafRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Ref so finalize (scheduled once, at bar start) sees the latest callback.
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
 
   const stopTimers = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
@@ -33,11 +46,17 @@ export function useTapCapture(barDuration: number): TapCapture {
     timeoutRef.current = null
   }, [])
 
+  const setAllTaps = useCallback((next: Tap[]) => {
+    tapsRef.current = next
+    setTaps(next)
+  }, [])
+
   const finalize = useCallback(() => {
     stopTimers()
     stateRef.current = 'complete'
     setState('complete')
     setProgress(1)
+    onCompleteRef.current?.(tapsRef.current)
   }, [stopTimers])
 
   const startRecording = useCallback(
@@ -45,7 +64,7 @@ export function useTapCapture(barDuration: number): TapCapture {
       startRef.current = performance.now()
       stateRef.current = 'recording'
       setState('recording')
-      setTaps([{ time: 0, velocity }])
+      setAllTaps([{ time: 0, velocity }])
       setProgress(0)
 
       timeoutRef.current = setTimeout(finalize, barDuration * 1000)
@@ -56,7 +75,7 @@ export function useTapCapture(barDuration: number): TapCapture {
       }
       rafRef.current = requestAnimationFrame(tick)
     },
-    [barDuration, finalize],
+    [barDuration, finalize, setAllTaps],
   )
 
   const tap = useCallback(
@@ -69,25 +88,36 @@ export function useTapCapture(barDuration: number): TapCapture {
           finalize()
           return false
         }
-        setTaps((prev) => [...prev, { time: elapsed, velocity }])
+        setAllTaps([...tapsRef.current, { time: elapsed, velocity }])
         return true
       }
       // 'ready' or 'complete': this tap begins a fresh pattern.
       startRecording(velocity)
       return true
     },
-    [barDuration, finalize, startRecording],
+    [barDuration, finalize, setAllTaps, startRecording],
   )
 
   const reset = useCallback(() => {
     stopTimers()
     stateRef.current = 'ready'
     setState('ready')
-    setTaps([])
+    setAllTaps([])
     setProgress(0)
-  }, [stopTimers])
+  }, [setAllTaps, stopTimers])
+
+  const load = useCallback(
+    (pattern: readonly Tap[]) => {
+      stopTimers()
+      stateRef.current = 'complete'
+      setState('complete')
+      setAllTaps([...pattern])
+      setProgress(1)
+    },
+    [setAllTaps, stopTimers],
+  )
 
   useEffect(() => stopTimers, [stopTimers])
 
-  return { state, taps, progress, tap, reset }
+  return { state, taps, progress, tap, reset, load }
 }

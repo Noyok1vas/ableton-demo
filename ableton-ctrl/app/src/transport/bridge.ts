@@ -11,15 +11,28 @@
 
 export type LinkState =
   | { link: 'bridge-offline' }
-  | { link: 'live-offline'; reason: string }
-  | { link: 'connected'; instrument: string | null }
+  | { link: 'live-offline'; reason: string; pad: boolean; midi: string | null }
+  | { link: 'connected'; instrument: string | null; pad: boolean; midi: string | null }
 
-/** Status frame pushed by the bridge over the socket. */
+/** One scheduled loop event: `pos` is 0..1 within the bar. */
+export type LoopEvent = { pos: number; velocity: number }
+
+/** Frames pushed by the bridge over the socket. */
 type StatusFrame =
-  | { type: 'status'; connected: true; instrument: string | null; trackIndex: number | null }
-  | { type: 'status'; connected: false; reason: string }
+  | {
+      type: 'status'
+      connected: true
+      instrument: string | null
+      trackIndex: number | null
+      pad?: boolean
+      midi?: string | null
+    }
+  | { type: 'status'; connected: false; reason: string; pad?: boolean; midi?: string | null }
+type TapFrame = { type: 'tap'; velocity: number; source?: string }
+type Frame = StatusFrame | TapFrame
 
 type Listener = (state: LinkState) => void
+type TapListener = (velocity: number) => void
 
 const DEFAULT_URL = 'ws://127.0.0.1:8722'
 const RECONNECT_MS = 2000
@@ -28,6 +41,7 @@ export class BridgeClient {
   private readonly url: string
   private ws: WebSocket | null = null
   private readonly listeners = new Set<Listener>()
+  private readonly tapListeners = new Set<TapListener>()
   private state: LinkState = { link: 'bridge-offline' }
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
@@ -50,18 +64,25 @@ export class BridgeClient {
     this.ws = ws
 
     ws.onmessage = (e) => {
-      let frame: StatusFrame
+      let frame: Frame
       try {
         frame = JSON.parse(e.data as string)
       } catch {
         return
       }
-      if (frame.type !== 'status') return
-      this.setState(
-        frame.connected
-          ? { link: 'connected', instrument: frame.instrument }
-          : { link: 'live-offline', reason: frame.reason },
-      )
+      if (frame.type === 'tap') {
+        for (const listener of this.tapListeners) listener(frame.velocity)
+        return
+      }
+      if (frame.type === 'status') {
+        const pad = frame.pad ?? false
+        const midi = frame.midi ?? null
+        this.setState(
+          frame.connected
+            ? { link: 'connected', instrument: frame.instrument, pad, midi }
+            : { link: 'live-offline', reason: frame.reason, pad, midi },
+        )
+      }
     }
 
     ws.onclose = () => {
@@ -76,8 +97,22 @@ export class BridgeClient {
 
   /** Fire one tap. `velocity` is 0..1. No-op if the bridge isn't connected. */
   sendTap(velocity = 1): void {
+    this.send({ op: 'tap', velocity })
+  }
+
+  /** Start looping (or swap the looping pattern). The bridge owns the note
+      scheduling — browser timers throttle when the tab is backgrounded. */
+  sendLoop(events: readonly LoopEvent[], barDuration: number): void {
+    this.send({ op: 'loop', events, barDuration })
+  }
+
+  sendStopLoop(): void {
+    this.send({ op: 'stopLoop' })
+  }
+
+  private send(payload: object): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ op: 'tap', velocity }))
+      this.ws.send(JSON.stringify(payload))
     }
   }
 
@@ -88,12 +123,19 @@ export class BridgeClient {
     return () => this.listeners.delete(listener)
   }
 
+  /** Subscribe to physical-pad taps pushed by the bridge. `velocity` is 0..1. */
+  onTap(listener: TapListener): () => void {
+    this.tapListeners.add(listener)
+    return () => this.tapListeners.delete(listener)
+  }
+
   dispose(): void {
     this.disposed = true
     this.clearReconnect()
     this.ws?.close()
     this.ws = null
     this.listeners.clear()
+    this.tapListeners.clear()
   }
 
   private setState(next: LinkState): void {

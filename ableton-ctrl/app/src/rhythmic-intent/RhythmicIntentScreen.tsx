@@ -1,36 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect } from 'react'
 import { Knob } from './Knob.tsx'
 import { RhythmVisualization } from './RhythmVisualization.tsx'
 import { TapButton } from './TapButton.tsx'
-import { transformPattern } from './transform.ts'
-import { useTapCapture } from './useTapCapture.ts'
-import { BAR_DURATION, DEFAULT_PARAMS, type TransformParams } from './types.ts'
-import { useBridge } from '../transport/useBridge.ts'
+import { useSession } from './session.tsx'
 import type { LinkState } from '../transport/bridge.ts'
 import './rhythmic-intent.css'
 
 const PROJECT_DESCRIPTION =
   'Rhythmic Intent captures a one-bar rhythm tapped by the audience and translates it into an editable MIDI pattern. The performer can adjust its tightness, phase, and density while preserving the recognizable character of the original gesture.'
-
-/** Turn the bridge link state into the status-bar label + a connected flag. */
-function linkStatus(state: LinkState): { label: string; connected: boolean } {
-  switch (state.link) {
-    case 'connected':
-      return { label: state.instrument ?? 'No instrument selected', connected: true }
-    case 'live-offline':
-      return {
-        label:
-          state.reason === 'live_down'
-            ? 'Live not running'
-            : state.reason === 'not_installed'
-              ? 'AbletonOSC not installed'
-              : 'Live not responding',
-        connected: false,
-      }
-    default:
-      return { label: 'Bridge offline', connected: false }
-  }
-}
 
 function isTextInput(el: Element | null): boolean {
   if (!el) return false
@@ -43,36 +20,56 @@ function isTextInput(el: Element | null): boolean {
   )
 }
 
-export function RhythmicIntentScreen() {
-  const capture = useTapCapture(BAR_DURATION)
-  const bridge = useBridge()
-  const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS)
+type Status = { label: string; connected: boolean; pad: boolean; midi: string | null }
 
-  const link = linkStatus(bridge.state)
-
-  // Every tap both records into the GUI and fires a live MIDI note through the
-  // bridge to the selected Live instrument.
-  const { tap } = capture
-  const { sendTap } = bridge
-  const handleTap = useCallback(() => {
-    tap()
-    sendTap(1)
-  }, [tap, sendTap])
-
-  const setParam = <K extends keyof TransformParams>(key: K, value: number) =>
-    setParams((prev) => ({ ...prev, [key]: value }))
-
-  const rendered = useMemo(
-    () => transformPattern(capture.taps, BAR_DURATION, params),
-    [capture.taps, params],
-  )
-
-  const hasPattern = capture.taps.length > 0
-
-  const handleReset = () => {
-    capture.reset()
-    setParams(DEFAULT_PARAMS)
+/** Turn the bridge link state into the status-bar label + flags. */
+function linkStatus(state: LinkState): Status {
+  switch (state.link) {
+    case 'connected':
+      return {
+        label: state.instrument ?? 'No instrument selected',
+        connected: true,
+        pad: state.pad,
+        midi: state.midi,
+      }
+    case 'live-offline':
+      return {
+        label:
+          state.reason === 'live_down'
+            ? 'Live not running'
+            : state.reason === 'not_installed'
+              ? 'AbletonOSC not installed'
+              : 'Live not responding',
+        connected: false,
+        pad: state.pad,
+        midi: state.midi,
+      }
+    default:
+      return { label: 'Bridge offline', connected: false, pad: false, midi: null }
   }
+}
+
+/** A MIDI controller named like Move gets a MOVE tag, else a generic MIDI tag. */
+function midiTagLabel(name: string): string {
+  return /move/i.test(name) ? 'MOVE' : 'MIDI'
+}
+
+export function RhythmicIntentScreen() {
+  const {
+    capture,
+    params,
+    setParam,
+    rendered,
+    hasPattern,
+    link: linkState,
+    handleTap,
+    handleReset,
+    playing,
+    playPos,
+    togglePlay,
+  } = useSession()
+
+  const link = linkStatus(linkState)
 
   // Global Space → tap, unless focus is in a text input.
   useEffect(() => {
@@ -86,12 +83,15 @@ export function RhythmicIntentScreen() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleTap])
 
-  const statusLabel =
-    capture.state === 'ready'
+  const statusLabel = playing
+    ? 'Playing'
+    : capture.state === 'ready'
       ? 'Ready'
       : capture.state === 'recording'
         ? 'Recording'
         : 'Captured'
+
+  const playhead = playing ? playPos : capture.state === 'recording' ? capture.progress : null
 
   return (
     <div className="ri-screen">
@@ -105,6 +105,16 @@ export function RhythmicIntentScreen() {
             {link.label}
           </span>
           <span className="ri-substatus">{statusLabel}</span>
+          {link.pad && (
+            <span className="ri-pad" title="Physical tap pad connected">
+              PAD
+            </span>
+          )}
+          {link.midi && (
+            <span className="ri-pad" title={`MIDI tap controller: ${link.midi}`}>
+              {midiTagLabel(link.midi)}
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -122,15 +132,28 @@ export function RhythmicIntentScreen() {
       </header>
 
       <section className="ri-vis" aria-label="One-bar tap visualization">
-        <RhythmVisualization
-          taps={rendered}
-          state={capture.state}
-          progress={capture.progress}
-        />
+        <RhythmVisualization taps={rendered} state={capture.state} playhead={playhead} />
       </section>
 
       <section className="ri-controls">
         <TapButton onTap={handleTap} recording={capture.state === 'recording'} />
+        <button
+          type="button"
+          className={[
+            'play-button',
+            playing ? 'play-button--active' : '',
+            !hasPattern ? 'play-button--idle' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={playing}
+          onClick={togglePlay}
+          onKeyUp={(e) => {
+            if (e.key === ' ') e.preventDefault()
+          }}
+        >
+          {playing ? 'PAUSE' : 'PLAY'}
+        </button>
         <div className="ri-knobs">
           <Knob
             label="TIGHTNESS"

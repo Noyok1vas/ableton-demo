@@ -3,8 +3,8 @@ import { BEATS_PER_BAR, GRID_DIVISIONS, type CaptureState, type RenderedTap } fr
 type RhythmVisualizationProps = {
   taps: readonly RenderedTap[]
   state: CaptureState
-  /** 0..1 recording playhead position. */
-  progress: number
+  /** 0..1 playhead position (recording or loop playback), null to hide. */
+  playhead: number | null
 }
 
 // ViewBox geometry. The SVG scales uniformly to the container width, so all
@@ -27,7 +27,7 @@ const radiusFor = (velocity: number) =>
 
 const xFor = (pos: number) => PAD_X + pos * TRACK_W
 
-export function RhythmVisualization({ taps, state, progress }: RhythmVisualizationProps) {
+export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizationProps) {
   const gridLines = Array.from({ length: GRID_DIVISIONS + 1 }, (_, i) => {
     const isBeat = i % (GRID_DIVISIONS / BEATS_PER_BAR) === 0
     return { x: xFor(i / GRID_DIVISIONS), isBeat }
@@ -126,12 +126,12 @@ export function RhythmVisualization({ taps, state, progress }: RhythmVisualizati
         )
       })}
 
-      {/* Recording playhead */}
-      {state === 'recording' && (
+      {/* Playhead: recording progress or loop-playback position */}
+      {playhead !== null && (
         <line
-          x1={xFor(progress)}
+          x1={xFor(playhead)}
           y1={GRID_TOP}
-          x2={xFor(progress)}
+          x2={xFor(playhead)}
           y2={GRID_BOTTOM}
           stroke="var(--accent)"
           strokeWidth="1.5"

@@ -11,8 +11,8 @@ export type Page = { id: PageId; name: string }
     the zoom factor. Applied as translate(x,y) scale(scale) with origin 0,0. */
 export type View = { x: number; y: number; scale: number }
 
-/** Which content a window renders. Only Rhythmic Intent exists in this pass. */
-export type WindowKind = 'rhythmic-intent'
+/** Which content a window renders. */
+export type WindowKind = 'rhythmic-intent' | 'collection'
 
 export type WindowState = {
   id: string

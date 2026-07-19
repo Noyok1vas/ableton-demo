@@ -6,13 +6,18 @@ import { ZoomControl } from './ZoomControl.tsx'
 import { INITIAL_WINDOWS, PAGES, WINDOW_LIMITS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
+import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
 
 function windowContent(kind: WindowKind) {
-  if (kind === 'rhythmic-intent') return <RhythmicIntentScreen />
-  return null
+  switch (kind) {
+    case 'rhythmic-intent':
+      return <RhythmicIntentScreen />
+    case 'collection':
+      return <CollectionPanel />
+  }
 }
 
 export function Workspace() {
@@ -41,7 +46,7 @@ export function Workspace() {
             key={w.id}
             window={w}
             scale={view.scale}
-            limits={WINDOW_LIMITS}
+            limits={WINDOW_LIMITS[w.kind]}
             onChange={(patch) => updateWindow(w.id, patch)}
           >
             {windowContent(w.kind)}

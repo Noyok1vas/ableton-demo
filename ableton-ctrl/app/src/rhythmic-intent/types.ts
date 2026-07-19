@@ -27,6 +27,13 @@ export const BEATS_PER_BAR = 4
 export const BAR_DURATION = (BEATS_PER_BAR * 60) / BPM // seconds
 export const GRID_DIVISIONS = 16 // 1/16-note grid
 
+/** One captured bar stored in the Collection. Holds the raw taps — the
+    current knob settings are applied whenever the entry is (re)loaded. */
+export type CollectionEntry = {
+  id: string
+  taps: readonly Tap[]
+}
+
 /** A tap prepared for rendering, with every transform stage resolved. */
 export type RenderedTap = {
   index: number
