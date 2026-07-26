@@ -13,6 +13,7 @@ import { useTapCapture, type TapCapture } from './useTapCapture.ts'
 import {
   BAR_DURATION,
   DEFAULT_PARAMS,
+  DEFAULT_PITCH,
   type CollectionEntry,
   type RenderedTap,
   type Tap,
@@ -28,6 +29,10 @@ export type Session = {
   rendered: RenderedTap[]
   hasPattern: boolean
   link: LinkState
+  /** MIDI pitch every tap/loop note plays on. */
+  pitch: number
+  /** Move the mapping to a different MIDI pitch. */
+  setPitch: (pitch: number) => void
   /** Record a tap into the GUI and fire a live MIDI note through the bridge. */
   handleTap: () => void
   /** Clear the pattern, the knobs, the collection, and stop playback. */
@@ -55,10 +60,32 @@ export function useSession(): Session {
  */
 export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const bridge = useBridge()
-  const { sendTap, sendLoop, sendStopLoop, onTap } = bridge
+  const { sendTap, sendLoop, sendStopLoop, sendSetPitch, onTap } = bridge
   const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS)
   const [collection, setCollection] = useState<CollectionEntry[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  // ── Note pitch (the mapping) ─────────────────────────────────────
+  // Lives here rather than in TransformParams: it's a routing setting, not
+  // part of the tapped pattern, so RESET doesn't touch it.
+  const [pitch, setPitchState] = useState<number>(DEFAULT_PITCH)
+  const pitchRef = useRef(pitch)
+  pitchRef.current = pitch
+
+  const setPitch = useCallback(
+    (value: number) => {
+      setPitchState(value)
+      sendSetPitch(value)
+    },
+    [sendSetPitch],
+  )
+
+  // Bridge restarts reset its pitch to the default — resend ours whenever the
+  // link (re)connects so the two stay in sync.
+  const linkState = bridge.state
+  useEffect(() => {
+    if (linkState.link === 'connected') sendSetPitch(pitchRef.current)
+  }, [linkState.link, sendSetPitch])
 
   // Every completed bar automatically enters the collection, newest first.
   const onBarComplete = useCallback((taps: readonly Tap[]) => {
@@ -193,6 +220,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     rendered,
     hasPattern,
     link: bridge.state,
+    pitch,
+    setPitch,
     handleTap,
     handleReset,
     playing,

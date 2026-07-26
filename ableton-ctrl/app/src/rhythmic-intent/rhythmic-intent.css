@@ -233,6 +233,50 @@
   color: var(--text-muted);
 }
 
+/* Pitch pad: a 4×4 grid mirroring a Drum Rack's pad layout, sized to match
+   the 64px knob dial beside it. */
+.pitch-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 80px;
+}
+
+.pitch-pad-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 64px;
+  height: 64px;
+}
+
+.pitch-pad-row {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+}
+
+.pitch-pad-cell {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.pitch-pad-cell:hover {
+  background: var(--line-fine);
+}
+
+.pitch-pad-cell--selected {
+  background: var(--ink-pure);
+  border-color: var(--ink-pure);
+}
+
 /* ── Description strip ──────────────────────────────── */
 
 .ri-description {

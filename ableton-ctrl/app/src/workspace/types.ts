@@ -12,7 +12,14 @@ export type Page = { id: PageId; name: string }
 export type View = { x: number; y: number; scale: number }
 
 /** Which content a window renders. */
-export type WindowKind = 'rhythmic-intent' | 'collection'
+export type WindowKind =
+  | 'rhythmic-intent'
+  | 'collection'
+  | 'sound-intent'
+  | 'sound-visual'
+  | 'fx'
+  | 'tap'
+  | 'selector'
 
 export type WindowState = {
   id: string

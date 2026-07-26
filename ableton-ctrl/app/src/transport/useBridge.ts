@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BridgeClient, type LinkState, type LoopEvent } from './bridge.ts'
+import { BridgeClient, type LinkState, type LoopEvent, type MacroScope } from './bridge.ts'
 
 export type Bridge = {
   state: LinkState
@@ -8,6 +8,12 @@ export type Bridge = {
   /** Start or update the bridge-side loop with the given bar of events. */
   sendLoop: (events: readonly LoopEvent[], barDuration: number) => void
   sendStopLoop: () => void
+  /** Move the mapping: every future tap/loop note plays on this MIDI pitch. */
+  sendSetPitch: (pitch: number) => void
+  /** Turn the macro literally named `name` (e.g. "Energy") to `value`
+      (0..127) — resolved by name, not a slot number. `scope` picks the
+      selected track (default) or every track carrying the macro. */
+  sendMacro: (name: string, value: number, scope?: MacroScope) => void
   /** Subscribe to physical-pad taps; returns an unsubscribe. Stable identity. */
   onTap: (listener: (velocity: number) => void) => () => void
 }
@@ -41,10 +47,18 @@ export function useBridge(): Bridge {
     clientRef.current?.sendStopLoop()
   }, [])
 
+  const sendSetPitch = useCallback((pitch: number) => {
+    clientRef.current?.sendSetPitch(pitch)
+  }, [])
+
+  const sendMacro = useCallback((name: string, value: number, scope?: MacroScope) => {
+    clientRef.current?.sendMacro(name, value, scope)
+  }, [])
+
   const onTap = useCallback((listener: (velocity: number) => void) => {
     // Bridge outlives individual renders; guard in case it's mid-teardown.
     return clientRef.current?.onTap(listener) ?? (() => {})
   }, [])
 
-  return { state, sendTap, sendLoop, sendStopLoop, onTap }
+  return { state, sendTap, sendLoop, sendStopLoop, sendSetPitch, sendMacro, onTap }
 }

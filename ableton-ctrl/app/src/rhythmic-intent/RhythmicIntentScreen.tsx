@@ -1,24 +1,12 @@
-import { useEffect } from 'react'
 import { Knob } from './Knob.tsx'
+import { PitchPad } from './PitchPad.tsx'
 import { RhythmVisualization } from './RhythmVisualization.tsx'
-import { TapButton } from './TapButton.tsx'
 import { useSession } from './session.tsx'
 import type { LinkState } from '../transport/bridge.ts'
 import './rhythmic-intent.css'
 
 const PROJECT_DESCRIPTION =
   'Rhythmic Intent captures a one-bar rhythm tapped by the audience and translates it into an editable MIDI pattern. The performer can adjust its tightness, phase, and density while preserving the recognizable character of the original gesture.'
-
-function isTextInput(el: Element | null): boolean {
-  if (!el) return false
-  const tag = el.tagName
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    tag === 'SELECT' ||
-    (el as HTMLElement).isContentEditable
-  )
-}
 
 type Status = { label: string; connected: boolean; pad: boolean; midi: string | null }
 
@@ -62,7 +50,8 @@ export function RhythmicIntentScreen() {
     rendered,
     hasPattern,
     link: linkState,
-    handleTap,
+    pitch,
+    setPitch,
     handleReset,
     playing,
     playPos,
@@ -70,18 +59,6 @@ export function RhythmicIntentScreen() {
   } = useSession()
 
   const link = linkStatus(linkState)
-
-  // Global Space → tap, unless focus is in a text input.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat) return
-      if (isTextInput(document.activeElement)) return
-      e.preventDefault()
-      handleTap()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleTap])
 
   const statusLabel = playing
     ? 'Playing'
@@ -136,7 +113,6 @@ export function RhythmicIntentScreen() {
       </section>
 
       <section className="ri-controls">
-        <TapButton onTap={handleTap} recording={capture.state === 'recording'} />
         <button
           type="button"
           className={[
@@ -185,6 +161,7 @@ export function RhythmicIntentScreen() {
             onChange={(v) => setParam('density', v)}
             idle={!hasPattern}
           />
+          <PitchPad value={pitch} onChange={setPitch} />
         </div>
       </section>
 

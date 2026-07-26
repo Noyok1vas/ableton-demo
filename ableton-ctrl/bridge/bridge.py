@@ -11,6 +11,7 @@ It does three things:
   2. Opens a virtual MIDI output port named "Rhythmic Intent". A TAP in the
      browser becomes a live MIDI note on that port, so whatever Live track is
      armed with this port as its MIDI input plays its instrument in real time.
+     The note pitch (default C1) is adjustable from the GUI's PITCH pad.
   3. Talks OSC to AbletonOSC (send 11000 / receive 11001) only to read *which*
      track is selected and report its name to the browser.
 
@@ -57,7 +58,9 @@ WS_HOST = "127.0.0.1"
 WS_PORT = 8722
 
 MIDI_PORT_NAME = "Rhythmic Intent"
-NOTE_PITCH = 60  # C3 in Ableton's convention — a fixed audition pitch.
+# C1 in Ableton's convention — bottom-left pad of a standard 4x4 Drum Rack
+# grid (C1..D#2), which is the range the GUI's PITCH pad selects from.
+DEFAULT_NOTE_PITCH = 36
 NOTE_MS = 150  # how long each tapped note is held before note-off
 
 HEARTBEAT_S = 2.0  # how often we ping /live/test
@@ -78,6 +81,10 @@ log = logging.getLogger("bridge")
 
 
 MAX_LOOP_EVENTS = 128
+
+# Give up on an in-flight macro scan after this long (a dropped OSC reply would
+# otherwise wedge it) and allow a retry.
+MACRO_SCAN_TIMEOUT_S = 3.0
 
 
 def pick_midi_input(ports: list[str]) -> tuple[int, str] | None:
@@ -131,9 +138,33 @@ class Bridge:
         self.selected_index: int | None = None
         self.selected_name: str | None = None
 
+        # Cached parameter names for the whole set: track → device → [names].
+        # Filled by one scan and then queried for any macro name, so "Energy"
+        # always means whichever knob is actually labelled Energy, not a guessed
+        # slot — and a set-wide name like "Reverb" can be found on every track
+        # at once without a second scan.
+        self.track_params: dict[int, dict[int, list[str]]] = {}
+        # Each cached parameter's own range: track → device → [(min, max)].
+        # A rack macro is 0..127, but a stock device knob (Reverb's "Decay
+        # Time") is 0..1 — the GUI always speaks 0..127, so the value is scaled
+        # into the target's range on the way out.
+        self.track_param_ranges: dict[int, dict[int, list[tuple[float, float]]]] = {}
+        # Macro name → (scope, last value written). Scope is "selected" (an
+        # instrument property) or "all" (a property of the room — FX).
+        self._macro_requests: dict[str, tuple[str, float]] = {}
+        self._scan_at = 0.0  # monotonic time the in-flight scan started; 0 = none
+        self._scan_done = False  # a scan has completed since the last invalidation
+        self._scan_tracks_pending: set[int] = set()
+        # (track, device, reply kind) — each device is asked for names, mins and
+        # maxes, and the scan is done when all three have landed everywhere.
+        self._scan_devices_pending: set[tuple[int, int, str]] = set()
+
         self.midi = rtmidi.MidiOut()
         # pitch → pending note-off timer, so a fast retap cancels the old release
         self.pending_off: dict[int, asyncio.TimerHandle] = {}
+        # The pitch every tap/loop note plays on. Adjustable from the GUI's
+        # PITCH knob so the mapping isn't nailed to C3.
+        self.note_pitch = DEFAULT_NOTE_PITCH
 
         # Loop playback. Scheduled here, not in the browser: browser timers are
         # throttled in background tabs, and during performance the browser tab
@@ -171,14 +202,210 @@ class Bridge:
         # velocity 0..1 → MIDI 1..127. GUI taps are uniform 1.0; a hardware pad
         # will supply real values later.
         vel = max(1, min(127, round(velocity * 126) + 1))
+        pitch = self.note_pitch
         # Retrigger cleanly: release any note still sounding on this pitch first.
-        self._note_off(NOTE_PITCH)
-        self.midi.send_message([0x90, NOTE_PITCH, vel])
+        self._note_off(pitch)
+        self.midi.send_message([0x90, pitch, vel])
         if self.loop is not None:
-            self.pending_off[NOTE_PITCH] = self.loop.call_later(
-                NOTE_MS / 1000, self._note_off, NOTE_PITCH
+            self.pending_off[pitch] = self.loop.call_later(
+                NOTE_MS / 1000, self._note_off, pitch
             )
-        log.info("%s → note %d vel %d", source, NOTE_PITCH, vel)
+        log.info("%s → note %d vel %d", source, pitch, vel)
+
+    def set_pitch(self, pitch: int) -> None:
+        self.note_pitch = max(0, min(127, pitch))
+        log.info("note pitch set to %d", self.note_pitch)
+
+    def set_macro(self, name: str, value: float, scope: str = "selected") -> None:
+        """Turn the parameter literally named `name` (e.g. "Energy") to `value`,
+        in the macro's own 0..127 range.
+
+        `scope` decides what the knob belongs to:
+
+          "selected" — an instrument property. The first device on the SELECTED
+            track that has a parameter with this name.
+          "all" — a property of the room (the FX module's REVERB). Every track
+            that carries the name, written together, so one slider moves the
+            whole set. This is as close to a master effect as AbletonOSC
+            reaches: it exposes devices only on `song.tracks`, never on the
+            master or return tracks (verified against the installed master), so
+            a "global" effect has to live on regular tracks.
+
+        Locations aren't known in advance — racks show 8 or 16 macros, sit
+        behind other devices, or get renamed — so they're resolved by name from
+        a cached scan of the whole set. If the cache can't answer yet, the value
+        is remembered and applied the moment the scan lands."""
+        value = max(0.0, min(127.0, value))
+        if scope not in ("selected", "all"):
+            scope = "selected"
+        self._macro_requests[name] = (scope, value)
+        locations = self._locations_for(name, scope)
+        if locations:
+            for location in locations:
+                self._send_macro_value(name, location, value)
+        else:
+            self._ensure_scan()
+
+    def _locations_for(self, name: str, scope: str) -> list[tuple[int, int, int]]:
+        """Every (track, device, parameter) the name resolves to, from the
+        cache. At most one per track — the first device carrying it wins, so a
+        name that appears twice on a track isn't written twice."""
+        key = name.strip().lower()
+        found: list[tuple[int, int, int]] = []
+        for track_index in sorted(self.track_params):
+            if scope == "selected" and track_index != self.selected_index:
+                continue
+            for device_index in sorted(self.track_params[track_index]):
+                names = self.track_params[track_index][device_index]
+                hit = next(
+                    (i for i, n in enumerate(names) if n.strip().lower() == key), None
+                )
+                if hit is not None:
+                    found.append((track_index, device_index, hit))
+                    break
+        return found
+
+    def _send_macro_value(
+        self, name: str, location: tuple[int, int, int], value: float
+    ) -> None:
+        track_index, device_index, param_index = location
+        out = self._scale_to_param(location, value)
+        self.osc_client.send_message(
+            "/live/device/set/parameter/value",
+            [track_index, device_index, param_index, out],
+        )
+        log.info(
+            "macro %r → %.1f → %.4f (track %d device %d param %d)",
+            name, value, out, track_index, device_index, param_index,
+        )
+
+    def _scale_to_param(self, location: tuple[int, int, int], value: float) -> float:
+        """The GUI's 0..127 → the target parameter's own range. A rack macro is
+        already 0..127 so this is the identity there; a device knob like the
+        Reverb's "Decay Time" (0..1) would otherwise clamp to its maximum for
+        anything above 1."""
+        track_index, device_index, param_index = location
+        ranges = self.track_param_ranges.get(track_index, {}).get(device_index)
+        if not ranges or param_index >= len(ranges):
+            return value  # range unknown — send the raw macro value
+        lo, hi = ranges[param_index]
+        if hi <= lo:
+            return lo
+        return lo + (value / 127.0) * (hi - lo)
+
+    def _reapply_macros(self, allow_scan: bool = True) -> None:
+        """Re-send every remembered macro at its current location. Called when
+        the selection changes (a "selected"-scope macro now means a different
+        track) and when a scan completes."""
+        missing: list[str] = []
+        for name, (scope, value) in self._macro_requests.items():
+            locations = self._locations_for(name, scope)
+            if locations:
+                for location in locations:
+                    self._send_macro_value(name, location, value)
+            else:
+                missing.append(name)
+        if missing:
+            if allow_scan:
+                self._ensure_scan()
+            else:
+                log.warning("macro name(s) not found in the set: %s", sorted(missing))
+
+    # ── Macro resolution: one scan of the whole set, cached ────────────
+
+    def _ensure_scan(self) -> None:
+        """Start a scan unless one is already in flight or the cache is fresh.
+        Self-limiting: a slider drag against a name that doesn't exist anywhere
+        triggers at most one scan per invalidation, not one per message."""
+        if not self.osc_up or not self._macro_requests:
+            return
+        if self._scan_done:
+            return
+        if self._scan_at and (time.monotonic() - self._scan_at) < MACRO_SCAN_TIMEOUT_S:
+            return  # in flight; a dropped reply frees this after the timeout
+        self._scan_at = time.monotonic()
+        self.track_params = {}
+        self.track_param_ranges = {}
+        self._scan_tracks_pending = set()
+        self._scan_devices_pending = set()
+        self.osc_client.send_message("/live/song/get/num_tracks", [])
+
+    def _invalidate_scan(self) -> None:
+        """Permit one fresh scan — the set may have changed under us."""
+        self._scan_done = False
+
+    def _on_num_tracks(self, _address: str, *args: object) -> None:
+        if not args or not self._scan_at:
+            return
+        count = int(args[0])  # type: ignore[arg-type]
+        self._scan_tracks_pending = set(range(count))
+        self._scan_devices_pending = set()
+        if count == 0:
+            self._finish_scan()
+            return
+        for track_index in range(count):
+            self.osc_client.send_message("/live/track/get/num_devices", [track_index])
+
+    def _on_num_devices(self, _address: str, *args: object) -> None:
+        if len(args) < 2 or not self._scan_at:
+            return
+        track_index = int(args[0])  # type: ignore[arg-type]
+        count = int(args[1])  # type: ignore[arg-type]
+        self._scan_tracks_pending.discard(track_index)
+        self.track_params.setdefault(track_index, {})
+        self.track_param_ranges.setdefault(track_index, {})
+        for device_index in range(count):
+            for kind in ("name", "min", "max"):
+                self._scan_devices_pending.add((track_index, device_index, kind))
+                self.osc_client.send_message(
+                    f"/live/device/get/parameters/{kind}", [track_index, device_index]
+                )
+        self._maybe_finish_scan()
+
+    def _on_device_parameters_name(self, _address: str, *args: object) -> None:
+        if len(args) < 2 or not self._scan_at:
+            return
+        track_index = int(args[0])  # type: ignore[arg-type]
+        device_index = int(args[1])  # type: ignore[arg-type]
+        self.track_params.setdefault(track_index, {})[device_index] = [
+            str(name) for name in args[2:]
+        ]
+        self._scan_devices_pending.discard((track_index, device_index, "name"))
+        self._maybe_finish_scan()
+
+    def _on_device_parameters_bound(self, address: str, *args: object) -> None:
+        """min/max replies. They arrive independently, so each fills its half of
+        the (min, max) pair and the other half is left at whatever is known."""
+        if len(args) < 2 or not self._scan_at:
+            return
+        kind = "min" if address.endswith("/min") else "max"
+        track_index = int(args[0])  # type: ignore[arg-type]
+        device_index = int(args[1])  # type: ignore[arg-type]
+        bounds = [float(v) for v in args[2:]]  # type: ignore[arg-type]
+        device_ranges = self.track_param_ranges.setdefault(track_index, {})
+        current = device_ranges.get(device_index) or []
+        if len(current) < len(bounds):
+            current = current + [(0.0, 127.0)] * (len(bounds) - len(current))
+        for i, bound in enumerate(bounds):
+            lo, hi = current[i]
+            current[i] = (bound, hi) if kind == "min" else (lo, bound)
+        device_ranges[device_index] = current
+        self._scan_devices_pending.discard((track_index, device_index, kind))
+        self._maybe_finish_scan()
+
+    def _maybe_finish_scan(self) -> None:
+        if self._scan_tracks_pending or self._scan_devices_pending:
+            return
+        self._finish_scan()
+
+    def _finish_scan(self) -> None:
+        self._scan_at = 0.0
+        self._scan_done = True
+        devices = sum(len(d) for d in self.track_params.values())
+        log.info("macro scan: %d track(s), %d device(s)", len(self.track_params), devices)
+        # allow_scan=False: the cache is as good as it gets — asking again now
+        # would loop.
+        self._reapply_macros(allow_scan=False)
 
     def _note_off(self, pitch: int) -> None:
         handle = self.pending_off.pop(pitch, None)
@@ -348,6 +575,11 @@ class Bridge:
         d.map("/live/test", self._on_test)
         d.map("/live/view/get/selected_track", self._on_selected_track)
         d.map("/live/track/get/name", self._on_track_name)
+        d.map("/live/song/get/num_tracks", self._on_num_tracks)
+        d.map("/live/track/get/num_devices", self._on_num_devices)
+        d.map("/live/device/get/parameters/name", self._on_device_parameters_name)
+        d.map("/live/device/get/parameters/min", self._on_device_parameters_bound)
+        d.map("/live/device/get/parameters/max", self._on_device_parameters_bound)
         d.set_default_handler(lambda *_: None)
         return d
 
@@ -358,6 +590,10 @@ class Bridge:
             log.info("AbletonOSC connected")
             # (Re)subscribe: this immediately pushes the current selection.
             self.osc_client.send_message("/live/view/start_listen/selected_track", [])
+            # Live may be a different set than last time we were up.
+            self.track_params = {}
+            self._invalidate_scan()
+            self._ensure_scan()
             self._broadcast_soon()
 
     def _on_selected_track(self, _address: str, *args: object) -> None:
@@ -365,6 +601,11 @@ class Bridge:
             return
         self.selected_index = int(args[0])  # type: ignore[arg-type]
         self.selected_name = None
+        # A "selected"-scope macro now points at a different track, and the set
+        # may have been edited since the last scan — re-send from the cache, and
+        # permit one fresh scan if anything no longer resolves.
+        self._invalidate_scan()
+        self._reapply_macros()
         # The push carries only the index; fetch the human-readable name.
         self.osc_client.send_message("/live/track/get/name", [self.selected_index])
 
@@ -388,6 +629,7 @@ class Bridge:
                 "trackIndex": self.selected_index,
                 "pad": self.pad_connected,
                 "midi": self.midi_in_name,
+                "notePitch": self.note_pitch,
             }
         return {
             "type": "status",
@@ -395,6 +637,7 @@ class Bridge:
             "reason": self._down_reason(),
             "pad": self.pad_connected,
             "midi": self.midi_in_name,
+            "notePitch": self.note_pitch,
         }
 
     def _down_reason(self) -> str:
@@ -452,6 +695,25 @@ class Bridge:
                     self.set_loop(events, bar)
                 elif op == "stopLoop":
                     self.stop_loop()
+                elif op == "setPitch":
+                    try:
+                        pitch = int(msg.get("pitch"))
+                    except (TypeError, ValueError):
+                        continue
+                    self.set_pitch(pitch)
+                    self._broadcast_soon()
+                elif op == "setMacro":
+                    name = msg.get("name")
+                    if not isinstance(name, str) or not name:
+                        continue
+                    try:
+                        value = float(msg.get("value"))
+                    except (TypeError, ValueError):
+                        continue
+                    scope = msg.get("scope")
+                    self.set_macro(
+                        name, value, scope if isinstance(scope, str) else "selected"
+                    )
         except websockets.ConnectionClosed:
             pass
         finally:

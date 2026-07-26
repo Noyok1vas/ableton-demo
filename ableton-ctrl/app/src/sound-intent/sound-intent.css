@@ -1,0 +1,152 @@
+/* Sound Intent + Sound Visual — same light black/white/grey system as
+   Rhythmic Intent: radius 0, 1px hairlines, 8px grid, heavy small labels. */
+
+/* ── Sound Intent (slider panel) ─────────────────────── */
+
+.si-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.si-sliders {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-6);
+}
+
+.si-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.si-slider-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.si-slider-label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+.si-slider-value {
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--text-muted);
+}
+
+/* Track: a 1px hairline with a solid-black fill to the handle. */
+.si-slider-track {
+  position: relative;
+  height: 24px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.si-slider-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.si-slider-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: var(--ink-pure);
+}
+
+.si-slider-handle {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+  background: var(--ink-pure);
+  border: 1px solid var(--ink-pure);
+}
+
+.si-slider-track:focus-visible {
+  outline: none;
+}
+
+.si-slider-track:focus-visible .si-slider-handle {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.si-description {
+  flex: 0 0 auto;
+  padding: var(--space-4);
+  border-top: 1px solid var(--line-fine);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ── Sound Visual (canvas) ───────────────────────────── */
+
+.sv-screen {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+}
+
+.sv-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sv-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+/* Clears the dried ring — mirrors the Rhythmic Intent reset button. */
+.sv-reset {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.sv-reset:hover {
+  background: var(--surface-2);
+}

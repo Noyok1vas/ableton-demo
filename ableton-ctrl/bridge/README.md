@@ -116,6 +116,9 @@ Browser → bridge:
 { "op": "tap",  "velocity": 1.0 }                       // one live note, velocity 0..1
 { "op": "loop", "events": [{ "pos": 0.0, "velocity": 1.0 }, …], "barDuration": 2.0 }
 { "op": "stopLoop" }
+{ "op": "setPitch", "pitch": 36 }                       // MIDI pitch for future notes
+{ "op": "setMacro", "name": "Energy", "value": 64, "scope": "selected" }
+{ "op": "setMacro", "name": "Reverb", "value": 64, "scope": "all" }
 ```
 
 Bridge → browser (besides `status`):
@@ -137,6 +140,47 @@ firing regardless of tab visibility. The loop stops automatically when the last
 client disconnects.
 
 Bridge → browser: the `status` frames described above.
+
+## Macros: mapping a GUI slider to a knob in Live
+
+`setMacro` never assumes a device index or macro slot. The bridge scans the set
+once (`num_tracks` → `num_devices` → `parameters/name` + `min`/`max`), caches
+every parameter name and its range, and drives whichever parameter is
+*literally* called `name` — so renaming a rack macro in Live is the whole
+mapping step.
+
+**Any device parameter works, not just rack macros.** The GUI always sends
+0..127; the bridge scales that into the target's own range, so a name can point
+straight at a stock device knob. FX's `REVERB` uses this: it drives the
+parameter named **`Decay Time`** — Live's Reverb Decay knob, a 0..1 parameter —
+with no rack around it. Slider 50 lands at 0.50 there, which Live shows as
+`3.54 s` (the taper is Live's own, not ours).
+
+`scope` decides what the knob belongs to:
+
+- **`"selected"`** — an instrument property. The first device on the currently
+  selected track with a parameter of that name. Sound Intent's `ENERGY` uses
+  this: select a different track and the slider follows it.
+- **`"all"`** — a property of the room. *Every* track carrying the name, written
+  together, so one slider moves the whole set. The FX module's `REVERB` uses
+  this.
+
+**Live-side setup for FX / REVERB.** AbletonOSC reaches devices only through
+`song.tracks` — it exposes nothing on the master or the return tracks (checked
+against the installed master: no `master_track`/`return_tracks` handler exists).
+So a "global" effect has to live on regular tracks: drop a **Reverb** on each
+track that should share the room, and the slider drives every one of their
+`Decay Time` knobs at once (scope `all`).
+
+To move more than decay from the one slider, wrap the Reverb in an **Audio
+Effect Rack**, rename a macro to the name the GUI sends, and map that macro to
+Dry/Wet + Decay + Size together — the shape of each mapping is yours to draw in
+Live. Renaming is only possible on rack macros, which is the only reason the
+rack is ever needed.
+
+The scan is refreshed when Live (re)connects and when the selected track
+changes. Add a device mid-session and the bridge won't see it until one of those
+happens — clicking another track and back is enough.
 
 ## Notes / limits
 

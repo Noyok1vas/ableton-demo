@@ -7,6 +7,11 @@ import { INITIAL_WINDOWS, PAGES, WINDOW_LIMITS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
+import { SoundIntentScreen } from '../sound-intent/SoundIntentScreen.tsx'
+import { SoundVisualScreen } from '../sound-intent/SoundVisualScreen.tsx'
+import { FxScreen } from '../fx/FxScreen.tsx'
+import { TapScreen } from '../tap/TapScreen.tsx'
+import { SelectorScreen } from '../selector/SelectorScreen.tsx'
 import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
@@ -17,6 +22,16 @@ function windowContent(kind: WindowKind) {
       return <RhythmicIntentScreen />
     case 'collection':
       return <CollectionPanel />
+    case 'sound-intent':
+      return <SoundIntentScreen />
+    case 'sound-visual':
+      return <SoundVisualScreen />
+    case 'fx':
+      return <FxScreen />
+    case 'tap':
+      return <TapScreen />
+    case 'selector':
+      return <SelectorScreen />
   }
 }
 

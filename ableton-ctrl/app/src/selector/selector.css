@@ -1,0 +1,87 @@
+/* Selector window — four marks in a row, same geometry as the rest of the GUI:
+   radius 0, 1px hairlines, 8px grid. Wraps to fewer columns in a narrow window. */
+
+.sel-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--surface);
+  container-type: inline-size;
+}
+
+.sel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.sel-button {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--surface);
+  /* Unselected marks sit in a hairline frame; selection turns it solid black. */
+  border: 1px solid var(--line-fine);
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: border-color var(--motion-fast), background-color var(--motion-fast);
+}
+
+.sel-button:hover {
+  border-color: var(--text-muted);
+}
+
+.sel-button--selected {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+/* Press feedback on the live mark: the same sharp inversion as TAP. */
+.sel-button--flash .sel-icon {
+  filter: invert(1);
+}
+
+/* Capturing a bar — the live mark's frame stays solid black. */
+.sel-button--recording {
+  border-color: var(--ink-pure);
+}
+
+.sel-icon {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+}
+
+.sel-label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.sel-button--selected .sel-label {
+  color: var(--text);
+}
+
+/* ── Narrow window: two columns, then one ─────────────── */
+
+@container (max-width: 460px) {
+  .sel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 220px) {
+  .sel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

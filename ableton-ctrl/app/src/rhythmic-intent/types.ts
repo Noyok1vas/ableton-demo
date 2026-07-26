@@ -27,6 +27,23 @@ export const BEATS_PER_BAR = 4
 export const BAR_DURATION = (BEATS_PER_BAR * 60) / BPM // seconds
 export const GRID_DIVISIONS = 16 // 1/16-note grid
 
+/** MIDI note every tap/loop hit plays on. Adjustable via the PITCH pad so
+    the mapping isn't nailed to one key. Constrained to the 16 notes of a
+    standard Ableton Drum Rack's 4×4 pad grid (C1..D#2), selected bottom-left
+    first like the rack itself. */
+export const PAD_BASE_PITCH = 36 // C1 — bottom-left pad
+export const PAD_GRID_SIZE = 4
+export const DEFAULT_PITCH = PAD_BASE_PITCH
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+/** Render a MIDI pitch as a note name using Ableton's octave convention
+    (note 60 → "C3"). */
+export function noteName(pitch: number): string {
+  const octave = Math.floor(pitch / 12) - 2
+  return `${NOTE_NAMES[pitch % 12]}${octave}`
+}
+
 /** One captured bar stored in the Collection. Holds the raw taps — the
     current knob settings are applied whenever the entry is (re)loaded. */
 export type CollectionEntry = {
