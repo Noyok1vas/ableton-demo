@@ -7,10 +7,10 @@ GUI (Tauri + React)  ←─ OSC/UDP ─→  AbletonOSC (Live Remote Script)  ←
         (未开始)                            (需你手动安装)
 ```
 
-当前阶段:**只有 Python 端的通信验证和工程结构 discovery。没有 GUI,没有 Node,没有 Tauri。**
-
 ```
 ableton-ctrl/
+  app/       # 浏览器 GUI(Vite + React)
+  bridge/    # bridge.py —— GUI ↔ Live(WebSocket + OSC + 虚拟 MIDI)
   scripts/
     osc_common.py   # OSC 客户端 + response collector + 故障诊断
     ping.py         # 最小连通性验证
@@ -19,6 +19,32 @@ ableton-ctrl/
     osc-reference.md    # 用到的 AbletonOSC address 和踩坑记录
     session_dump.json   # discover.py 的输出(运行后生成)
 ```
+
+---
+
+## 0. 快速启动(日常开发,两个终端)
+
+前提:Live 已打开,AbletonOSC 已装好并选为 Control Surface(第 2 节,一次性设置)。
+
+**终端 A —— bridge:**
+
+```bash
+cd ableton-ctrl
+uv run bridge/bridge.py
+```
+
+**终端 B —— GUI:**
+
+```bash
+cd ableton-ctrl/app
+npm run dev
+```
+
+`package.json` 变过或第一次跑,先 `npm install`。Vite 打印出的本地地址(通常
+`http://localhost:5173`)打开就是 GUI,连到 bridge 的 `ws://127.0.0.1:8722`。
+
+bridge 的详细协议、Live 侧接线(MIDI Track 开关、REVERB 挂载等)见
+[bridge/README.md](bridge/README.md)。
 
 ---
 
