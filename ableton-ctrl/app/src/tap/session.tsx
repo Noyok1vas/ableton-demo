@@ -10,11 +10,17 @@ import {
 import { useSession } from '../rhythmic-intent/session.tsx'
 import { BAR_DURATION } from '../rhythmic-intent/types.ts'
 import { useSoundIntent } from '../sound-intent/session.tsx'
+import { useSelector } from '../selector/session.tsx'
+import { useRipple } from '../ripple/session.tsx'
+import type { PatternId } from '../selector/patterns.ts'
 
 export type TapSessionValue = {
   /** Fire one combined tap: records the rhythm + live MIDI note (Rhythmic
-      Intent) and emits the sound event that blooms the visual (Sound Intent). */
-  fireTap: () => void
+      Intent) and emits the sound event that blooms the visual (Sound Intent).
+      `gesture` overrides the selected one for this tap — the Selector needs it
+      because pressing a mark selects and fires in the same press, before React
+      has re-rendered with the new selection. */
+  fireTap: (gesture?: PatternId) => void
   /** True while Rhythmic Intent is capturing a bar. */
   recording: boolean
 }
@@ -47,6 +53,14 @@ function isTextInput(el: Element | null): boolean {
 export function TapSession({ children }: { children: ReactNode }) {
   const { handleTap, capture } = useSession()
   const { emitTap } = useSoundIntent()
+  // What the tap *is* — read through refs so choosing a gesture or moving the
+  // repeat slider never re-creates fireTap (and with it the Space listener).
+  const { gesture: selectedGesture } = useSelector()
+  const { count: repeats } = useRipple()
+  const gestureRef = useRef(selectedGesture)
+  gestureRef.current = selectedGesture
+  const repeatsRef = useRef(repeats)
+  repeatsRef.current = repeats
 
   // Mirror of useTapCapture's bar window, tracked here synchronously so the
   // sound event carries the tap's 0..1 position within the bar: the first tap
@@ -60,14 +74,21 @@ export function TapSession({ children }: { children: ReactNode }) {
     if (capture.state === 'ready') barStartRef.current = null
   }, [capture.state])
 
-  const fireTap = useCallback(() => {
+  const fireTap = useCallback((gesture?: PatternId) => {
     const now = performance.now()
     const elapsed =
       barStartRef.current === null ? Infinity : (now - barStartRef.current) / 1000
     const newBar = elapsed >= BAR_DURATION
     if (newBar) barStartRef.current = now
     handleTap()
-    emitTap(newBar ? 0 : elapsed / BAR_DURATION, newBar)
+    // One MIDI note either way for now: RIPPLE's repeats are drawn, not sounded
+    // — the note-per-repeat send is the next step.
+    emitTap(
+      newBar ? 0 : elapsed / BAR_DURATION,
+      newBar,
+      gesture ?? gestureRef.current,
+      repeatsRef.current,
+    )
   }, [handleTap, emitTap])
 
   // Global Space → combined tap, unless focus is in a text input.

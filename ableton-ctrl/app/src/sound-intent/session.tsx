@@ -17,6 +17,7 @@ import {
   type SoundParams,
 } from './types.ts'
 import { useBridge } from '../transport/useBridge.ts'
+import type { PatternId } from '../selector/patterns.ts'
 
 /** Dimensions that drive an Ableton rack macro, id → the macro's exact name. */
 const MACRO_BY_ID = new Map<SoundDimensionId, string>(
@@ -33,8 +34,16 @@ function toMacroValue(value: number): number {
     with even if the sliders move afterwards. `pos` is the tap's 0..1 position
     within the rhythmic bar (the Sound Visual maps it to an angle on its
     circle); `newBar` marks the tap that begins a fresh bar, telling the visual
-    to clear the previous bar's blots first. */
-export type SoundTap = { params: SoundParams; pos: number; newBar: boolean }
+    to clear the previous bar's blots first. `gesture` is the Selector mark that
+    fired it and `repeats` the RIPPLE count it carried — both snapshotted for
+    the same reason as `params`: a mark is whatever it was when it sounded. */
+export type SoundTap = {
+  params: SoundParams
+  pos: number
+  newBar: boolean
+  gesture: PatternId
+  repeats: number
+}
 
 type TapListener = (tap: SoundTap) => void
 
@@ -42,10 +51,10 @@ export type SoundIntentSessionValue = {
   params: SoundParams
   setParam: (id: SoundDimensionId, value: number) => void
   /** Fire one sound event at `pos` (0..1 within the bar); `newBar` is true for
-      the tap that starts a fresh bar. Currently drives only the Sound Visual;
-      the Ableton parameter send will hang off the same call once dimensions
-      are mapped. */
-  emitTap: (pos: number, newBar: boolean) => void
+      the tap that starts a fresh bar, `gesture`/`repeats` describe which mark
+      sounded. Currently drives only the Sound Visual; the Ableton parameter
+      send will hang off the same call once dimensions are mapped. */
+  emitTap: (pos: number, newBar: boolean, gesture: PatternId, repeats: number) => void
   /** Subscribe to taps (the Sound Visual canvas does). Returns an unsubscribe. */
   onTap: (listener: TapListener) => () => void
 }
@@ -92,12 +101,15 @@ export function SoundIntentSession({ children }: { children: ReactNode }) {
     for (const [id, macroName] of MACRO_BY_ID) sendMacro(macroName, toMacroValue(paramsRef.current[id]))
   }, [linkState.link, sendMacro])
 
-  const emitTap = useCallback((pos: number, newBar: boolean) => {
-    const tap: SoundTap = { params: { ...paramsRef.current }, pos, newBar }
-    for (const listener of listeners.current) listener(tap)
-    // TODO: once the five dimensions are mapped, also push these params to
-    // Ableton here (via the bridge) so sound + visual share this one event.
-  }, [])
+  const emitTap = useCallback(
+    (pos: number, newBar: boolean, gesture: PatternId, repeats: number) => {
+      const tap: SoundTap = { params: { ...paramsRef.current }, pos, newBar, gesture, repeats }
+      for (const listener of listeners.current) listener(tap)
+      // TODO: once the five dimensions are mapped, also push these params to
+      // Ableton here (via the bridge) so sound + visual share this one event.
+    },
+    [],
+  )
 
   const onTap = useCallback((listener: TapListener) => {
     listeners.current.add(listener)

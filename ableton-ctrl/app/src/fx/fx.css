@@ -1,5 +1,9 @@
 /* FX — reuses the Sound Intent slider atom (si-slider*); this file only frames
-   the panel and marks which controls are not wired to anything yet. */
+   the panel.
+
+   The greyed-out ".fx-control-unmapped" treatment is gone: it marked controls
+   that drove nothing, and all three now re-render the Sound Visual. Whether a
+   control also reaches Live is in the panel's description, not in its colour. */
 
 .fx-screen {
   flex: 1 1 auto;
@@ -8,22 +12,4 @@
   display: flex;
   flex-direction: column;
   background: var(--surface);
-}
-
-.fx-control {
-  display: contents;
-}
-
-/* UI-only controls (HIGH PASS FILTER, REPEAT): they move and read back, but
-   drive neither Live nor the visual. Grey rather than disabled — the gesture
-   is being designed here, the mapping just isn't decided yet. */
-.fx-control-unmapped .si-slider-label,
-.fx-control-unmapped .si-slider-value {
-  color: var(--text-muted);
-}
-
-.fx-control-unmapped .si-slider-fill,
-.fx-control-unmapped .si-slider-handle {
-  background: var(--text-muted);
-  border-color: var(--text-muted);
 }

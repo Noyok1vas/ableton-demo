@@ -12,6 +12,7 @@ import { SoundVisualScreen } from '../sound-intent/SoundVisualScreen.tsx'
 import { FxScreen } from '../fx/FxScreen.tsx'
 import { TapScreen } from '../tap/TapScreen.tsx'
 import { SelectorScreen } from '../selector/SelectorScreen.tsx'
+import { RippleScreen } from '../ripple/RippleScreen.tsx'
 import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
@@ -32,6 +33,8 @@ function windowContent(kind: WindowKind) {
       return <TapScreen />
     case 'selector':
       return <SelectorScreen />
+    case 'ripple':
+      return <RippleScreen />
   }
 }
 

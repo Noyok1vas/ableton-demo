@@ -20,6 +20,7 @@ export type WindowKind =
   | 'fx'
   | 'tap'
   | 'selector'
+  | 'ripple'
 
 export type WindowState = {
   id: string

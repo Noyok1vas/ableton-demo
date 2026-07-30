@@ -22,6 +22,9 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
     { id: 'sel-1', kind: 'selector', title: 'Selector', x: 1248, y: 784, w: 560, h: 248 },
     // FX — the room, not the instrument. Applies to the whole field at once.
     { id: 'fx-1', kind: 'fx', title: 'FX', x: 1248, y: 1064, w: 560, h: 456 },
+    // Ripple — the Selector's RIPPLE mark as a playable gesture. Standalone for
+    // now: its own pad, no shared tap, nothing sent to Live.
+    { id: 'rip-1', kind: 'ripple', title: 'Ripple', x: 1848, y: 784, w: 480, h: 640 },
   ],
   'untitled-2': [],
   'untitled-3': [],
@@ -37,4 +40,5 @@ export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   fx: { minW: 360, minH: 380, maxW: 900, maxH: 800 },
   tap: { minW: 200, minH: 220, maxW: 700, maxH: 900 },
   selector: { minW: 180, minH: 160, maxW: 1400, maxH: 900 },
+  ripple: { minW: 300, minH: 380, maxW: 1000, maxH: 1100 },
 }

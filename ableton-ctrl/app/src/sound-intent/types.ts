@@ -20,11 +20,13 @@ export type SoundParams = Record<SoundDimensionId, number>
 export type SoundDimension = { id: SoundDimensionId; label: string; macroName?: string }
 
 /** The five dimensions, in display order. Renamed once each is mapped to a
-    real sound behaviour. `d1` is the first mapped one: it drives the rack's
-    "Energy" macro and also sizes the Sound Visual's tap blots. */
+    real sound behaviour. `d1` drives the rack's "Energy" macro and sizes the
+    Sound Visual's marks. `d2` is LENGTH — how long a sound rings on after it is
+    struck; it owns the visual's ink tail (the effect FX's REVERB slider used to
+    drive) but has no Live macro of its own yet. */
 export const SOUND_DIMENSIONS: SoundDimension[] = [
   { id: 'd1', label: 'ENERGY', macroName: 'Energy' },
-  { id: 'd2', label: 'DIMENSION 2' },
+  { id: 'd2', label: 'LENGTH' },
   { id: 'd3', label: 'DIMENSION 3' },
   { id: 'd4', label: 'DIMENSION 4' },
   { id: 'd5', label: 'DIMENSION 5' },
@@ -33,6 +35,9 @@ export const SOUND_DIMENSIONS: SoundDimension[] = [
 export const SOUND_MIN = 0
 export const SOUND_MAX = 100
 
+/** Every dimension rests at mid-scale. Note that this puts LENGTH at 50, so a
+    tap rings out by default — where the tail's old home, FX's REVERB, started
+    at 0 and drew nothing until raised. */
 export const DEFAULT_SOUND_PARAMS: SoundParams = {
   d1: 50,
   d2: 50,

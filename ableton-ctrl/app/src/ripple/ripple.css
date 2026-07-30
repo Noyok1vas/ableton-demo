@@ -1,0 +1,62 @@
+/* Ripple window — the pad fills the viewport, the count sits under it. Same
+   system as the rest of the GUI: radius 0, 1px hairlines, 8px grid. The slider
+   itself comes from sound-intent.css (si-slider*). */
+
+.rp-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+/* The pad is a button, so it strips the browser's chrome and keeps a hairline
+   frame — the mark inside is the only ink. */
+.rp-pad {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: var(--space-4) var(--space-4) 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-fine);
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: border-color var(--motion-fast);
+}
+
+.rp-pad:hover {
+  border-color: var(--text-muted);
+}
+
+/* Pressed = the gesture is playing; the frame goes solid black. */
+.rp-pad:active {
+  border-color: var(--ink-pure);
+}
+
+.rp-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Repeat count, in the fors idiom: ×1 … ×4. */
+.rp-count {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* One control only — no need for the sliders block to stretch and centre. */
+.rp-controls {
+  flex: 0 0 auto;
+  padding-bottom: var(--space-4);
+}

@@ -151,10 +151,16 @@ mapping step.
 
 **Any device parameter works, not just rack macros.** The GUI always sends
 0..127; the bridge scales that into the target's own range, so a name can point
-straight at a stock device knob. FX's `REVERB` uses this: it drives the
-parameter named **`Decay Time`** — Live's Reverb Decay knob, a 0..1 parameter —
-with no rack around it. Slider 50 lands at 0.50 there, which Live shows as
-`3.54 s` (the taper is Live's own, not ours).
+straight at a stock device knob — e.g. `Decay Time` is Live's Reverb Decay knob
+(a 0..1 parameter), where slider 50 lands at 0.50 and Live shows `3.54 s` (the
+taper is Live's own, not ours).
+
+**What FX drives today.** Its three sliders send the macro names **`Reverb`**,
+**`Hi Pass Filter`** and **`Saturate`** with scope `all` — the renamed macros on
+the instrument racks in this set (`Momentum Conservation`, `Probably House`).
+Note Live's spelling is *Hi* Pass Filter while the GUI label reads HIGH PASS
+FILTER; the wire name must match Live. Run `python scripts/discover.py` to list
+every parameter name in the open set before mapping a new one.
 
 `scope` decides what the knob belongs to:
 
@@ -165,18 +171,19 @@ with no rack around it. Slider 50 lands at 0.50 there, which Live shows as
   together, so one slider moves the whole set. The FX module's `REVERB` uses
   this.
 
-**Live-side setup for FX / REVERB.** AbletonOSC reaches devices only through
+**Live-side setup for FX.** AbletonOSC reaches devices only through
 `song.tracks` — it exposes nothing on the master or the return tracks (checked
 against the installed master: no `master_track`/`return_tracks` handler exists).
-So a "global" effect has to live on regular tracks: drop a **Reverb** on each
-track that should share the room, and the slider drives every one of their
-`Decay Time` knobs at once (scope `all`).
+So a "global" effect has to live on regular tracks: give every track that should
+share the room a macro named `Reverb` / `Hi Pass Filter` / `Saturate`, and one
+slider drives all of them at once (scope `all`).
 
-To move more than decay from the one slider, wrap the Reverb in an **Audio
-Effect Rack**, rename a macro to the name the GUI sends, and map that macro to
-Dry/Wet + Decay + Size together — the shape of each mapping is yours to draw in
-Live. Renaming is only possible on rack macros, which is the only reason the
-rack is ever needed.
+Renaming is only possible on **rack macros**, so that is the shape of the
+mapping: wrap the devices in a rack, rename a macro to the name the GUI sends,
+and map that macro to as many knobs as you like (Dry/Wet + Decay + Size
+together, say) — the curve of each mapping is yours to draw in Live. A stock
+knob can be targeted directly by its own name instead, but then one slider moves
+exactly one knob.
 
 The scan is refreshed when Live (re)connects and when the selected track
 changes. Add a device mid-session and the bridge won't see it until one of those

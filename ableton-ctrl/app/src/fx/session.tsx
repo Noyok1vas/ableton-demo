@@ -44,8 +44,8 @@ export function useFx(): FxSessionValue {
 /**
  * Shared FX state. Unlike Sound Intent there is no per-tap snapshot: an effect
  * describes the room, so its current value is simply read by whatever needs it
- * (the Sound Visual re-renders the whole ring when it changes) and pushed to
- * Live with `scope: 'all'` so it lands on every track that carries the macro.
+ * and pushed to Live with `scope: 'all'` so it lands on every track that
+ * carries the macro. Nothing on the canvas reads it today — see fx/types.ts.
  */
 export function FxSession({ children }: { children: ReactNode }) {
   const { sendMacro, state: linkState } = useBridge()

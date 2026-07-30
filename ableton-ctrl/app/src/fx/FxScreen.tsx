@@ -7,9 +7,10 @@ import '../sound-intent/sound-intent.css'
 import './fx.css'
 
 const DESCRIPTION =
-  'FX studies how a sound behaves in space, not how it is made. Every control describes the room, so it applies to the whole field at once.'
+  'FX studies how a sound behaves in space, not how it is made. Every control describes the room, so it applies to the whole field at once: REVERB scatters the marks, HIGH PASS FILTER and SATURATE re-map their tones. Each one also turns the rack macro of the same name in Live.'
 
-/** The FX panel. Only REVERB is mapped; the other two are UI for now. */
+/** The FX panel. All three controls re-render the Sound Visual and drive the
+    Live rack macro of the same name. */
 export function FxScreen() {
   const { params, setParam } = useFx()
 
@@ -17,18 +18,14 @@ export function FxScreen() {
     <div className="fx-screen">
       <div className="si-sliders">
         {FX_CONTROLS.map((control) => (
-          <div
+          <Slider
             key={control.id}
-            className={control.macroName ? 'fx-control' : 'fx-control fx-control-unmapped'}
-          >
-            <Slider
-              label={control.label}
-              value={params[control.id]}
-              min={FX_MIN}
-              max={FX_MAX}
-              onChange={(v) => setParam(control.id, v)}
-            />
-          </div>
+            label={control.label}
+            value={params[control.id]}
+            min={FX_MIN}
+            max={FX_MAX}
+            onChange={(v) => setParam(control.id, v)}
+          />
         ))}
       </div>
       <footer className="si-description">{DESCRIPTION}</footer>
