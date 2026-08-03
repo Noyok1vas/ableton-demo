@@ -46,6 +46,30 @@ npm run dev
 bridge 的详细协议、Live 侧接线(MIDI Track 开关、REVERB 挂载等)见
 [bridge/README.md](bridge/README.md)。
 
+**不开 bridge 也能出声**:Sound Source 窗口选 BUILT-IN,声音由浏览器内合成的
+16 个音色发出(`app/src/transport/kit.ts`)。默认的 AUTO 会自己判断 —— 探测到
+bridge 就走 Ableton,没探测到就用内置音源。
+
+---
+
+## 0.5 部署(公开 demo)
+
+两个分支:`main` 继续开发 Ableton 版,`demo` 是部署出去的那一份。
+
+推 `main` **不会**触发部署([vercel.json](../vercel.json) 里关掉了),想更新线上
+展示版就把 main 合进 demo:
+
+```bash
+git checkout demo && git merge main && git push && git checkout main
+```
+
+线上页面不是从本地提供的,所以它根本不会去连 bridge —— Sound Source 窗口会显示
+`Not reachable from this page`,访客直接听内置音源。这条判断在
+`app/src/transport/bridgeEngine.ts` 的 `isBridgeAddressable()`。
+
+Vercel 项目的 Production Branch 必须设成 `demo`,否则(配合上面那条 main 开关)
+什么都不会部署。
+
 ---
 
 ## 1. Python 环境
