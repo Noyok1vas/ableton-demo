@@ -11,20 +11,23 @@ export const PAGES: Page[] = [
 /** Each page owns its windows. Only the first page has content in this pass. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
   'rhythmic-intent': [
-    { id: 'ri-1', kind: 'rhythmic-intent', title: 'Rhythmic intent', x: 64, y: 96, w: 980, h: 640 },
-    { id: 'col-1', kind: 'collection', title: 'Collection', x: 1068, y: 96, w: 356, h: 640 },
+    // Sound Source sits above everything: it decides where every other window's
+    // sound comes out, so it is read before any of them.
+    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 96, w: 980, h: 408 },
+    { id: 'ri-1', kind: 'rhythmic-intent', title: 'Rhythmic intent', x: 64, y: 552, w: 980, h: 640 },
+    { id: 'col-1', kind: 'collection', title: 'Collection', x: 1068, y: 552, w: 356, h: 640 },
     // Shared TAP trigger — one press drives both Rhythmic Intent and Sound Intent.
-    { id: 'tap-1', kind: 'tap', title: 'Tap', x: 1440, y: 96, w: 300, h: 640 },
+    { id: 'tap-1', kind: 'tap', title: 'Tap', x: 1440, y: 552, w: 300, h: 640 },
     // Sound Intent — peers with Rhythmic Intent, placed on the row below.
-    { id: 'si-1', kind: 'sound-intent', title: 'Sound Intent', x: 64, y: 784, w: 560, h: 520 },
-    { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 648, y: 784, w: 560, h: 520 },
+    { id: 'si-1', kind: 'sound-intent', title: 'Sound Intent', x: 64, y: 1240, w: 560, h: 520 },
+    { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 648, y: 1240, w: 560, h: 520 },
     // Selector — four gesture marks; BLOOM shares the TAP trigger.
-    { id: 'sel-1', kind: 'selector', title: 'Selector', x: 1248, y: 784, w: 560, h: 248 },
+    { id: 'sel-1', kind: 'selector', title: 'Selector', x: 1248, y: 1240, w: 560, h: 248 },
     // FX — the room, not the instrument. Applies to the whole field at once.
-    { id: 'fx-1', kind: 'fx', title: 'FX', x: 1248, y: 1064, w: 560, h: 456 },
+    { id: 'fx-1', kind: 'fx', title: 'FX', x: 1248, y: 1520, w: 560, h: 456 },
     // Ripple — the Selector's RIPPLE mark as a playable gesture. Standalone for
     // now: its own pad, no shared tap, nothing sent to Live.
-    { id: 'rip-1', kind: 'ripple', title: 'Ripple', x: 1848, y: 784, w: 480, h: 640 },
+    { id: 'rip-1', kind: 'ripple', title: 'Ripple', x: 1848, y: 1240, w: 480, h: 640 },
   ],
   'untitled-2': [],
   'untitled-3': [],
@@ -33,6 +36,7 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
 }
 
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
+  'sound-source': { minW: 420, minH: 260, maxW: 1200, maxH: 720 },
   'rhythmic-intent': { minW: 720, minH: 600, maxW: 1600, maxH: 1040 },
   collection: { minW: 300, minH: 280, maxW: 720, maxH: 1200 },
   'sound-intent': { minW: 360, minH: 420, maxW: 900, maxH: 1040 },

@@ -2,45 +2,10 @@ import { Knob } from './Knob.tsx'
 import { PitchPad } from './PitchPad.tsx'
 import { RhythmVisualization } from './RhythmVisualization.tsx'
 import { useSession } from './session.tsx'
-import type { LinkState } from '../transport/bridge.ts'
 import './rhythmic-intent.css'
 
 const PROJECT_DESCRIPTION =
   'Rhythmic Intent captures a one-bar rhythm tapped by the audience and translates it into an editable MIDI pattern. The performer can adjust its tightness, phase, and density while preserving the recognizable character of the original gesture.'
-
-type Status = { label: string; connected: boolean; pad: boolean; midi: string | null }
-
-/** Turn the bridge link state into the status-bar label + flags. */
-function linkStatus(state: LinkState): Status {
-  switch (state.link) {
-    case 'connected':
-      return {
-        label: state.instrument ?? 'No instrument selected',
-        connected: true,
-        pad: state.pad,
-        midi: state.midi,
-      }
-    case 'live-offline':
-      return {
-        label:
-          state.reason === 'live_down'
-            ? 'Live not running'
-            : state.reason === 'not_installed'
-              ? 'AbletonOSC not installed'
-              : 'Live not responding',
-        connected: false,
-        pad: state.pad,
-        midi: state.midi,
-      }
-    default:
-      return { label: 'Bridge offline', connected: false, pad: false, midi: null }
-  }
-}
-
-/** A MIDI controller named like Move gets a MOVE tag, else a generic MIDI tag. */
-function midiTagLabel(name: string): string {
-  return /move/i.test(name) ? 'MOVE' : 'MIDI'
-}
 
 export function RhythmicIntentScreen() {
   const {
@@ -49,7 +14,7 @@ export function RhythmicIntentScreen() {
     setParam,
     rendered,
     hasPattern,
-    link: linkState,
+    status,
     pitch,
     setPitch,
     handleReset,
@@ -57,8 +22,6 @@ export function RhythmicIntentScreen() {
     playPos,
     togglePlay,
   } = useSession()
-
-  const link = linkStatus(linkState)
 
   const statusLabel = playing
     ? 'Playing'
@@ -74,24 +37,16 @@ export function RhythmicIntentScreen() {
     <div className="ri-screen">
       <header className="ri-header">
         <div className="ri-statusbar">
-          <span
-            className={`ri-dot${link.connected ? ' ri-dot--on' : ''}`}
-            aria-hidden
-          />
-          <span className="ri-status" title={link.connected ? 'Selected instrument' : undefined}>
-            {link.label}
+          <span className={`ri-dot${status.ready ? ' ri-dot--on' : ''}`} aria-hidden />
+          <span className="ri-status" title={status.labelTitle ?? undefined}>
+            {status.label}
           </span>
           <span className="ri-substatus">{statusLabel}</span>
-          {link.pad && (
-            <span className="ri-pad" title="Physical tap pad connected">
-              PAD
+          {status.tags.map((tag) => (
+            <span key={tag.label} className="ri-pad" title={tag.title}>
+              {tag.label}
             </span>
-          )}
-          {link.midi && (
-            <span className="ri-pad" title={`MIDI tap controller: ${link.midi}`}>
-              {midiTagLabel(link.midi)}
-            </span>
-          )}
+          ))}
         </div>
         <button
           type="button"

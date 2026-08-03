@@ -16,10 +16,10 @@ import {
   type SoundDimensionId,
   type SoundParams,
 } from './types.ts'
-import { useBridge } from '../transport/useBridge.ts'
+import { useSoundEngine } from '../transport/session.tsx'
 import type { PatternId } from '../selector/patterns.ts'
 
-/** Dimensions that drive an Ableton rack macro, id → the macro's exact name. */
+/** Dimensions that drive a sound macro, id → the macro's exact name. */
 const MACRO_BY_ID = new Map<SoundDimensionId, string>(
   SOUND_DIMENSIONS.filter((d) => d.macroName != null).map((d) => [d.id, d.macroName as string]),
 )
@@ -73,7 +73,7 @@ export function useSoundIntent(): SoundIntentSessionValue {
  * same way RhythmicIntentSession does — but entirely independent of it.
  */
 export function SoundIntentSession({ children }: { children: ReactNode }) {
-  const { sendMacro, state: linkState } = useBridge()
+  const { setMacro, status, engineId } = useSoundEngine()
   const [params, setParams] = useState<SoundParams>(DEFAULT_SOUND_PARAMS)
 
   // Mirror params in a ref so emitTap always snapshots the current values
@@ -86,20 +86,22 @@ export function SoundIntentSession({ children }: { children: ReactNode }) {
   const setParam = useCallback(
     (id: SoundDimensionId, value: number) => {
       setParams((prev) => ({ ...prev, [id]: value }))
-      // Mapped dimensions (Energy) also drive the like-named rack knob in Live.
+      // Mapped dimensions (Energy) also drive the like-named macro on the
+      // engine — the rack knob in Live, or its Web Audio counterpart.
       const macroName = MACRO_BY_ID.get(id)
-      if (macroName != null) sendMacro(macroName, toMacroValue(value))
+      if (macroName != null) setMacro(macroName, toMacroValue(value))
     },
-    [sendMacro],
+    [setMacro],
   )
 
-  // The bridge only forwards macros once a track is selected, and a bridge
-  // restart drops any earlier value — resend every mapped dimension whenever
-  // the link (re)connects so Live matches the sliders.
+  // A source that just came up knows nothing of earlier values (the bridge
+  // also only forwards macros once a track is selected) — resend every mapped
+  // dimension whenever it becomes ready, so the sound matches the sliders.
+  const engineReady = status.ready
   useEffect(() => {
-    if (linkState.link !== 'connected') return
-    for (const [id, macroName] of MACRO_BY_ID) sendMacro(macroName, toMacroValue(paramsRef.current[id]))
-  }, [linkState.link, sendMacro])
+    if (!engineReady) return
+    for (const [id, macroName] of MACRO_BY_ID) setMacro(macroName, toMacroValue(paramsRef.current[id]))
+  }, [engineId, engineReady, setMacro])
 
   const emitTap = useCallback(
     (pos: number, newBar: boolean, gesture: PatternId, repeats: number) => {

@@ -1,0 +1,213 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { BridgeEngine, isBridgeAddressable, probeBridge } from './bridgeEngine.ts'
+import { WebAudioEngine } from './webAudioEngine.ts'
+import type { EngineStatus, LoopEvent, MacroScope, SoundEngine, SoundSourceId } from './engine.ts'
+
+/** What the listener asked for. `'auto'` is not a source — it is the standing
+    instruction "Ableton whenever its bridge is running, otherwise the built-in
+    kit", which is what makes the same build work on this machine and on a
+    deployed page. */
+export type SourcePreference = 'auto' | SoundSourceId
+
+/** How often `auto` re-checks for a bridge while playing the built-in kit, so
+    starting the bridge after the app still "just works". */
+const PROBE_MS = 3000
+
+/** How long the bridge may be unreachable before `auto` gives up on it and
+    falls back. Covers the gap between choosing Ableton and its socket opening,
+    which would otherwise read as a failure and bounce straight back. */
+const DROP_GRACE_MS = 4000
+
+/** What the status bar shows for the one frame before the engine reports in.
+    Each engine's own first status says the same thing, so nothing flickers. */
+const INITIAL_STATUS: Record<SoundSourceId, EngineStatus> = {
+  ableton: {
+    source: 'ableton',
+    connected: false,
+    ready: false,
+    label: 'Bridge offline',
+    labelTitle: null,
+    tags: [],
+  },
+  builtin: {
+    source: 'builtin',
+    connected: false,
+    ready: false,
+    label: 'Built-in sound — tap to start',
+    labelTitle: 'Browsers only allow audio to start from a click or key press',
+    tags: [],
+  },
+}
+
+export type SoundEngineSessionValue = {
+  status: EngineStatus
+  /** Which source is actually playing right now. */
+  source: SoundSourceId
+  /** What was asked for, which under `'auto'` need not be what is playing. */
+  preference: SourcePreference
+  setPreference: (preference: SourcePreference) => void
+  /** Bumped once a newly built engine is installed and running.
+   *
+   * Modules use this — not `source` — as the dependency that re-applies their
+   * state to a fresh engine (pitch, macros, a running loop). `source` changes
+   * during the render that *decides* to swap, and React runs a child's effects
+   * before its parent's, so an effect keyed on `source` would fire while this
+   * session is still holding the outgoing engine and would hand its work to
+   * the one being torn down. This is set from inside the swap itself, so by
+   * the time it changes the new engine is already the one being addressed. */
+  engineId: number
+  /** Whether a bridge process is listening. Under `'auto'` this is what
+      decides the source. */
+  bridgeReachable: boolean
+  /** False when this page can't reach a bridge at all because it isn't served
+      locally — the Ableton option is still offered, it just can't connect from
+      here. */
+  bridgeAddressable: boolean
+  /** Play one note now. `velocity` is 0..1. */
+  noteOn: (velocity?: number) => void
+  /** Start or replace the looping bar. */
+  startLoop: (events: readonly LoopEvent[], barDuration: number) => void
+  stopLoop: () => void
+  /** Move the mapping: every future note plays on this MIDI pitch. */
+  setPitch: (pitch: number) => void
+  /** Set the macro named `name` (e.g. "Energy") to `value` (0..127) — resolved
+      by name, not by slot. `scope` picks the selected track (default) or
+      everything carrying the macro. */
+  setMacro: (name: string, value: number, scope?: MacroScope) => void
+  /** Subscribe to taps the source originates (a hardware pad); returns an
+      unsubscribe. Stable identity. */
+  onExternalTap: (listener: (velocity: number) => void) => () => void
+}
+
+const SoundEngineContext = createContext<SoundEngineSessionValue | null>(null)
+
+export function useSoundEngine(): SoundEngineSessionValue {
+  const value = useContext(SoundEngineContext)
+  if (!value) throw new Error('useSoundEngine must be used inside <SoundEngineSession>')
+  return value
+}
+
+/**
+ * Owns the one sound engine the whole app plays through. It is a session rather
+ * than a hook because the engine is a single shared connection: three modules
+ * ask it to sound things (Rhythmic Intent's notes, Sound Intent's and FX's
+ * macros), and each calling a hook of its own opened three sockets to the same
+ * bridge. Sits outermost in App so every module sees the same engine, and the
+ * same status.
+ */
+export function SoundEngineSession({ children }: { children: ReactNode }) {
+  const [preference, setPreference] = useState<SourcePreference>('auto')
+  const [bridgeReachable, setBridgeReachable] = useState(false)
+  const [bridgeAddressable] = useState(isBridgeAddressable)
+
+  // `auto` starts on the built-in kit and moves to Ableton once a bridge
+  // answers, rather than the reverse: an unanswered bridge would mean silence
+  // while we waited, and silence is the one thing the built-in source exists
+  // to prevent.
+  const source: SoundSourceId =
+    preference === 'auto' ? (bridgeReachable ? 'ableton' : 'builtin') : preference
+
+  const [status, setStatus] = useState<EngineStatus>(() => INITIAL_STATUS[source])
+  const [engineId, setEngineId] = useState(0)
+  const engineRef = useRef<SoundEngine | null>(null)
+
+  useEffect(() => {
+    const engine: SoundEngine = source === 'builtin' ? new WebAudioEngine() : new BridgeEngine()
+    engineRef.current = engine
+    const unsubscribe = engine.onStatus(setStatus)
+    engine.start()
+    // Announce the swap only now that the new engine is the one behind every
+    // send function, so modules re-apply their state to it and not to the
+    // engine it replaced.
+    setEngineId((id) => id + 1)
+    return () => {
+      unsubscribe()
+      engine.dispose()
+      engineRef.current = null
+    }
+  }, [source])
+
+  // Watch for a bridge while something else is playing. Stops as soon as the
+  // bridge engine is the one running — from then on it reports for itself, and
+  // a second socket to the same process is exactly what this session exists to
+  // avoid.
+  useEffect(() => {
+    if (!bridgeAddressable || source === 'ableton') return
+    let cancelled = false
+    const check = async () => {
+      const reachable = await probeBridge()
+      if (!cancelled) setBridgeReachable(reachable)
+    }
+    void check()
+    const timer = setInterval(() => void check(), PROBE_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [bridgeAddressable, source])
+
+  // While the bridge engine is the one running, its own view is the truth. A
+  // drop is only believed after a grace period, so the moments before its
+  // socket opens don't bounce `auto` straight back to the built-in kit.
+  const bridgeEngineConnected = source === 'ableton' && status.connected
+  useEffect(() => {
+    if (source !== 'ableton') return
+    if (bridgeEngineConnected) {
+      setBridgeReachable(true)
+      return
+    }
+    const timer = setTimeout(() => setBridgeReachable(false), DROP_GRACE_MS)
+    return () => clearTimeout(timer)
+  }, [source, bridgeEngineConnected])
+
+  const noteOn = useCallback((velocity = 1) => {
+    engineRef.current?.noteOn(velocity)
+  }, [])
+
+  const startLoop = useCallback((events: readonly LoopEvent[], barDuration: number) => {
+    engineRef.current?.startLoop(events, barDuration)
+  }, [])
+
+  const stopLoop = useCallback(() => {
+    engineRef.current?.stopLoop()
+  }, [])
+
+  const setPitch = useCallback((pitch: number) => {
+    engineRef.current?.setPitch(pitch)
+  }, [])
+
+  const setMacro = useCallback((name: string, value: number, scope: MacroScope = 'selected') => {
+    engineRef.current?.setMacro(name, value, scope)
+  }, [])
+
+  const onExternalTap = useCallback((listener: (velocity: number) => void) => {
+    // The engine outlives individual renders; guard in case it's mid-teardown.
+    return engineRef.current?.onExternalTap(listener) ?? (() => {})
+  }, [])
+
+  const value: SoundEngineSessionValue = {
+    status,
+    source,
+    preference,
+    setPreference,
+    engineId,
+    bridgeReachable,
+    bridgeAddressable,
+    noteOn,
+    startLoop,
+    stopLoop,
+    setPitch,
+    setMacro,
+    onExternalTap,
+  }
+
+  return <SoundEngineContext.Provider value={value}>{children}</SoundEngineContext.Provider>
+}

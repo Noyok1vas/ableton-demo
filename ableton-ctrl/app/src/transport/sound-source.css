@@ -1,0 +1,150 @@
+/* Sound Source — the same black/white/grey vocabulary as the rest of the GUI:
+   1px hairlines, no radius, selection shown by filling rather than by colour.
+   The choice buttons borrow RESET's proportions and the dot/tag borrow the
+   Rhythmic Intent status bar's, so the two read as the same instrument. */
+
+.ss-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.ss-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── Source choice ──────────────────────────────────── */
+
+.ss-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ss-choice {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.ss-choice:hover {
+  background: var(--surface-2);
+}
+
+.ss-choice--on,
+.ss-choice--on:hover {
+  background: var(--text);
+  color: var(--surface);
+}
+
+/* ── Facts ──────────────────────────────────────────── */
+
+.ss-facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ss-fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--line-fine);
+}
+
+.ss-fact:last-child {
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.ss-fact dt {
+  flex: 0 0 132px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.ss-fact dd {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 16px;
+  color: var(--text);
+}
+
+.ss-dot {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--text-muted);
+  background: transparent;
+}
+
+.ss-dot--on {
+  border-color: var(--text);
+  background: var(--text);
+}
+
+.ss-tag,
+.ss-auto {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  color: var(--text);
+}
+
+/* AUTO is a note about *why* this source is playing, not an input the source
+   found — hairline rather than full border so it doesn't read as a tag. */
+.ss-auto {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.ss-note {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.ss-description {
+  flex: 0 0 auto;
+  padding: var(--space-4);
+  border-top: 1px solid var(--line-fine);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--text-muted);
+}

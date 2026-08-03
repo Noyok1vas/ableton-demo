@@ -19,8 +19,8 @@ import {
   type Tap,
   type TransformParams,
 } from './types.ts'
-import { useBridge } from '../transport/useBridge.ts'
-import type { LinkState } from '../transport/bridge.ts'
+import { useSoundEngine } from '../transport/session.tsx'
+import type { EngineStatus } from '../transport/engine.ts'
 
 export type Session = {
   capture: TapCapture
@@ -28,12 +28,13 @@ export type Session = {
   setParam: <K extends keyof TransformParams>(key: K, value: number) => void
   rendered: RenderedTap[]
   hasPattern: boolean
-  link: LinkState
+  /** What the sound source is doing right now — the status bar renders it. */
+  status: EngineStatus
   /** MIDI pitch every tap/loop note plays on. */
   pitch: number
   /** Move the mapping to a different MIDI pitch. */
   setPitch: (pitch: number) => void
-  /** Record a tap into the GUI and fire a live MIDI note through the bridge. */
+  /** Record a tap into the GUI and sound the note on the engine. */
   handleTap: () => void
   /** Clear the pattern, the knobs, the collection, and stop playback. */
   handleReset: () => void
@@ -59,8 +60,16 @@ export function useSession(): Session {
  * Collection, …). Lives above the Workspace so it survives page switches.
  */
 export function RhythmicIntentSession({ children }: { children: ReactNode }) {
-  const bridge = useBridge()
-  const { sendTap, sendLoop, sendStopLoop, sendSetPitch, onTap } = bridge
+  // Aliased: this session has its own startLoop/stopLoop/setPitch, which wrap
+  // the engine's with the playhead animation and the pattern to send.
+  const engine = useSoundEngine()
+  const {
+    noteOn,
+    startLoop: engineStartLoop,
+    stopLoop: engineStopLoop,
+    setPitch: engineSetPitch,
+    onExternalTap,
+  } = engine
   const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS)
   const [collection, setCollection] = useState<CollectionEntry[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -75,17 +84,20 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const setPitch = useCallback(
     (value: number) => {
       setPitchState(value)
-      sendSetPitch(value)
+      engineSetPitch(value)
     },
-    [sendSetPitch],
+    [engineSetPitch],
   )
 
-  // Bridge restarts reset its pitch to the default — resend ours whenever the
-  // link (re)connects so the two stay in sync.
-  const linkState = bridge.state
+  // A source that just came up is back on its own default pitch — resend ours
+  // whenever it becomes ready so the two stay in sync. Keyed on `engineId` too:
+  // a switch between Ableton and the built-in kit hands us a different engine
+  // that may already be ready, with no edge to catch.
+  const engineReady = engine.status.ready
+  const engineId = engine.engineId
   useEffect(() => {
-    if (linkState.link === 'connected') sendSetPitch(pitchRef.current)
-  }, [linkState.link, sendSetPitch])
+    if (engineReady) engineSetPitch(pitchRef.current)
+  }, [engineId, engineReady, engineSetPitch])
 
   // Every completed bar automatically enters the collection, newest first.
   const onBarComplete = useCallback((taps: readonly Tap[]) => {
@@ -107,7 +119,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const hasPattern = capture.taps.length > 0
 
   // ── Loop playback ─────────────────────────────────────────────────
-  // The *bridge* schedules the looped notes (browser timers throttle when the
+  // The *engine* schedules the looped notes (browser timers throttle when the
   // tab is backgrounded — e.g. while Live has focus). The rAF loop here only
   // animates the playhead, so a stalled tab never silences the loop.
   const [playing, setPlaying] = useState(false)
@@ -121,8 +133,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     playingRef.current = false
     setPlaying(false)
     setPlayPos(0)
-    sendStopLoop()
-  }, [sendStopLoop])
+    engineStopLoop()
+  }, [engineStopLoop])
 
   const startLoop = useCallback(() => {
     playingRef.current = true
@@ -140,18 +152,21 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   // pressing PLAY, turning a knob, or loading a collection entry mid-loop.
   useEffect(() => {
     if (!playing) return
-    sendLoop(
+    engineStartLoop(
       rendered.filter((t) => t.kept).map((t) => ({ pos: t.finalPos, velocity: t.velocity })),
       BAR_DURATION,
     )
-  }, [playing, rendered, sendLoop])
+    // `engineId` keeps a running loop alive across a source switch: the send
+    // functions keep their identity when the engine underneath changes, so
+    // without it the new engine would never be told what to play.
+  }, [playing, rendered, engineStartLoop, engineId])
 
   useEffect(
     () => () => {
       cancelAnimationFrame(rafRef.current)
-      sendStopLoop()
+      engineStopLoop()
     },
-    [sendStopLoop],
+    [engineStopLoop],
   )
 
   const togglePlay = useCallback(() => {
@@ -162,10 +177,10 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   // ── Actions ───────────────────────────────────────────────────────
   const { tap: captureTap, reset: captureReset, load: captureLoad, state: captureState } = capture
 
-  // Core tap path. `sendMidi` is false for physical-pad taps — the bridge has
+  // Core tap path. `sound` is false for physical-pad taps — the source has
   // already played the note (with real velocity), so echoing it would double.
   const applyTap = useCallback(
-    (velocity: number, sendMidi: boolean) => {
+    (velocity: number, sound: boolean) => {
       // A tap that begins a fresh bar replaces the loop — stop it so the new
       // rhythm is heard alone.
       if (captureState !== 'recording') {
@@ -173,19 +188,19 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
         setSelectedId(null)
       }
       captureTap(velocity)
-      if (sendMidi) sendTap(velocity)
+      if (sound) noteOn(velocity)
     },
-    [captureState, captureTap, sendTap, stopLoop],
+    [captureState, captureTap, noteOn, stopLoop],
   )
 
-  // GUI button / Space: uniform velocity, bridge plays the note.
+  // GUI button / Space: uniform velocity, the engine plays the note.
   const handleTap = useCallback(() => applyTap(1, true), [applyTap])
 
-  // Physical pad → bridge → here. Real velocity, no MIDI echo. A ref keeps the
+  // Physical pad → engine → here. Real velocity, no echo. A ref keeps the
   // subscription stable while always calling the latest applyTap.
   const applyTapRef = useRef(applyTap)
   applyTapRef.current = applyTap
-  useEffect(() => onTap((velocity) => applyTapRef.current(velocity, false)), [onTap])
+  useEffect(() => onExternalTap((velocity) => applyTapRef.current(velocity, false)), [onExternalTap])
 
   const handleReset = useCallback(() => {
     stopLoop()
@@ -219,7 +234,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setParam,
     rendered,
     hasPattern,
-    link: bridge.state,
+    status: engine.status,
     pitch,
     setPitch,
     handleTap,

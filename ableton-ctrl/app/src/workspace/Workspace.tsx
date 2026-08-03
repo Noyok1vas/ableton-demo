@@ -5,6 +5,7 @@ import { PageMenu } from './PageMenu.tsx'
 import { ZoomControl } from './ZoomControl.tsx'
 import { INITIAL_WINDOWS, PAGES, WINDOW_LIMITS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
+import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundIntentScreen } from '../sound-intent/SoundIntentScreen.tsx'
@@ -19,6 +20,8 @@ const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
 
 function windowContent(kind: WindowKind) {
   switch (kind) {
+    case 'sound-source':
+      return <SoundSourceScreen />
     case 'rhythmic-intent':
       return <RhythmicIntentScreen />
     case 'collection':

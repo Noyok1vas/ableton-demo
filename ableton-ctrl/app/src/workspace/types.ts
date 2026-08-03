@@ -13,6 +13,7 @@ export type View = { x: number; y: number; scale: number }
 
 /** Which content a window renders. */
 export type WindowKind =
+  | 'sound-source'
   | 'rhythmic-intent'
   | 'collection'
   | 'sound-intent'

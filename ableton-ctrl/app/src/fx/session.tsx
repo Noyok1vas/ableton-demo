@@ -16,9 +16,9 @@ import {
   type FxControlId,
   type FxParams,
 } from './types.ts'
-import { useBridge } from '../transport/useBridge.ts'
+import { useSoundEngine } from '../transport/session.tsx'
 
-/** Controls that drive a Live parameter, id → that parameter's exact name. */
+/** Controls that drive a sound parameter, id → that parameter's exact name. */
 const MACRO_BY_ID = new Map<FxControlId, string>(
   FX_CONTROLS.filter((c) => c.macroName != null).map((c) => [c.id, c.macroName as string]),
 )
@@ -48,7 +48,7 @@ export function useFx(): FxSessionValue {
  * carries the macro. Nothing on the canvas reads it today — see fx/types.ts.
  */
 export function FxSession({ children }: { children: ReactNode }) {
-  const { sendMacro, state: linkState } = useBridge()
+  const { setMacro, status, engineId } = useSoundEngine()
   const [params, setParams] = useState<FxParams>(DEFAULT_FX_PARAMS)
 
   const paramsRef = useRef(params)
@@ -58,19 +58,21 @@ export function FxSession({ children }: { children: ReactNode }) {
     (id: FxControlId, value: number) => {
       setParams((prev) => ({ ...prev, [id]: value }))
       const macroName = MACRO_BY_ID.get(id)
-      if (macroName != null) sendMacro(macroName, toMacroValue(value), 'all')
+      if (macroName != null) setMacro(macroName, toMacroValue(value), 'all')
     },
-    [sendMacro],
+    [setMacro],
   )
 
-  // A bridge restart drops any earlier value — resend every mapped control
-  // whenever the link (re)connects so Live matches the sliders.
+  // A source that just came up knows nothing of earlier values — resend every
+  // mapped control whenever it becomes ready, so the sound matches the sliders.
+  // Switching source counts: the new engine may arrive already ready.
+  const engineReady = status.ready
   useEffect(() => {
-    if (linkState.link !== 'connected') return
+    if (!engineReady) return
     for (const [id, macroName] of MACRO_BY_ID) {
-      sendMacro(macroName, toMacroValue(paramsRef.current[id]), 'all')
+      setMacro(macroName, toMacroValue(paramsRef.current[id]), 'all')
     }
-  }, [linkState.link, sendMacro])
+  }, [engineId, engineReady, setMacro])
 
   const value = useMemo<FxSessionValue>(() => ({ params, setParam }), [params, setParam])
 

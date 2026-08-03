@@ -23,10 +23,12 @@ export type SoundDimension = { id: SoundDimensionId; label: string; macroName?: 
     real sound behaviour. `d1` drives the rack's "Energy" macro and sizes the
     Sound Visual's marks. `d2` is LENGTH — how long a sound rings on after it is
     struck; it owns the visual's ink tail (the effect FX's REVERB slider used to
-    drive) but has no Live macro of its own yet. */
+    drive). The built-in engine sounds LENGTH as each voice's decay; no Live
+    rack carries a macro by that name yet, which the bridge treats as a name
+    that resolves to nothing — the slider simply draws until one does. */
 export const SOUND_DIMENSIONS: SoundDimension[] = [
   { id: 'd1', label: 'ENERGY', macroName: 'Energy' },
-  { id: 'd2', label: 'LENGTH' },
+  { id: 'd2', label: 'LENGTH', macroName: 'Length' },
   { id: 'd3', label: 'DIMENSION 3' },
   { id: 'd4', label: 'DIMENSION 4' },
   { id: 'd5', label: 'DIMENSION 5' },
