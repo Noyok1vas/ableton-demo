@@ -2,5 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd ableton-ctrl/app && npm ci",
   "buildCommand": "cd ableton-ctrl/app && npm run build",
-  "outputDirectory": "ableton-ctrl/app/dist"
+  "outputDirectory": "ableton-ctrl/app/dist",
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  }
 }
