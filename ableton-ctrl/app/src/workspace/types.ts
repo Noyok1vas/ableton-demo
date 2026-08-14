@@ -19,7 +19,6 @@ export type WindowKind =
   | 'sound-intent'
   | 'sound-visual'
   | 'fx'
-  | 'tap'
   | 'selector'
   | 'ripple'
 

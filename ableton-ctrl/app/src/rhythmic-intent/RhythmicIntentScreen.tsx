@@ -2,10 +2,11 @@ import { Knob } from './Knob.tsx'
 import { PitchPad } from './PitchPad.tsx'
 import { RhythmVisualization } from './RhythmVisualization.tsx'
 import { useSession } from './session.tsx'
+import { GRID_DIVISIONS } from './types.ts'
 import './rhythmic-intent.css'
 
 const PROJECT_DESCRIPTION =
-  'Rhythmic Intent captures a one-bar rhythm tapped by the audience and translates it into an editable MIDI pattern. The performer can adjust its tightness, phase, and density while preserving the recognizable character of the original gesture.'
+  'Rhythmic Intent captures a two-bar rhythm tapped by the audience and translates it into an editable MIDI pattern. The performer can adjust its tightness, phase, and density while preserving the recognizable character of the original gesture.'
 
 export function RhythmicIntentScreen() {
   const {
@@ -31,7 +32,9 @@ export function RhythmicIntentScreen() {
         ? 'Recording'
         : 'Captured'
 
-  const playhead = playing ? playPos : capture.state === 'recording' ? capture.progress : null
+  // The loop clock runs for as long as the loop is open, so the line keeps
+  // sweeping between takes — the Sound Visual's gradient is the same position.
+  const playhead = playing ? playPos : capture.state === 'ready' ? null : capture.progress
 
   return (
     <div className="ri-screen">
@@ -63,7 +66,7 @@ export function RhythmicIntentScreen() {
         </button>
       </header>
 
-      <section className="ri-vis" aria-label="One-bar tap visualization">
+      <section className="ri-vis" aria-label="Two-bar tap visualization">
         <RhythmVisualization taps={rendered} state={capture.state} playhead={playhead} />
       </section>
 
@@ -100,7 +103,7 @@ export function RhythmicIntentScreen() {
             label="PHASE"
             value={params.phase}
             min={0}
-            max={15}
+            max={GRID_DIVISIONS - 1}
             step={1}
             formatValue={(v) => (v === 0 ? '0' : `+${v}`)}
             onChange={(v) => setParam('phase', v)}

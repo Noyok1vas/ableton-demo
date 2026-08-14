@@ -7,7 +7,7 @@ import { useTap } from '../tap/session.tsx'
 import './selector.css'
 
 /** The marks that are built: pressing one selects it AND fires the shared tap,
-    so the gesture sounds and draws in the same press. BURST and LATTICE are UI
+    so the gesture sounds and draws in the same press. SPLASH and SCATTER are UI
     placeholders — they select, nothing else. */
 const LIVE_PATTERNS: readonly PatternId[] = ['bloom', 'ripple']
 
@@ -17,7 +17,7 @@ const FLASH_MS = 90
  * Selector — four marks, one per gesture. The selection is not this window's
  * private state: it says what a tap IS, wherever the tap comes from (this
  * window, the TAP button, Space), which mark the Sound Visual draws, and — for
- * RIPPLE — that the tap carries its repeats.
+ * ROLL — that the tap carries its repeats.
  */
 export function SelectorScreen() {
   const { fireTap, recording } = useTap()

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react'
 import { useSoundIntent } from './session.tsx'
+import { useSession as useRhythmicIntent } from '../rhythmic-intent/session.tsx'
+import { BEATS_PER_LOOP } from '../rhythmic-intent/types.ts'
 import { SOUND_MAX, SOUND_MIN } from './types.ts'
 import { useFx } from '../fx/session.tsx'
 import { FX_MAX, FX_MIN, type FxParams } from '../fx/types.ts'
@@ -46,13 +48,16 @@ type RippleRing = {
   specks: RingSpeck[]
 }
 
-/** The bar's record: everything on screen is a pure function of this list, which
-    is what makes a full re-place possible whenever the canvas geometry changes.
-    `energy` and `length` are the two mapped Sound Dimensions, `gesture` decides
-    which mark the tap draws and `repeats` is RIPPLE's ring count — all
-    snapshotted at the tap, so a later slider move never edits a mark that has
-    already sounded. */
+/** The loop's record: everything on screen is a pure function of this list,
+    which is what makes a full re-place possible whenever it changes — a knob
+    turned in Rhythmic Intent, a tap added, one deleted, the canvas resized.
+    `id` is Rhythmic Intent's tap id, so a mark keeps its identity (and its
+    seed, and its snapshot) while `pos` moves underneath it. `energy` and
+    `length` are the two mapped Sound Dimensions, `gesture` decides which mark
+    the tap draws and `repeats` is RIPPLE's ring count — all snapshotted at the
+    tap, so a later slider move never edits a mark that has already sounded. */
 type Tap = {
+  id: string
   pos: number
   energy: number
   length: number
@@ -79,12 +84,41 @@ const CORE_FRACTION = 0.55
 // 0 for a hard-stamped disc.
 const EDGE_SOFT = 0.02 // gaussian sigma for body-edge softness, as fraction of minDim
 const BASE_ALPHA = 0.7
-// The bar mapped as a circle: a tap's 0..1 position becomes an angle, and its
+// The loop mapped as a circle: a tap's 0..1 position becomes an angle, and its
 // blot lands on this ring (radius as a fraction of the min viewport dimension).
-const CIRCLE_RADIUS = 0.3
+// Sized by the crowding, not by taste: the loop is eight beats now, so eight
+// marks a sixteenth apart have 2π·R/8 of ring between their centres, and a
+// full-Energy RIPPLE mark is 2·0.14 wide — they only stay separable from about
+// R = 0.35 up. 0.36 is also the ceiling: any further and that same mark, at 12
+// or 6 o'clock, would cross the edge of a square canvas (0.36 + 0.14 = 0.5).
+// Speck size is deliberately untouched — a bigger ring, the same grain.
+const CIRCLE_RADIUS = 0.36
 // Beyond this many taps the oldest is forgotten — bounds the cost of the
-// full-field rebuild a resize triggers.
+// full-field rebuild every pattern change triggers.
 const MAX_TAPS = 64
+// How near a double-click has to land to count as "on" a mark, as a fraction of
+// minDim. A shade wider than the biggest blot, so the gesture is forgiving
+// without letting a click in open space delete the nearest note across the ring.
+const HIT_RADIUS = 0.075
+
+// ── Canvas size → ink density ─────────────────────────────────────────────
+// Every length here is a fraction of the canvas's min dimension, so a mark
+// scales with the window. Its INK did not: both the speck count and the speck
+// size were fixed, so at twice the size the same ink was spread over four times
+// the area and the whole field read washed out. `ink` below is the correction —
+// one factor from the canvas size, applied to both halves of coverage
+// (count × speck area), half to each: the count grows linearly so the cost does
+// too, and the speck grows only as its square root so the grain stays grain
+// instead of turning into visible squares.
+//
+// REF_MIN_DIM is the canvas the numbers above were tuned against — the min
+// dimension of the small window the visual was first designed in. Only growth is
+// corrected: below the reference the factor pins at 1, so a window dragged
+// smaller keeps the look it has always had. MAX_INK bounds the correction, and
+// with it the per-frame cost, at the far end (a maximized window on a zoomed-in
+// canvas); past that the field does start thinning again.
+const REF_MIN_DIM = 500 // CSS px
+const MAX_INK = 4
 
 // ── Energy → tap blot ─────────────────────────────────────────────────────
 // The Energy dimension (Sound Intent's first slider, mapped to the rack's
@@ -118,8 +152,8 @@ const ENERGY_MAX_DENSITY = 1 // …and at energy 100
 // Insert Math.pow(v, k) below to bend any of the three curves.
 const TAIL_PER_TAP = 4000 // nominal tail ink per tap, before energy/body
 const MAX_TAIL_PARTICLES = 80000
-// DURATION — how far around the ring the tail carries, in radians. The bar is
-// 2π, so 1.2 rad ≈ 19% of a bar ≈ three sixteenths. MIN is 0 by contract: at
+// DURATION — how far around the ring the tail carries, in radians. The loop is
+// 2π, so 1.2 rad ≈ 19% of the loop ≈ six sixteenths. MIN is 0 by contract: at
 // length 0 the sound stops dead and nothing leaves the mark.
 const LENGTH_MIN_ARC = 0
 const LENGTH_MAX_ARC = 1.2
@@ -170,6 +204,35 @@ const RIPPLE_ALPHA = 0.85 // ink strength once settled, as a multiple of BASE_AL
 // Bounds the cost of the full-field redraw, the same way MAX_CORE_PARTICLES
 // does for blots: ~80 four-ring marks.
 const MAX_RIPPLE_RINGS = 320
+
+// ── The beat grid → where the whole beats are ─────────────────────────────
+// The bottom layer, drawn for as long as the loop is open — which is exactly as
+// long as you can still play into it. One spoke per beat of the loop, crossing
+// the ring the marks sit on, so a tap can be placed against the pulse instead
+// of by feel alone. Hairline and nearly white: a guide under the ink, never a
+// thing in the picture. It IS part of the picture as far as FX is concerned
+// (the tone map runs over it), because it is drawn into the frame rather than
+// over it — unlike the playhead, which is an overlay on top of everything.
+const GRID_ALPHA = 0.08
+
+// ── Playhead → a light travelling the ring ────────────────────────────────
+// The one thing on this canvas that is not a record of what was played: where
+// the loop is RIGHT NOW. It is the same playhead Rhythmic Intent draws as a
+// vertical line on its 1/16 strip, read from the same session — that strip's
+// left-to-right is this ring's clockwise, so the two always point at the same
+// moment of the loop.
+//
+// Not a mark travelling the ring but an ANGULAR gradient over the whole
+// canvas: the surface itself is what turns. Its leading edge is the playhead —
+// one crisp radius at the current position, the conic gradient's own seam —
+// and the tint falls away behind it around the turn, so the frame reads as a
+// shadow being dragged clockwise rather than as one more thing on the ring.
+//
+// Drawn as the last thing in the frame, after the tone map, because it is an
+// overlay on the picture and not ink in the room: FX describes where the sound
+// is, and the playhead is not a sound.
+const PLAYHEAD_ALPHA = 0.05 // tint immediately behind the leading edge
+const PLAYHEAD_SWEEP = 0.62 // how far back the tint reaches, in turns
 
 // ── FX → the room, applied at draw time ───────────────────────────────────
 // FX is the one thing here that is NOT snapshotted per tap: it describes the
@@ -293,7 +356,9 @@ function makeRng(seed: number): () => number {
  * leaves concentric rings, one per repeat. Sound Intent's LENGTH then smears
  * that mark into a clockwise tail along the ring — how long the sound rings on.
  * Marks persist; the ring only clears on RESET or on the tap that begins a
- * fresh bar.
+ * fresh loop. Over all of it turns the playhead: the same position Rhythmic
+ * Intent's line marks, drawn here as an angular gradient sweeping the whole
+ * canvas clockwise.
  *
  * The split that runs through the whole canvas: what a tap laid down belongs to
  * the tap — Energy sizes the mark, Length carries it forward, both read from
@@ -302,17 +367,105 @@ function makeRng(seed: number): () => number {
  * is read live, and re-renders every mark at once (scatter while drawing, tone
  * map straight after) without touching the geometry underneath.
  */
+/** What a tap sounded like, kept here and keyed by the tap's id. Rhythmic
+    Intent owns WHEN each tap is; this owns WHAT it was. */
+type Snapshot = {
+  energy: number
+  length: number
+  seed: number
+  gesture: PatternId
+  repeats: number
+}
+
+/** A seed for a tap that arrived without one — a pattern loaded from the
+    Collection, or a physical pad tap that never passed through the GUI. Derived
+    from the id so the mark still redraws as itself across a resize. */
+function seedFromId(id: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193)
+  return h >>> 0
+}
+
 export function SoundVisualScreen() {
-  const { onTap } = useSoundIntent()
+  const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
+  const { rendered, playing, playPos, capture, removeTap, undoTap, canUndo, clearPattern } =
+    useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [tapped, setTapped] = useState(false)
   // Bridges from the sim (inside the effect) out to React.
-  const clearRef = useRef<(() => void) | null>(null)
+  const setMarksRef = useRef<((marks: readonly Tap[]) => void) | null>(null)
   const setFxRef = useRef<((params: FxParams) => void) | null>(null)
+  const scheduleRef = useRef<(() => void) | null>(null)
+
+  // ── What each tap sounded like ──────────────────────────────────────
+  // Filled the moment a tap fires and read back for as long as that tap is in
+  // the loop, so an edit or a knob move re-places the mark it already drew
+  // instead of restyling it with whatever the sliders say now.
+  const snapshotsRef = useRef(new Map<string, Snapshot>())
+  const soundParamsRef = useRef(soundParams)
+  soundParamsRef.current = soundParams
+
+  useEffect(
+    () =>
+      onTap((tap) => {
+        snapshotsRef.current.set(tap.id, {
+          energy: tap.params.d1,
+          length: tap.params.d2,
+          seed: (Math.random() * 0xffffffff) >>> 0,
+          gesture: tap.gesture,
+          repeats: tap.repeats,
+        })
+      }),
+    [onTap],
+  )
+
+  // The field the canvas draws: Rhythmic Intent's transformed pattern, joined
+  // with the snapshots. Every knob turn produces a new `rendered`, so the marks
+  // move with TIGHTNESS and PHASE, and DENSITY simply drops the ones it silences
+  // — the image and the loop are the same pattern, always.
+  const marks = useMemo(
+    () =>
+      rendered
+        .filter((t) => t.kept)
+        .slice(-MAX_TAPS)
+        .map((t) => {
+          let snapshot = snapshotsRef.current.get(t.id)
+          if (!snapshot) {
+            const p = soundParamsRef.current
+            snapshot = {
+              energy: p.d1,
+              length: p.d2,
+              seed: seedFromId(t.id),
+              gesture: 'bloom',
+              repeats: 1,
+            }
+            snapshotsRef.current.set(t.id, snapshot)
+          }
+          return { id: t.id, pos: t.finalPos, ...snapshot }
+        }),
+    [rendered],
+  )
+
+  const marksRef = useRef(marks)
+  marksRef.current = marks
+
+  useEffect(() => {
+    setMarksRef.current?.(marks)
+  }, [marks])
   // Read once when the sim starts; after that the effect below pushes changes.
   const fxRef = useRef(fx)
   fxRef.current = fx
+
+  // Exactly the rule Rhythmic Intent's own visualization uses, so the two
+  // playheads are the same playhead: for as long as a loop is open there IS a
+  // position, whether or not anything is being played or tapped — the two
+  // clocks are anchored together, so either source reads the same place.
+  // Written to a ref rather than passed in, because it moves every frame and
+  // the canvas — not React — is what redraws it.
+  const playhead = playing ? playPos : capture.state === 'ready' ? null : capture.progress
+  const playheadRef = useRef(playhead)
+  playheadRef.current = playhead
+  const playheadOn = playhead !== null
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -340,6 +493,9 @@ export function SoundVisualScreen() {
     let toneLut: Uint8Array | null = null
 
     const minDim = () => Math.min(width, height)
+    /** Ink correction for a canvas bigger than the reference; 1 at or below it.
+        Read in CSS px so device pixel ratio stays out of the look. */
+    const ink = () => Math.min(MAX_INK, Math.max(1, minDim() / dpr / REF_MIN_DIM))
 
     const resize = () => {
       dpr = window.devicePixelRatio || 1
@@ -353,16 +509,6 @@ export function SoundVisualScreen() {
       rebuildAll()
     }
 
-    const clear = () => {
-      taps.length = 0
-      cores.length = 0
-      tails.length = 0
-      ripples.length = 0
-      revealUntil = 0
-      rippleUntil = 0
-      ctx.clearRect(0, 0, width, height)
-    }
-
     // ── Spawning ────────────────────────────────────────────────────────
 
     /** The blot: Energy's territory. FX never re-spawns it, only re-draws it. */
@@ -371,10 +517,14 @@ export function SoundVisualScreen() {
       const rand = makeRng(tap.seed)
       const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
       const coreR = CORE_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * dim
+      const inkScale = ink()
       const count = Math.max(
         1,
         Math.round(
-          PARTICLES_PER_TAP * CORE_FRACTION * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e),
+          PARTICLES_PER_TAP *
+            CORE_FRACTION *
+            lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) *
+            inkScale,
         ),
       )
       // The bar bent into a ring: 0 at 12 o'clock, clockwise around.
@@ -383,7 +533,9 @@ export function SoundVisualScreen() {
       const oy = Math.sin(theta) * CIRCLE_RADIUS * dim
       // Always land a full blot. If the bar is denser than the cap, shed the
       // oldest ink first — never spawn 0 particles and "lose" a late tap.
-      const overflow = cores.length + count - MAX_CORE_PARTICLES
+      // The cap rides the same factor, so it still means "a full 1/16 bar of
+      // blots" rather than "fewer taps the bigger the window gets".
+      const overflow = cores.length + count - Math.round(MAX_CORE_PARTICLES * inkScale)
       if (overflow > 0) cores.splice(0, overflow)
       for (let i = 0; i < count; i++) {
         // sqrt sampling gives uniform 2D density (no centre spike, no hard
@@ -413,7 +565,7 @@ export function SoundVisualScreen() {
       const outer = RIPPLE_OUTER_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * dim
       const perRing = Math.max(
         1,
-        Math.round(RIPPLE_SPECKS_PER_RING * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e)),
+        Math.round(RIPPLE_SPECKS_PER_RING * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * ink()),
       )
       const theta = tap.pos * Math.PI * 2 - Math.PI / 2
       const ox = Math.cos(theta) * CIRCLE_RADIUS * dim
@@ -475,12 +627,13 @@ export function SoundVisualScreen() {
       const spread = LENGTH_MAX_SPREAD * v
       const decay = lerp(LENGTH_DECAY_STEEP, LENGTH_DECAY_GENTLE, v)
 
+      const inkScale = ink()
       const count = Math.round(
-        TAIL_PER_TAP * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * body,
+        TAIL_PER_TAP * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * body * inkScale,
       )
       if (count <= 0) return
 
-      const overflow = tails.length + count - MAX_TAIL_PARTICLES
+      const overflow = tails.length + count - Math.round(MAX_TAIL_PARTICLES * inkScale)
       if (overflow > 0) tails.splice(0, overflow)
 
       const theta0 = tap.pos * Math.PI * 2 - Math.PI / 2
@@ -537,8 +690,35 @@ export function SoundVisualScreen() {
       scheduleDraw()
     }
 
-    clearRef.current = clear
+    /**
+     * The pattern changed: a tap added, one deleted or undone, a knob turned.
+     * Everything is re-placed from the new list — seeded per tap id, so a mark
+     * that only moved redraws as itself at its new angle. Only marks that were
+     * not here a moment ago animate (the tail sweeping out, the ripple rings
+     * settling); the rest arrive already finished, because nothing about THEM
+     * just happened.
+     */
+    const setMarks = (next: readonly Tap[]) => {
+      const now = performance.now()
+      const before = new Set(taps.map((t) => t.id))
+      taps.length = 0
+      taps.push(...next)
+      cores.length = 0
+      tails.length = 0
+      ripples.length = 0
+      revealUntil = 0
+      rippleUntil = 0
+      for (const tap of taps) {
+        const fresh = !before.has(tap.id)
+        spawnMark(tap, fresh, now)
+        spawnTail(tap, fresh, now)
+      }
+      scheduleDraw()
+    }
+
+    setMarksRef.current = setMarks
     setFxRef.current = setFx
+    scheduleRef.current = scheduleDraw
 
     // ── Drawing ─────────────────────────────────────────────────────────
 
@@ -547,10 +727,33 @@ export function SoundVisualScreen() {
 
       const cx = width / 2
       const cy = height / 2
-      const dot = Math.max(1, Math.round(dpr))
+      // One speck. It carries the square root of the ink correction (the count
+      // carries the other half), and stays fractional on purpose: rounding it
+      // would step the whole field's density 4× at the crossover while a window
+      // is being dragged.
+      const dot = Math.max(1, Math.round(dpr)) * Math.sqrt(ink())
       // REVERB, in device px: every speck is offset along its own fixed stray
       // direction by this much. 0 draws each speck exactly where it was struck.
       const stray = scatter * REVERB_MAX_SCATTER * minDim()
+
+      if (playheadRef.current !== null) {
+        // Spokes run past the corners rather than stopping at the ring: the
+        // beat is a direction from the centre, not a segment of the circle.
+        const reach = Math.hypot(width, height) / 2
+        ctx.globalAlpha = 1
+        ctx.strokeStyle = `rgba(0, 0, 0, ${GRID_ALPHA})`
+        ctx.lineWidth = Math.max(1, Math.round(dpr))
+        ctx.beginPath()
+        for (let beat = 0; beat < BEATS_PER_LOOP; beat++) {
+          const theta = (beat / BEATS_PER_LOOP) * Math.PI * 2 - Math.PI / 2
+          ctx.moveTo(cx, cy)
+          ctx.lineTo(cx + Math.cos(theta) * reach, cy + Math.sin(theta) * reach)
+        }
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(cx, cy, CIRCLE_RADIUS * minDim(), 0, Math.PI * 2)
+        ctx.stroke()
+      }
 
       ctx.fillStyle = '#000000'
       ctx.globalAlpha = BASE_ALPHA
@@ -601,47 +804,52 @@ export function SoundVisualScreen() {
         ctx.putImageData(image, 0, 0)
       }
 
-      // Keep animating only while a tail is still sweeping out or a ring is
-      // still settling; once everything has landed the last frame stays on
-      // screen untouched — that frame is the pattern.
-      rafId = now < Math.max(revealUntil, rippleUntil) ? requestAnimationFrame(frame) : 0
+      // Where the loop is now, over the top of everything else (see the
+      // playhead block above for why it sits outside the tone map).
+      const head = playheadRef.current
+      if (head !== null) {
+        // Same mapping the marks use — 0 at 12 o'clock, clockwise around — so
+        // the edge crosses each mark exactly when that tap sounds.
+        const theta0 = head * Math.PI * 2 - Math.PI / 2
+        // Offset 0 sits on the playhead and runs clockwise from there, so the
+        // tint is laid from the far side of the turn (1 - PLAYHEAD_SWEEP) up to
+        // offset 1 — which is the same radius as offset 0. That wrap IS the
+        // leading edge: full tint on one side of it, nothing on the other.
+        const g = ctx.createConicGradient(theta0, cx, cy)
+        const back = 1 - PLAYHEAD_SWEEP
+        g.addColorStop(0, 'rgba(0, 0, 0, 0)')
+        g.addColorStop(back, 'rgba(0, 0, 0, 0)')
+        g.addColorStop(lerp(back, 1, 0.6), `rgba(0, 0, 0, ${PLAYHEAD_ALPHA * 0.3})`)
+        g.addColorStop(1, `rgba(0, 0, 0, ${PLAYHEAD_ALPHA})`)
+        ctx.fillStyle = g
+        ctx.fillRect(0, 0, width, height)
+        ctx.fillStyle = '#000000'
+      }
+
+      // Keep animating while a tail is still sweeping out, a ring is still
+      // settling, or the playhead is running; once all three have stopped the
+      // last frame stays on screen untouched — that frame is the pattern.
+      const busy = now < Math.max(revealUntil, rippleUntil) || playheadRef.current !== null
+      rafId = busy ? requestAnimationFrame(frame) : 0
     }
 
     setFx(fxRef.current) // the room the sim starts in
+    setMarks(marksRef.current) // …and the pattern it starts on
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
 
-    // Display only — the shared TAP button (its own window) drives every tap.
-    // The tap carries its own Energy and Length: what the sound was when it
-    // sounded, not what the sliders happen to say later.
-    const unsubscribe = onTap((tap) => {
-      setTapped(true)
-      if (tap.newBar) clear()
-      const record: Tap = {
-        pos: tap.pos,
-        energy: tap.params.d1,
-        length: tap.params.d2,
-        seed: (Math.random() * 0xffffffff) >>> 0,
-        gesture: tap.gesture,
-        repeats: tap.repeats,
-      }
-      if (taps.length >= MAX_TAPS) taps.shift()
-      taps.push(record)
-      const now = performance.now()
-      spawnMark(record, true, now)
-      spawnTail(record, true, now)
-      scheduleDraw()
-    })
-
     return () => {
-      unsubscribe()
       observer.disconnect()
       if (rafId) cancelAnimationFrame(rafId)
-      clearRef.current = null
+      setMarksRef.current = null
       setFxRef.current = null
+      scheduleRef.current = null
     }
-  }, [onTap])
+    // The sim is built once and fed through the refs above; nothing it closes
+    // over is allowed to re-create it, or every mark would be re-rolled.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // A room change re-renders the whole field — that is what makes FX an effect
   // rather than one more per-tap dimension.
@@ -649,17 +857,56 @@ export function SoundVisualScreen() {
     setFxRef.current?.(fx)
   }, [fx])
 
+  // Wake the canvas when the playhead starts (it keeps itself running from
+  // there) and once more when it stops, so the last light is wiped off.
+  useEffect(() => {
+    scheduleRef.current?.()
+  }, [playheadOn])
+
+  /** Double-click a mark to take that note out of the loop. The hit test runs
+      on the same geometry the canvas draws with — the transformed position, not
+      where the tap originally fell — so what you click is what you get. */
+  const handleDoubleClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+    // Client px → device px, measured from the canvas centre, which is where
+    // the ring is centred and where every mark's position is measured from.
+    const scale = canvas.width / rect.width
+    const x = (event.clientX - rect.left) * scale - canvas.width / 2
+    const y = (event.clientY - rect.top) * scale - canvas.height / 2
+    const dim = Math.min(canvas.width, canvas.height)
+
+    let hit: string | null = null
+    let best = HIT_RADIUS * dim
+    for (const mark of marksRef.current) {
+      const theta = mark.pos * Math.PI * 2 - Math.PI / 2
+      const dx = x - Math.cos(theta) * CIRCLE_RADIUS * dim
+      const dy = y - Math.sin(theta) * CIRCLE_RADIUS * dim
+      const distance = Math.hypot(dx, dy)
+      if (distance < best) {
+        best = distance
+        hit = mark.id
+      }
+    }
+    if (hit) removeTap(hit)
+  }
+
   const handleReset = () => {
-    clearRef.current?.()
-    setTapped(false)
+    clearPattern()
+    snapshotsRef.current.clear()
   }
 
   return (
     <div className="sv-screen">
-      <canvas ref={canvasRef} className="sv-canvas" />
-      {!tapped && <div className="sv-hint">Tap to sound</div>}
+      <canvas ref={canvasRef} className="sv-canvas" onDoubleClick={handleDoubleClick} />
+      {marks.length === 0 && <div className="sv-hint">Tap to sound</div>}
       <button type="button" className="sv-reset" onClick={handleReset}>
         RESET
+      </button>
+      <button type="button" className="sv-undo" onClick={undoTap} disabled={!canUndo}>
+        UNDO
       </button>
     </div>
   )

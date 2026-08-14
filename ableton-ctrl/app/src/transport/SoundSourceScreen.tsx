@@ -1,8 +1,9 @@
-import { useSoundEngine, type SourcePreference } from './session.tsx'
+import { useEffect, useState } from 'react'
+import { BPM_MAX, BPM_MIN, useSoundEngine, type SourcePreference } from './session.tsx'
 import './sound-source.css'
 
 const DESCRIPTION =
-  'Sound Source decides where a tap is heard. Ableton plays the selected instrument through the local bridge; Built-in synthesizes the same 16 pads in this tab, so the prototype can be played with no Live set at all. Auto takes Ableton whenever its bridge is running and falls back to the built-in kit when it is not.'
+  'Sound Source decides where a tap is heard. Ableton plays the selected instrument through the local bridge; Built-in synthesizes the same 16 pads in this tab, so the prototype can be played with no Live set at all. Auto takes Ableton whenever its bridge is running and falls back to the built-in kit when it is not. Tempo is the clock all of it runs on: change it and the loop re-times, keeping the pattern it holds.'
 
 const CHOICES: { id: SourcePreference; label: string }[] = [
   { id: 'auto', label: 'AUTO' },
@@ -24,8 +25,21 @@ function bridgeLine(addressable: boolean, reachable: boolean): string {
  * here, so the status bar stays a label rather than a diagnostic.
  */
 export function SoundSourceScreen() {
-  const { status, source, preference, setPreference, bridgeReachable, bridgeAddressable } =
+  const { status, source, preference, setPreference, bridgeReachable, bridgeAddressable, bpm, setBpm } =
     useSoundEngine()
+
+  // The field is free text while it has focus — half-typed numbers and an empty
+  // box are states you have to be able to pass through — and only becomes a
+  // tempo on blur or Enter. Committed values flow back in from the session,
+  // which is what clamps them.
+  const [draft, setDraft] = useState(String(bpm))
+  useEffect(() => setDraft(String(bpm)), [bpm])
+
+  const commit = () => {
+    const next = Number.parseInt(draft, 10)
+    if (Number.isNaN(next)) setDraft(String(bpm))
+    else setBpm(next)
+  }
 
   return (
     <div className="ss-screen">
@@ -68,6 +82,34 @@ export function SoundSourceScreen() {
           <div className="ss-fact">
             <dt>Ableton bridge</dt>
             <dd>{bridgeLine(bridgeAddressable, bridgeReachable)}</dd>
+          </div>
+          <div className="ss-fact">
+            <dt>
+              <label htmlFor="ss-bpm">Tempo</label>
+            </dt>
+            <dd>
+              <input
+                id="ss-bpm"
+                className="ss-bpm num"
+                type="number"
+                inputMode="numeric"
+                min={BPM_MIN}
+                max={BPM_MAX}
+                step={1}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                }}
+                // Space is the global tap trigger everywhere else; inside a text
+                // field it has to stay a space, and the global listener already
+                // steps aside for inputs. Stopping it here keeps it from also
+                // scrolling the canvas underneath.
+                onKeyUp={(e) => e.stopPropagation()}
+              />
+              <span className="ss-unit">BPM</span>
+            </dd>
           </div>
           <div className="ss-fact">
             <dt>Inputs</dt>

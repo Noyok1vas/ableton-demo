@@ -17,6 +17,13 @@ import type { EngineStatus, LoopEvent, MacroScope, SoundEngine, SoundSourceId } 
     deployed page. */
 export type SourcePreference = 'auto' | SoundSourceId
 
+/** Techno's own tempo, which is what this instrument is for — a loop tapped at
+    130 already sits in the music it belongs to, where a neutral 120 asks the
+    player to hear past it. */
+export const DEFAULT_BPM = 130
+export const BPM_MIN = 60
+export const BPM_MAX = 200
+
 /** How often `auto` re-checks for a bridge while playing the built-in kit, so
     starting the bridge after the app still "just works". */
 const PROBE_MS = 3000
@@ -71,6 +78,12 @@ export type SoundEngineSessionValue = {
       locally — the Ableton option is still offered, it just can't connect from
       here. */
   bridgeAddressable: boolean
+  /** The tempo everything is measured against. It lives here, with the
+      transport, rather than in Rhythmic Intent: the loop's length is a property
+      of the clock, and Rhythmic Intent is only one of the things playing to it.
+      Typed into the Sound Source window; the loop re-times to follow. */
+  bpm: number
+  setBpm: (bpm: number) => void
   /** Play one note now. `velocity` is 0..1. */
   noteOn: (velocity?: number) => void
   /** Start or replace the looping bar. */
@@ -107,6 +120,14 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
   const [preference, setPreference] = useState<SourcePreference>('auto')
   const [bridgeReachable, setBridgeReachable] = useState(false)
   const [bridgeAddressable] = useState(isBridgeAddressable)
+  const [bpm, setBpmState] = useState(DEFAULT_BPM)
+
+  // Clamped here rather than at the input, so no caller can put the loop at a
+  // tempo the engines will not honour anyway (both clamp the bar they are given).
+  const setBpm = useCallback((next: number) => {
+    if (!Number.isFinite(next)) return
+    setBpmState(Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(next))))
+  }, [])
 
   // `auto` starts on the built-in kit and moves to Ableton once a bridge
   // answers, rather than the reverse: an unanswered bridge would mean silence
@@ -201,6 +222,8 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     engineId,
     bridgeReachable,
     bridgeAddressable,
+    bpm,
+    setBpm,
     noteOn,
     startLoop,
     stopLoop,

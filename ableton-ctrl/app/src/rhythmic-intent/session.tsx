@@ -11,7 +11,7 @@ import {
 import { transformPattern } from './transform.ts'
 import { useTapCapture, type TapCapture } from './useTapCapture.ts'
 import {
-  BAR_DURATION,
+  loopDurationFor,
   DEFAULT_PARAMS,
   DEFAULT_PITCH,
   type CollectionEntry,
@@ -28,14 +28,27 @@ export type Session = {
   setParam: <K extends keyof TransformParams>(key: K, value: number) => void
   rendered: RenderedTap[]
   hasPattern: boolean
+  /** Seconds one pass of the loop takes at the transport's current tempo. */
+  loopDuration: number
   /** What the sound source is doing right now — the status bar renders it. */
   status: EngineStatus
   /** MIDI pitch every tap/loop note plays on. */
   pitch: number
   /** Move the mapping to a different MIDI pitch. */
   setPitch: (pitch: number) => void
-  /** Record a tap into the GUI and sound the note on the engine. */
-  handleTap: () => void
+  /** Record a tap into the GUI and sound the note on the engine. Returns the
+      new tap's id, so whoever fired it can attach its own record to that tap. */
+  handleTap: () => string
+  /** Drop one tap by id — the Sound Visual's double-click on a mark. */
+  removeTap: (id: string) => void
+  /** Drop the tap added most recently — the Sound Visual's UNDO. */
+  undoTap: () => void
+  /** True while there is anything left to take back. */
+  canUndo: boolean
+  /** End the loop: clears the pattern and stops playback, but keeps the knobs
+      and the Collection. This is what the Sound Visual's RESET does — the
+      pattern IS that image, so wiping one wipes the other. */
+  clearPattern: () => void
   /** Clear the pattern, the knobs, the collection, and stop playback. */
   handleReset: () => void
   playing: boolean
@@ -70,6 +83,12 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setPitch: engineSetPitch,
     onExternalTap,
   } = engine
+  // The tempo is the transport's; the loop's length follows from it. A ref
+  // too, for the playhead's rAF loop, which must not be re-created per change.
+  const loopDuration = loopDurationFor(engine.bpm)
+  const loopDurationRef = useRef(loopDuration)
+  loopDurationRef.current = loopDuration
+
   const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS)
   const [collection, setCollection] = useState<CollectionEntry[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -99,18 +118,28 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     if (engineReady) engineSetPitch(pitchRef.current)
   }, [engineId, engineReady, engineSetPitch])
 
-  // Every completed bar automatically enters the collection, newest first.
-  const onBarComplete = useCallback((taps: readonly Tap[]) => {
+  // The loop enters the collection when its first pass closes, newest first.
+  const onLoopComplete = useCallback((taps: readonly Tap[]) => {
     const entry: CollectionEntry = { id: crypto.randomUUID(), taps: [...taps] }
     setCollection((prev) => [entry, ...prev])
     setSelectedId(entry.id)
   }, [])
 
-  const capture = useTapCapture(BAR_DURATION, onBarComplete)
+  const capture = useTapCapture(loopDuration, onLoopComplete)
+
+  // …and keeps up with it afterwards: the loop stays open, so every addition,
+  // undo and deletion belongs to the same entry rather than spawning a new one.
+  const captureTaps = capture.taps
+  useEffect(() => {
+    if (!selectedId) return
+    setCollection((prev) =>
+      prev.map((e) => (e.id === selectedId ? { ...e, taps: [...captureTaps] } : e)),
+    )
+  }, [captureTaps, selectedId])
 
   const rendered = useMemo(
-    () => transformPattern(capture.taps, BAR_DURATION, params),
-    [capture.taps, params],
+    () => transformPattern(capture.taps, loopDuration, params),
+    [capture.taps, loopDuration, params],
   )
   // Ref mirror so the playback loop always schedules the *current* transformed
   // pattern — knob changes and collection loads apply mid-loop.
@@ -136,17 +165,24 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     engineStopLoop()
   }, [engineStopLoop])
 
+  const captureAnchor = capture.anchor
   const startLoop = useCallback(() => {
     playingRef.current = true
     setPlaying(true)
     playStartRef.current = performance.now()
+    // The engine starts its loop at this instant too, so putting the capture
+    // clock here as well collapses the three clocks — heard, drawn, recorded —
+    // into one. Without it a tap played into a running loop would be filed at
+    // some unrelated phase of the pattern it was played against.
+    captureAnchor()
     const tick = (now: number) => {
       if (!playingRef.current) return
-      setPlayPos((((now - playStartRef.current) / 1000) % BAR_DURATION) / BAR_DURATION)
+      const loop = loopDurationRef.current
+      setPlayPos((((now - playStartRef.current) / 1000) % loop) / loop)
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
-  }, [])
+  }, [captureAnchor])
 
   // While playing, (re)send the loop whenever the transformed pattern changes:
   // pressing PLAY, turning a knob, or loading a collection entry mid-loop.
@@ -154,12 +190,12 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     if (!playing) return
     engineStartLoop(
       rendered.filter((t) => t.kept).map((t) => ({ pos: t.finalPos, velocity: t.velocity })),
-      BAR_DURATION,
+      loopDuration,
     )
     // `engineId` keeps a running loop alive across a source switch: the send
     // functions keep their identity when the engine underneath changes, so
     // without it the new engine would never be told what to play.
-  }, [playing, rendered, engineStartLoop, engineId])
+  }, [playing, rendered, loopDuration, engineStartLoop, engineId])
 
   useEffect(
     () => () => {
@@ -175,23 +211,36 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   }, [startLoop, stopLoop])
 
   // ── Actions ───────────────────────────────────────────────────────
-  const { tap: captureTap, reset: captureReset, load: captureLoad, state: captureState } = capture
+  const { tap: captureTap, reset: captureReset, load: captureLoad } = capture
+  const { remove: removeTap, undo: undoTap } = capture
 
   // Core tap path. `sound` is false for physical-pad taps — the source has
   // already played the note (with real velocity), so echoing it would double.
+  // Nothing here stops the loop any more: a tap is an addition to the loop that
+  // is playing, which is what makes the pattern something you build up.
+  //
+  // And the first tap starts that loop. Overdubbing blind — adding notes to a
+  // pattern you cannot hear — is not a thing anyone can do, so the loop is
+  // audible from the moment it exists rather than only after PLAY. Nothing
+  // doubles up: the engine re-queues a changed pattern from the current
+  // instant, so a note added at a position the cycle has already passed waits
+  // for the next time round, exactly as an overdub should.
   const applyTap = useCallback(
     (velocity: number, sound: boolean) => {
-      // A tap that begins a fresh bar replaces the loop — stop it so the new
-      // rhythm is heard alone.
-      if (captureState !== 'recording') {
-        stopLoop()
-        setSelectedId(null)
-      }
-      captureTap(velocity)
+      const id = captureTap(velocity)
       if (sound) noteOn(velocity)
+      if (!playingRef.current) startLoop()
+      return id
     },
-    [captureState, captureTap, noteOn, stopLoop],
+    [captureTap, noteOn, startLoop],
   )
+
+  // Nothing left to hear: undoing or deleting the last note ends the playback
+  // it started, rather than leaving the engine looping silence.
+  const tapCount = capture.taps.length
+  useEffect(() => {
+    if (playing && tapCount === 0) stopLoop()
+  }, [playing, tapCount, stopLoop])
 
   // GUI button / Space: uniform velocity, the engine plays the note.
   const handleTap = useCallback(() => applyTap(1, true), [applyTap])
@@ -202,13 +251,17 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   applyTapRef.current = applyTap
   useEffect(() => onExternalTap((velocity) => applyTapRef.current(velocity, false)), [onExternalTap])
 
-  const handleReset = useCallback(() => {
+  const clearPattern = useCallback(() => {
     stopLoop()
     captureReset()
-    setParams(DEFAULT_PARAMS)
-    setCollection([])
     setSelectedId(null)
   }, [captureReset, stopLoop])
+
+  const handleReset = useCallback(() => {
+    clearPattern()
+    setParams(DEFAULT_PARAMS)
+    setCollection([])
+  }, [clearPattern])
 
   const loadEntry = useCallback(
     (id: string) => {
@@ -234,10 +287,15 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setParam,
     rendered,
     hasPattern,
+    loopDuration,
     status: engine.status,
     pitch,
     setPitch,
     handleTap,
+    removeTap,
+    undoTap,
+    canUndo: hasPattern,
+    clearPattern,
     handleReset,
     playing,
     playPos,

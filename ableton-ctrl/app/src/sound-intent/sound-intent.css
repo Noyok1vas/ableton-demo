@@ -130,7 +130,8 @@
 }
 
 /* Clears the dried ring — mirrors the Rhythmic Intent reset button. */
-.sv-reset {
+.sv-reset,
+.sv-undo {
   position: absolute;
   top: var(--space-3);
   right: var(--space-3);
@@ -147,6 +148,19 @@
   transition: background-color var(--motion-fast);
 }
 
-.sv-reset:hover {
+/* Directly under RESET: the two edits to the loop as a whole, in the order you
+   reach for them — take back the last note, or end the take. */
+.sv-undo {
+  top: calc(var(--space-3) + 36px + var(--space-2));
+}
+
+.sv-reset:hover,
+.sv-undo:not(:disabled):hover {
   background: var(--surface-2);
+}
+
+.sv-undo:disabled {
+  border-color: var(--line-fine);
+  color: var(--text-muted);
+  cursor: default;
 }

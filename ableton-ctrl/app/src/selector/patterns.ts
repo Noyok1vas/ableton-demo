@@ -13,7 +13,7 @@ export type Pattern = {
   /** Ink density 0..1 at normalized coords, canvas centre at (0,0), edges ±1. */
   field: (x: number, y: number) => number
   /** Darkest tone the field maps to (1 = pure black). Keeps the placeholders
-      grey while the live BLOOM mark goes near-black. */
+      grey while the live HIT mark goes near-black. */
   maxInk: number
   /** Grain strength; the noise is concentrated in mid tones, where a printed
       halftone actually breaks up. */
@@ -33,7 +33,7 @@ function smoothstep(a: number, b: number, v: number): number {
   return t * t * (3 - 2 * t)
 }
 
-// ── 1. BURST — twin rings with six rays ──────────────────────────────────
+// ── 1. SPLASH — twin rings with six rays ─────────────────────────────────
 // Rays: horizontal pair plus the four diagonals, starting clear of the rings.
 const RAY_ANGLES = [0, 45, 135, 180, 225, 315].map((deg) => (deg * Math.PI) / 180)
 const RAY_START = 0.36
@@ -54,13 +54,13 @@ function burstField(x: number, y: number): number {
   return clamp01(v)
 }
 
-// ── 2. BLOOM — the solid diffusing disc (the live TAP mark) ───────────────
+// ── 2. HIT — the solid diffusing disc (the live TAP mark) ─────────────────
 function bloomField(x: number, y: number): number {
   const r = Math.hypot(x, y) / 0.46
   return clamp01(Math.exp(-r * r) * 1.02)
 }
 
-// ── 3. RIPPLE — concentric rings over a light field ───────────────────────
+// ── 3. ROLL — concentric rings over a light field ─────────────────────────
 const RIPPLE_PERIOD = 0.42
 const RIPPLE_PHASE = 0.17 // radius where the white core ends
 
@@ -73,7 +73,7 @@ function rippleField(x: number, y: number): number {
   return clamp01(base + amp * wave * smoothstep(0, RIPPLE_PHASE, r))
 }
 
-// ── 4. LATTICE — soft dots on a triangular lattice ────────────────────────
+// ── 4. SCATTER — soft dots on a triangular lattice ────────────────────────
 const LAT_SPACING = 0.78
 const LAT_ROW = LAT_SPACING * Math.sqrt(3) * 0.5
 const LAT_SIGMA = 0.19
@@ -98,10 +98,12 @@ function latticeField(x: number, y: number): number {
 }
 
 export const PATTERNS: Pattern[] = [
-  { id: 'burst', label: 'Burst', field: burstField, maxInk: 0.62, grain: 1.1 },
-  { id: 'bloom', label: 'Bloom', field: bloomField, maxInk: 0.96, grain: 1.0 },
-  { id: 'ripple', label: 'Ripple', field: rippleField, maxInk: 0.6, grain: 0.9 },
-  { id: 'lattice', label: 'Lattice', field: latticeField, maxInk: 0.62, grain: 1.0 },
+  // Ids stay as the mark shapes ('bloom', 'ripple', …) — they are wired through
+  // the tap session and the Sound Visual; only the shown labels are the gestures.
+  { id: 'burst', label: 'Splash', field: burstField, maxInk: 0.62, grain: 1.1 },
+  { id: 'bloom', label: 'Hit', field: bloomField, maxInk: 0.96, grain: 1.0 },
+  { id: 'ripple', label: 'Roll', field: rippleField, maxInk: 0.6, grain: 0.9 },
+  { id: 'lattice', label: 'Scatter', field: latticeField, maxInk: 0.62, grain: 1.0 },
 ]
 
 /** Rasterization size of a mark. Deliberately low: the tile is drawn scaled up

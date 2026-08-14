@@ -5,8 +5,8 @@ import {
   type TransformParams,
 } from './types.ts'
 
-/** Wrap a normalized position into [0, 1). The bar is a loop, so every
-    transform is circular. */
+/** Wrap a normalized position into [0, 1). The captured unit is a loop, so
+    every transform is circular. */
 function wrap(pos: number): number {
   return ((pos % 1) + 1) % 1
 }
@@ -18,8 +18,8 @@ function circularDistance(a: number, b: number): number {
 }
 
 /** Pull a position toward its nearest 1/16 grid line by `tightness` (0..1).
-    The nearest line for a tap late in the bar can be the downbeat of the next
-    loop, hence the wrap. */
+    The nearest line for a tap late in the loop can be the downbeat of the next
+    pass, hence the wrap. */
 export function applyTightness(pos: number, tightness: number): number {
   const nearest = Math.round(pos * GRID_DIVISIONS) / GRID_DIVISIONS
   return wrap(pos + tightness * (nearest - pos))
@@ -37,19 +37,19 @@ const VELOCITY_TIE_EPSILON = 0.1
  * Choose which taps survive at a given density. Deterministic, no randomness:
  * greedily pick the strongest remaining tap; among taps of similar velocity,
  * prefer the one farthest (around the loop) from everything already kept, so
- * the survivors spread across the bar instead of clustering. Ties fall back to
+ * the survivors spread across the loop instead of clustering. Ties fall back to
  * earliest time, which keeps the result stable for identical inputs.
  */
 export function selectByDensity(
   taps: readonly Tap[],
-  barDuration: number,
+  loopDuration: number,
   density: number,
 ): Set<number> {
   const kept = new Set<number>()
   if (taps.length === 0) return kept
 
   // Circular distance needs positions on the 0..1 loop, not raw seconds.
-  const pos = taps.map((tap) => wrap(tap.time / barDuration))
+  const pos = taps.map((tap) => wrap(tap.time / loopDuration))
 
   // 100% keeps all; anything else keeps at least one tap.
   const keepCount = Math.max(1, Math.round((taps.length * density) / 100))
@@ -88,17 +88,18 @@ export function selectByDensity(
     Removed taps are still returned (kept=false) so the UI can ghost them. */
 export function transformPattern(
   taps: readonly Tap[],
-  barDuration: number,
+  loopDuration: number,
   params: TransformParams,
 ): RenderedTap[] {
-  const keptIndices = selectByDensity(taps, barDuration, params.density)
+  const keptIndices = selectByDensity(taps, loopDuration, params.density)
   const tightness = params.tightness / 100
 
   return taps.map((tap, index) => {
-    const rawPos = wrap(tap.time / barDuration)
+    const rawPos = wrap(tap.time / loopDuration)
     const loosePos = applyPhase(rawPos, params.phase)
     const finalPos = applyPhase(applyTightness(rawPos, tightness), params.phase)
     return {
+      id: tap.id,
       index,
       rawPos,
       loosePos,

@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from 'react'
 import { useSession } from '../rhythmic-intent/session.tsx'
-import { BAR_DURATION } from '../rhythmic-intent/types.ts'
 import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useSelector } from '../selector/session.tsx'
 import { useRipple } from '../ripple/session.tsx'
@@ -62,33 +61,16 @@ export function TapSession({ children }: { children: ReactNode }) {
   const repeatsRef = useRef(repeats)
   repeatsRef.current = repeats
 
-  // Mirror of useTapCapture's bar window, tracked here synchronously so the
-  // sound event carries the tap's 0..1 position within the bar: the first tap
-  // opens the window (pos 0), later taps read elapsed/BAR_DURATION, and a tap
-  // past the window starts a fresh bar.
-  const barStartRef = useRef<number | null>(null)
-
-  // Rhythmic RESET returns the capture to 'ready' — the next tap must count as
-  // a new bar even if the old window's 2s haven't elapsed.
-  useEffect(() => {
-    if (capture.state === 'ready') barStartRef.current = null
-  }, [capture.state])
-
+  // Where in the loop a tap falls is the capture's business alone now — it owns
+  // the one loop clock, and hands back the id of the tap it filed. The sound
+  // event carries that id instead of a position: the Sound Visual looks the
+  // position up in the transformed pattern, so a knob move or an edit moves the
+  // mark it drew for that tap.
   const fireTap = useCallback((gesture?: PatternId) => {
-    const now = performance.now()
-    const elapsed =
-      barStartRef.current === null ? Infinity : (now - barStartRef.current) / 1000
-    const newBar = elapsed >= BAR_DURATION
-    if (newBar) barStartRef.current = now
-    handleTap()
+    const id = handleTap()
     // One MIDI note either way for now: RIPPLE's repeats are drawn, not sounded
     // — the note-per-repeat send is the next step.
-    emitTap(
-      newBar ? 0 : elapsed / BAR_DURATION,
-      newBar,
-      gesture ?? gestureRef.current,
-      repeatsRef.current,
-    )
+    emitTap(id, gesture ?? gestureRef.current, repeatsRef.current)
   }, [handleTap, emitTap])
 
   // Global Space → combined tap, unless focus is in a text input.

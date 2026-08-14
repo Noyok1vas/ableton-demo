@@ -1,17 +1,23 @@
 import { memo } from 'react'
 import { useSession } from './session.tsx'
-import { BAR_DURATION, BEATS_PER_BAR, type Tap } from './types.ts'
+import { BEATS_PER_LOOP, type Tap } from './types.ts'
 import './rhythmic-intent.css'
 
-// Mini one-bar strip: a thin line threading through the tap dots, with beat
-// numbers 1–4 underneath. ViewBox units; scales uniformly to the row width.
+// Mini two-bar strip: a thin line threading through the tap dots, with beat
+// numbers 1–8 underneath. ViewBox units; scales uniformly to the row width.
 const W = 320
 const H = 46
 const PAD = 12
 const LINE_Y = 18
 const TRACK_W = W - PAD * 2
 
-const MiniPattern = memo(function MiniPattern({ taps }: { taps: readonly Tap[] }) {
+const MiniPattern = memo(function MiniPattern({
+  taps,
+  loopDuration,
+}: {
+  taps: readonly Tap[]
+  loopDuration: number
+}) {
   return (
     <svg className="collection-mini" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
       <line
@@ -22,10 +28,10 @@ const MiniPattern = memo(function MiniPattern({ taps }: { taps: readonly Tap[] }
         stroke="var(--line-strong)"
         strokeWidth="0.75"
       />
-      {Array.from({ length: BEATS_PER_BAR }, (_, beat) => (
+      {Array.from({ length: BEATS_PER_LOOP }, (_, beat) => (
         <text
           key={beat}
-          x={PAD + (beat / BEATS_PER_BAR) * TRACK_W}
+          x={PAD + (beat / BEATS_PER_LOOP) * TRACK_W}
           y={H - 6}
           className="collection-beat num"
           textAnchor="middle"
@@ -36,9 +42,9 @@ const MiniPattern = memo(function MiniPattern({ taps }: { taps: readonly Tap[] }
       {taps.map((tap, i) => (
         <circle
           key={i}
-          cx={PAD + (tap.time / BAR_DURATION) * TRACK_W}
+          cx={PAD + (tap.time / loopDuration) * TRACK_W}
           cy={LINE_Y}
-          r="4.5"
+          r="4"
           fill="var(--text)"
         />
       ))}
@@ -46,10 +52,10 @@ const MiniPattern = memo(function MiniPattern({ taps }: { taps: readonly Tap[] }
   )
 })
 
-/** History of every captured bar. Clicking a row loads it as the current
+/** History of every captured loop. Clicking a row loads it as the current
     pattern; the main window's RESET clears the whole list. */
 export function CollectionPanel() {
-  const { collection, selectedId, loadEntry } = useSession()
+  const { collection, selectedId, loadEntry, loopDuration } = useSession()
 
   if (collection.length === 0) {
     return <div className="collection collection--empty">Tapped patterns appear here</div>
@@ -71,7 +77,7 @@ export function CollectionPanel() {
                 if (e.key === ' ') e.preventDefault()
               }}
             >
-              <MiniPattern taps={entry.taps} />
+              <MiniPattern taps={entry.taps} loopDuration={loopDuration} />
             </button>
           </li>
         ))}

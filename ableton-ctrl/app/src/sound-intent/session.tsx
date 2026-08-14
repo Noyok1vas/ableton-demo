@@ -29,18 +29,17 @@ function toMacroValue(value: number): number {
   return Math.round(((value - SOUND_MIN) / (SOUND_MAX - SOUND_MIN)) * 127)
 }
 
-/** A single sound event. `params` is a snapshot of the Semantic State at the
-    moment of the tap, so a later visual/sound reads the values it was fired
-    with even if the sliders move afterwards. `pos` is the tap's 0..1 position
-    within the rhythmic bar (the Sound Visual maps it to an angle on its
-    circle); `newBar` marks the tap that begins a fresh bar, telling the visual
-    to clear the previous bar's blots first. `gesture` is the Selector mark that
-    fired it and `repeats` the RIPPLE count it carried — both snapshotted for
-    the same reason as `params`: a mark is whatever it was when it sounded. */
+/** A single sound event: what a tap SOUNDED like, with no position of its own.
+    `id` names the tap Rhythmic Intent filed, and where that tap sits in the
+    loop stays Rhythmic Intent's answer — one that keeps changing as the knobs
+    turn. `params` is a snapshot of the Semantic State at the moment of the tap,
+    so a later visual/sound reads the values it was fired with even if the
+    sliders move afterwards. `gesture` is the Selector mark that fired it and
+    `repeats` the RIPPLE count it carried — both snapshotted for the same
+    reason as `params`: a mark is whatever it was when it sounded. */
 export type SoundTap = {
+  id: string
   params: SoundParams
-  pos: number
-  newBar: boolean
   gesture: PatternId
   repeats: number
 }
@@ -50,11 +49,11 @@ type TapListener = (tap: SoundTap) => void
 export type SoundIntentSessionValue = {
   params: SoundParams
   setParam: (id: SoundDimensionId, value: number) => void
-  /** Fire one sound event at `pos` (0..1 within the bar); `newBar` is true for
-      the tap that starts a fresh bar, `gesture`/`repeats` describe which mark
-      sounded. Currently drives only the Sound Visual; the Ableton parameter
-      send will hang off the same call once dimensions are mapped. */
-  emitTap: (pos: number, newBar: boolean, gesture: PatternId, repeats: number) => void
+  /** Fire one sound event for the tap `id` Rhythmic Intent just filed;
+      `gesture`/`repeats` describe which mark sounded. Currently drives only the
+      Sound Visual; the Ableton parameter send will hang off the same call once
+      dimensions are mapped. */
+  emitTap: (id: string, gesture: PatternId, repeats: number) => void
   /** Subscribe to taps (the Sound Visual canvas does). Returns an unsubscribe. */
   onTap: (listener: TapListener) => () => void
 }
@@ -104,8 +103,8 @@ export function SoundIntentSession({ children }: { children: ReactNode }) {
   }, [engineId, engineReady, setMacro])
 
   const emitTap = useCallback(
-    (pos: number, newBar: boolean, gesture: PatternId, repeats: number) => {
-      const tap: SoundTap = { params: { ...paramsRef.current }, pos, newBar, gesture, repeats }
+    (id: string, gesture: PatternId, repeats: number) => {
+      const tap: SoundTap = { id, params: { ...paramsRef.current }, gesture, repeats }
       for (const listener of listeners.current) listener(tap)
       // TODO: once the five dimensions are mapped, also push these params to
       // Ableton here (via the bridge) so sound + visual share this one event.

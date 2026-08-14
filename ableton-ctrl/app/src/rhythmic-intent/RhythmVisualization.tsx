@@ -1,4 +1,10 @@
-import { BEATS_PER_BAR, GRID_DIVISIONS, type CaptureState, type RenderedTap } from './types.ts'
+import {
+  BARS_PER_LOOP,
+  BEATS_PER_LOOP,
+  GRID_DIVISIONS,
+  type CaptureState,
+  type RenderedTap,
+} from './types.ts'
 
 type RhythmVisualizationProps = {
   taps: readonly RenderedTap[]
@@ -19,9 +25,9 @@ const GRID_BOTTOM = 176
 const LABEL_Y = 204
 
 // Velocity → radius. Clamped so a weak tap stays visible and a strong tap
-// cannot swallow its 1/16 neighbour (one grid step ≈ 57 units).
-const R_MIN = 6
-const R_MAX = 16
+// cannot swallow its 1/16 neighbour (one grid step ≈ 29 units).
+const R_MIN = 5
+const R_MAX = 12
 const radiusFor = (velocity: number) =>
   R_MIN + Math.min(Math.max(velocity, 0), 1) * (R_MAX - R_MIN)
 
@@ -29,8 +35,10 @@ const xFor = (pos: number) => PAD_X + pos * TRACK_W
 
 export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizationProps) {
   const gridLines = Array.from({ length: GRID_DIVISIONS + 1 }, (_, i) => {
-    const isBeat = i % (GRID_DIVISIONS / BEATS_PER_BAR) === 0
-    return { x: xFor(i / GRID_DIVISIONS), isBeat }
+    const isBeat = i % (GRID_DIVISIONS / BEATS_PER_LOOP) === 0
+    // Barline: the loop spans two bars, so the midpoint reads as a downbeat.
+    const isBar = i % (GRID_DIVISIONS / BARS_PER_LOOP) === 0
+    return { x: xFor(i / GRID_DIVISIONS), isBeat, isBar }
   })
 
   return (
@@ -38,10 +46,10 @@ export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizati
       className="rhythm-vis"
       viewBox={`0 0 ${W} ${H}`}
       role="img"
-      aria-label="One-bar rhythm pattern"
+      aria-label="Two-bar rhythm pattern"
     >
-      {/* 1/16 grid: fine lines, with a stronger line on each beat */}
-      {gridLines.map(({ x, isBeat }, i) => (
+      {/* 1/16 grid: fine lines, stronger on each beat, heaviest on a barline */}
+      {gridLines.map(({ x, isBeat, isBar }, i) => (
         <line
           key={i}
           x1={x}
@@ -49,15 +57,15 @@ export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizati
           x2={x}
           y2={GRID_BOTTOM}
           stroke={isBeat ? 'var(--line-strong)' : 'var(--line-fine)'}
-          strokeWidth="1"
+          strokeWidth={isBar ? '1.5' : '1'}
         />
       ))}
 
-      {/* Beat numbers 1–4 */}
-      {Array.from({ length: BEATS_PER_BAR }, (_, beat) => (
+      {/* Beat numbers 1–8 */}
+      {Array.from({ length: BEATS_PER_LOOP }, (_, beat) => (
         <text
           key={beat}
-          x={xFor(beat / BEATS_PER_BAR)}
+          x={xFor(beat / BEATS_PER_LOOP)}
           y={LABEL_Y}
           className="rhythm-vis-beat num"
           textAnchor="middle"
@@ -140,7 +148,7 @@ export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizati
 
       {state === 'ready' && (
         <text x={W / 2} y={CENTER_Y - 24} className="rhythm-vis-hint" textAnchor="middle">
-          Tap a one-bar rhythm
+          Tap a two-bar rhythm
         </text>
       )}
     </svg>

@@ -11,7 +11,6 @@ import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundIntentScreen } from '../sound-intent/SoundIntentScreen.tsx'
 import { SoundVisualScreen } from '../sound-intent/SoundVisualScreen.tsx'
 import { FxScreen } from '../fx/FxScreen.tsx'
-import { TapScreen } from '../tap/TapScreen.tsx'
 import { SelectorScreen } from '../selector/SelectorScreen.tsx'
 import { RippleScreen } from '../ripple/RippleScreen.tsx'
 import './workspace.css'
@@ -32,8 +31,6 @@ function windowContent(kind: WindowKind) {
       return <SoundVisualScreen />
     case 'fx':
       return <FxScreen />
-    case 'tap':
-      return <TapScreen />
     case 'selector':
       return <SelectorScreen />
     case 'ripple':
