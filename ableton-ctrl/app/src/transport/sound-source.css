@@ -158,6 +158,32 @@
   color: var(--text-muted);
 }
 
+/* ── Track faders ───────────────────────────────────── */
+
+.ss-mix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ss-mix-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The fader atom comes from Sound Intent, where it fills a tall panel and
+   centres itself. Here it is a pair of rows inside a fact sheet, so the
+   growing and the generous padding both come off. */
+.ss-mix .si-sliders {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  padding: 0;
+}
+
 .ss-note {
   margin: 0;
   font-size: 14px;

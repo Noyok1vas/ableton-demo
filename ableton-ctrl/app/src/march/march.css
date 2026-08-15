@@ -1,0 +1,429 @@
+/* March — the audience window and the designer window.
+   Same geometry as the rest of the app: radius 0, 1px hairlines, 8px grid,
+   black/white/grey only. State is carried by fill, never by colour. */
+
+/* ── March Intent (audience) ────────────────────────── */
+
+.mi-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  container-type: inline-size;
+}
+
+.mi-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 52px;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.mi-state {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text-muted);
+}
+
+/* The only other control in the audience window, and it appears only once
+   there is something to end — the idle interface stays one button. */
+.mi-end {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.mi-end:hover {
+  background: var(--surface-2);
+}
+
+.mi-stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  justify-content: center;
+  padding: var(--space-6) var(--space-7);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.mi-button {
+  flex: 0 1 auto;
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--ink-pure);
+  border-radius: 0;
+  background: var(--ink-pure);
+  color: var(--surface);
+  font-family: var(--font-ui);
+  font-size: 56px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  /* Sharp state change, like TAP: the press has to read as the beginning of
+     something rather than as a hover. */
+  transition: background-color 0.06s linear, color 0.06s linear;
+}
+
+.mi-button--held {
+  background: var(--surface);
+  color: var(--ink-pure);
+  transition: none;
+}
+
+.mi-meter {
+  display: block;
+  width: 100%;
+  height: 64px;
+  flex: 0 0 auto;
+}
+
+.mi-meter-track {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+/* Unlabelled divisions: enough structure to feel the snapping, no counting. */
+.mi-meter-tick {
+  stroke: var(--line-fine);
+  stroke-width: 1;
+}
+
+/* Where the gesture would land if released now. */
+.mi-meter-snap {
+  fill: var(--surface-2);
+}
+
+/* Exactly how long it has been held — the un-rounded truth, drawn over it. */
+.mi-meter-raw {
+  fill: var(--ink-pure);
+}
+
+/* The phrase that is sounding: its full length outlined, filled to the playhead. */
+.mi-meter-run {
+  fill: var(--surface-2);
+}
+
+.mi-meter-play {
+  fill: var(--ink-pure);
+}
+
+.mi-meter-hint {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  dominant-baseline: middle;
+}
+
+.mi-description {
+  flex: 0 0 auto;
+  padding: var(--space-4);
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+@container (max-width: 560px) {
+  .mi-button {
+    min-height: 140px;
+    font-size: 36px;
+  }
+
+  .mi-stage {
+    padding: var(--space-4);
+  }
+}
+
+/* ── Pattern grid (designer only) ───────────────────── */
+
+.mg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mg-beat {
+  stroke: var(--line-fine);
+  stroke-width: 1;
+}
+
+.mg-note {
+  fill: var(--text);
+}
+
+.mg-rest {
+  fill: var(--text-muted);
+  opacity: 0.5;
+}
+
+.mg-label {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: -0.1px;
+}
+
+.mg-playhead {
+  fill: var(--surface-2);
+}
+
+/* ── March Family (designer) ────────────────────────── */
+
+.mf-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+  container-type: inline-size;
+}
+
+.mf-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.mf-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.mf-current,
+.mf-group {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+/* The inspector is the point of this window, so it is framed rather than
+   listed: a strong edge separates "what just happened" from "what exists". */
+.mf-current {
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.mf-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.mf-action {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: background-color var(--motion-fast);
+}
+
+.mf-action:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.mf-action:disabled {
+  border-color: var(--line-fine);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.mf-empty {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 300;
+  color: var(--text-muted);
+}
+
+.mf-readout {
+  margin: 0 0 var(--space-3);
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.mf-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.mf-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The join between two blocks — the phrase reading as one sentence. */
+.mf-connector {
+  width: 16px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.mf-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 168px;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--motion-fast);
+}
+
+.mf-block:hover {
+  background: var(--surface-2);
+}
+
+.mf-block--sounding {
+  /* Sounding is weight, not colour: the border thickens inward. */
+  box-shadow: inset 0 0 0 2px var(--ink-pure);
+}
+
+.mf-block-id {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+.mf-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: var(--space-4) 0 0;
+}
+
+.mf-trace div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mf-trace dt {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mf-trace dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.mf-group-note {
+  flex: 1 1 240px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.mf-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-2);
+}
+
+.mf-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line-fine);
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+}
+
+.mf-card:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.mf-card--sounding {
+  border-color: var(--ink-pure);
+  box-shadow: inset 0 0 0 1px var(--ink-pure);
+}
+
+.mf-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.mf-card-id {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text);
+}
+
+/* How many notes the block plays, all three voices together — a density read
+   at a glance, and the quickest way to spot a block that is doing too much. */
+.mf-card-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.mf-card-note {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.mf-description {
+  display: block;
+  padding: var(--space-4);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: var(--text-muted);
+}

@@ -6,6 +6,7 @@ import { FxSession } from './fx/session.tsx'
 import { SelectorSession } from './selector/session.tsx'
 import { RippleSession } from './ripple/session.tsx'
 import { TapSession } from './tap/session.tsx'
+import { MarchSession } from './march/session.tsx'
 
 export default function App() {
   return (
@@ -23,7 +24,12 @@ export default function App() {
               <RippleSession>
                 {/* The shared tap trigger — needs every session above it. */}
                 <TapSession>
-                  <Workspace />
+                  {/* March reads only the transport's tempo and plays its own
+                      three fixed voices, so it sits at the inside edge: nothing
+                      else in the app depends on it. */}
+                  <MarchSession>
+                    <Workspace />
+                  </MarchSession>
                 </TapSession>
               </RippleSession>
             </SelectorSession>

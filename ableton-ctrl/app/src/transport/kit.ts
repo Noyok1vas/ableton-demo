@@ -11,6 +11,8 @@
  * queued ahead of the clock — see webAudioEngine's scheduler.
  */
 
+import type { MarchVoiceId } from './engine.ts'
+
 /** One pad, as a recipe rather than a sound file. `decay` is the voice's
     natural length in seconds at LENGTH's midpoint; LENGTH scales it. */
 export type Voice = { label: string } & (
@@ -54,6 +56,42 @@ export const KIT: Voice[] = [
   { label: 'SHAKER', kind: 'shaker', decay: 0.11 },
   { label: 'RIDE', kind: 'cymbal', cutoff: 9200, decay: 0.85 },
 ]
+
+/**
+ * The March instrument: three fixed percussion voices, separate from the 16
+ * pads above.
+ *
+ * Separate because they are not selectable. The pads are an instrument the
+ * performer plays; these three are parts of one machine, and the March module
+ * addresses them by role — body, definition, motion — never by pad. Each hit's
+ * colour is fixed here too: v0.2 has no velocity, so what balances the three
+ * voices against each other is these numbers and nothing else.
+ */
+export type MarchVoiceSpec = { voice: Voice } & HitParams
+
+export const MARCH_KIT: Record<MarchVoiceId, MarchVoiceSpec> = {
+  // A short filtered tom: body, and the larger accents.
+  low: {
+    voice: { label: 'LOW PERC', kind: 'tom', freq: 104, decay: 0.3 },
+    velocity: 0.95,
+    energy: 0.4,
+    lengthScale: 0.85,
+  },
+  // A rim/click: syncopation and definition against the Low.
+  high: {
+    voice: { label: 'HIGH PERC', kind: 'rim', decay: 0.075 },
+    velocity: 0.72,
+    energy: 0.62,
+    lengthScale: 1,
+  },
+  // A dry shaker: the small subdivisions, continuity, forward motion.
+  tick: {
+    voice: { label: 'TICK', kind: 'shaker', decay: 0.08 },
+    velocity: 0.46,
+    energy: 0.5,
+    lengthScale: 0.8,
+  },
+}
 
 /** How a single hit is coloured by the live parameters. */
 export type HitParams = {

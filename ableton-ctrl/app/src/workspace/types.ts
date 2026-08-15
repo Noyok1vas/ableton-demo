@@ -21,6 +21,8 @@ export type WindowKind =
   | 'fx'
   | 'selector'
   | 'ripple'
+  | 'march-intent'
+  | 'march-family'
 
 export type WindowState = {
   id: string

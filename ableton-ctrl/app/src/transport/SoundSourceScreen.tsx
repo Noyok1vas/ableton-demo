@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react'
-import { BPM_MAX, BPM_MIN, useSoundEngine, type SourcePreference } from './session.tsx'
+import {
+  BPM_MAX,
+  BPM_MIN,
+  TRACK_LEVEL_MAX,
+  useSoundEngine,
+  type SourcePreference,
+} from './session.tsx'
+import { Slider } from '../sound-intent/Slider.tsx'
+// The faders are the Sound Intent atom, styling included — one control, one
+// look. sound-source.css only adds where they sit.
+import '../sound-intent/sound-intent.css'
 import './sound-source.css'
 
 const DESCRIPTION =
-  'Sound Source decides where a tap is heard. Ableton plays the selected instrument through the local bridge; Built-in synthesizes the same 16 pads in this tab, so the prototype can be played with no Live set at all. Auto takes Ableton whenever its bridge is running and falls back to the built-in kit when it is not. Tempo is the clock all of it runs on: change it and the loop re-times, keeping the pattern it holds.'
+  'Sound Source decides where a tap is heard. Ableton plays the selected instrument through the local bridge; Built-in synthesizes the same 16 pads in this tab, so the prototype can be played with no Live set at all. Auto takes Ableton whenever its bridge is running and falls back to the built-in kit when it is not. Tempo is the clock all of it runs on: change it and both loops re-time, keeping the patterns they hold. The two faders are the mix between the tapped rhythm and the March layer underneath it.'
 
 const CHOICES: { id: SourcePreference; label: string }[] = [
   { id: 'auto', label: 'AUTO' },
@@ -25,8 +35,18 @@ function bridgeLine(addressable: boolean, reachable: boolean): string {
  * here, so the status bar stays a label rather than a diagnostic.
  */
 export function SoundSourceScreen() {
-  const { status, source, preference, setPreference, bridgeReachable, bridgeAddressable, bpm, setBpm } =
-    useSoundEngine()
+  const {
+    status,
+    source,
+    preference,
+    setPreference,
+    bridgeReachable,
+    bridgeAddressable,
+    bpm,
+    setBpm,
+    trackLevel,
+    setTrackLevel,
+  } = useSoundEngine()
 
   // The field is free text while it has focus — half-typed numbers and an empty
   // box are states you have to be able to pass through — and only becomes a
@@ -125,6 +145,35 @@ export function SoundSourceScreen() {
           </div>
         </dl>
 
+        {/* Two tracks, two faders. RHYTHM is every tap — the loop Rhythmic
+            Intent holds and the pad Sound Intent shapes; MARCH is the generated
+            layer, resting under it. */}
+        <div className="ss-mix">
+          <span className="ss-mix-title">Tracks</span>
+          <div className="si-sliders">
+            <Slider
+              label="RHYTHM"
+              value={trackLevel.main}
+              min={0}
+              max={TRACK_LEVEL_MAX}
+              onChange={(v) => setTrackLevel('main', v)}
+            />
+            <Slider
+              label="MARCH"
+              value={trackLevel.march}
+              min={0}
+              max={TRACK_LEVEL_MAX}
+              onChange={(v) => setTrackLevel('march', v)}
+            />
+          </div>
+        </div>
+
+        {source === 'ableton' && (
+          <p className="ss-note">
+            March always sounds in this tab — three voices at once is more than the bridge can send
+            to Live. Under Ableton, RHYTHM belongs to Live's own mixer.
+          </p>
+        )}
         {preference === 'ableton' && !bridgeAddressable && (
           <p className="ss-note">
             This page is not served from the machine Live runs on, so the bridge cannot be reached

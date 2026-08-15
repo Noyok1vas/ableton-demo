@@ -9,7 +9,15 @@ import {
 } from 'react'
 import { BridgeEngine, isBridgeAddressable, probeBridge } from './bridgeEngine.ts'
 import { WebAudioEngine } from './webAudioEngine.ts'
-import type { EngineStatus, LoopEvent, MacroScope, SoundEngine, SoundSourceId } from './engine.ts'
+import type {
+  EngineStatus,
+  LoopEvent,
+  MacroScope,
+  MarchEvent,
+  SoundEngine,
+  SoundSourceId,
+  TrackId,
+} from './engine.ts'
 
 /** What the listener asked for. `'auto'` is not a source — it is the standing
     instruction "Ableton whenever its bridge is running, otherwise the built-in
@@ -23,6 +31,15 @@ export type SourcePreference = 'auto' | SoundSourceId
 export const DEFAULT_BPM = 130
 export const BPM_MIN = 60
 export const BPM_MAX = 200
+
+/** Track levels are typed as percentages because that is what the faders read.
+ *
+ * MARCH rests at 60: it is the layer *behind* the tapped rhythm, and a second
+ * percussion part at the same level stops supporting the first and starts
+ * arguing with it. Both are free to move — the default is a starting balance,
+ * not a rule. */
+export const TRACK_LEVEL_MAX = 100
+export const DEFAULT_TRACK_LEVEL: Record<TrackId, number> = { main: 100, march: 60 }
 
 /** How often `auto` re-checks for a bridge while playing the built-in kit, so
     starting the bridge after the app still "just works". */
@@ -89,6 +106,20 @@ export type SoundEngineSessionValue = {
   /** Start or replace the looping bar. */
   startLoop: (events: readonly LoopEvent[], barDuration: number) => void
   stopLoop: () => void
+  /** Start or replace the March phrase on the second track. It joins the grid
+      the tapped loop is already on, so the two share a downbeat. */
+  startMarchLoop: (
+    events: readonly MarchEvent[],
+    phraseDuration: number,
+    barDuration: number,
+  ) => void
+  stopMarchLoop: () => void
+  /** 0..1 through the March phrase; null when stopped or still queued. */
+  marchPhase: () => number | null
+  /** Fader positions, 0..100. Lives here rather than in either module because
+      it is a property of the mix, which is the transport's business. */
+  trackLevel: Record<TrackId, number>
+  setTrackLevel: (track: TrackId, level: number) => void
   /** Move the mapping: every future note plays on this MIDI pitch. */
   setPitch: (pitch: number) => void
   /** Set the macro named `name` (e.g. "Energy") to `value` (0..127) — resolved
@@ -121,6 +152,8 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
   const [bridgeReachable, setBridgeReachable] = useState(false)
   const [bridgeAddressable] = useState(isBridgeAddressable)
   const [bpm, setBpmState] = useState(DEFAULT_BPM)
+  const [trackLevel, setTrackLevelState] =
+    useState<Record<TrackId, number>>(DEFAULT_TRACK_LEVEL)
 
   // Clamped here rather than at the input, so no caller can put the loop at a
   // tempo the engines will not honour anyway (both clamp the bar they are given).
@@ -209,6 +242,37 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     engineRef.current?.setMacro(name, value, scope)
   }, [])
 
+  const startMarchLoop = useCallback(
+    (events: readonly MarchEvent[], phraseDuration: number, barDuration: number) => {
+      engineRef.current?.startMarchLoop(events, phraseDuration, barDuration)
+    },
+    [],
+  )
+
+  const stopMarchLoop = useCallback(() => {
+    engineRef.current?.stopMarchLoop()
+  }, [])
+
+  const marchPhase = useCallback(() => engineRef.current?.marchPhase() ?? null, [])
+
+  const setTrackLevel = useCallback((track: TrackId, level: number) => {
+    if (!Number.isFinite(level)) return
+    const clamped = Math.min(TRACK_LEVEL_MAX, Math.max(0, Math.round(level)))
+    setTrackLevelState((prev) => ({ ...prev, [track]: clamped }))
+    engineRef.current?.setTrackGain(track, clamped / TRACK_LEVEL_MAX)
+  }, [])
+
+  // A source that just came up is at its own default levels. Re-send both
+  // faders whenever a new engine is installed, for the same reason Rhythmic
+  // Intent re-sends its pitch.
+  useEffect(() => {
+    for (const track of ['main', 'march'] as const) {
+      engineRef.current?.setTrackGain(track, trackLevel[track] / TRACK_LEVEL_MAX)
+    }
+    // Only on a swap: every deliberate move already went straight to the engine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineId])
+
   const onExternalTap = useCallback((listener: (velocity: number) => void) => {
     // The engine outlives individual renders; guard in case it's mid-teardown.
     return engineRef.current?.onExternalTap(listener) ?? (() => {})
@@ -227,6 +291,11 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     noteOn,
     startLoop,
     stopLoop,
+    startMarchLoop,
+    stopMarchLoop,
+    marchPhase,
+    trackLevel,
+    setTrackLevel,
     setPitch,
     setMacro,
     onExternalTap,

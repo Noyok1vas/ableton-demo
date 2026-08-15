@@ -10,7 +10,16 @@
  * "just works".
  */
 
-import type { EngineStatus, LoopEvent, MacroScope, SoundEngine, StatusTag } from './engine.ts'
+import type {
+  EngineStatus,
+  LoopEvent,
+  MacroScope,
+  MarchEvent,
+  SoundEngine,
+  StatusTag,
+  TrackId,
+} from './engine.ts'
+import { WebAudioEngine } from './webAudioEngine.ts'
 
 /** The bridge's own two-layer view of the link, before it is flattened into
     the EngineStatus the screens render. */
@@ -173,6 +182,12 @@ export class BridgeEngine implements SoundEngine {
   private status: EngineStatus = statusFor({ link: 'bridge-offline' })
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
+  /** The built-in engine that carries the March track — see startMarchLoop.
+      Built on first use, so a session that never generates a March never opens
+      an audio context. */
+  private march: WebAudioEngine | null = null
+  private mainRunning = false
+  private gains: Record<TrackId, number> = { main: 1, march: 0.6 }
 
   constructor(url: string = BRIDGE_URL) {
     this.url = url
@@ -233,10 +248,56 @@ export class BridgeEngine implements SoundEngine {
       scheduling — browser timers throttle when the tab is backgrounded. */
   startLoop(events: readonly LoopEvent[], barDuration: number): void {
     this.send({ op: 'loop', events, barDuration })
+    // Only the transition matters: Rhythmic Intent re-sends the loop on every
+    // knob turn and every added tap, and re-aligning the grid each time would
+    // restart March under it.
+    if (!this.mainRunning) {
+      this.mainRunning = true
+      this.march?.alignGrid()
+    }
   }
 
   stopLoop(): void {
+    this.mainRunning = false
     this.send({ op: 'stopLoop' })
+  }
+
+  /**
+   * March, sounding in this tab even when everything else goes to Live.
+   *
+   * The bridge protocol speaks in one note at a time on one selected
+   * instrument; a March bar is three voices at once on a track of its own,
+   * which Live would need a second MIDI track and a rack to receive. Until
+   * that exists, March plays through a built-in engine held here.
+   *
+   * The cost is honest and worth stating: this track and Live's are two clocks.
+   * `alignGrid` pins March's downbeat to the instant the loop was handed to the
+   * bridge, which is as close as the browser can get without knowing Live's own
+   * output latency. Under BUILT-IN the two tracks share one context and one
+   * grid, and the alignment is exact.
+   */
+  startMarchLoop(
+    events: readonly MarchEvent[],
+    phraseDuration: number,
+    barDuration: number,
+  ): void {
+    this.marchTrack().startMarchLoop(events, phraseDuration, barDuration)
+  }
+
+  stopMarchLoop(): void {
+    this.march?.stopMarchLoop()
+  }
+
+  marchPhase(): number | null {
+    return this.march?.marchPhase() ?? null
+  }
+
+  /** MAIN is Live's own track and its level belongs to Live's mixer, so only
+      MARCH is answered here. Held either way, so a fader moved before March
+      first sounds is not forgotten. */
+  setTrackGain(track: TrackId, gain: number): void {
+    this.gains[track] = gain
+    if (track === 'march') this.march?.setTrackGain('march', gain)
   }
 
   /** Move the mapping: every future tap/loop note plays on this MIDI pitch. */
@@ -252,6 +313,19 @@ export class BridgeEngine implements SoundEngine {
       property, used by FX). No-op if Live is offline or nothing matches. */
   setMacro(name: string, value: number, scope: MacroScope = 'selected'): void {
     this.send({ op: 'setMacro', name, value, scope })
+  }
+
+  private marchTrack(): WebAudioEngine {
+    if (!this.march) {
+      const march = new WebAudioEngine()
+      march.start()
+      march.setTrackGain('march', this.gains.march)
+      // Live's loop is already running by now in the usual case, so give March
+      // the best downbeat available rather than none.
+      if (this.mainRunning) march.alignGrid()
+      this.march = march
+    }
+    return this.march
   }
 
   private send(payload: object): void {
@@ -281,6 +355,8 @@ export class BridgeEngine implements SoundEngine {
     // after this engine is gone, with nothing left on screen to stop it.
     this.stopLoop()
     this.disposed = true
+    this.march?.dispose()
+    this.march = null
     this.clearReconnect()
     this.ws?.close()
     this.ws = null

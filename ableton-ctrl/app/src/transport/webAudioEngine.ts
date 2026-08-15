@@ -16,12 +16,26 @@
  * properties of the room, so they hang on the master chain and change what is
  * already sounding — exactly the split FX and Sound Intent describe.
  *
- *   voices ─┬─────────────────────────┬─▶ saturate ─▶ high-pass ─▶ master ─▶ out
- *           └─▶ send ─▶ room reverb ──┘
+ * Two tracks play through it. MAIN is every tap: the pad Sound Intent shapes
+ * and the loop Rhythmic Intent holds. MARCH is the generated percussion layer,
+ * with its own length and its own fader, which is what lets it sit *behind* the
+ * other one. They meet at the room, so FX describes both, and — the part that
+ * matters musically — they count from one shared downbeat, `gridTop`.
+ *
+ *   main ──▶ mainGain ──┐
+ *                       ├─▶ voices ─┬──────────────────┬─▶ sat ─▶ HP ─▶ out
+ *   march ─▶ marchGain ─┘           └─▶ send ─▶ room ──┘
  */
 
-import type { EngineStatus, LoopEvent, MacroScope, SoundEngine } from './engine.ts'
-import { KIT, KIT_BASE_PITCH, playVoice } from './kit.ts'
+import type {
+  EngineStatus,
+  LoopEvent,
+  MacroScope,
+  MarchEvent,
+  SoundEngine,
+  TrackId,
+} from './engine.ts'
+import { KIT, KIT_BASE_PITCH, MARCH_KIT, playVoice } from './kit.ts'
 
 /**
  * How far ahead of the clock notes are queued.
@@ -35,7 +49,7 @@ import { KIT, KIT_BASE_PITCH, playVoice } from './kit.ts'
  * that falls between two horizons.
  *
  * The cost is that notes sit queued for over a second, which would make a knob
- * turned mid-loop take that long to be heard. `cancelQueued` buys that back by
+ * turned mid-loop take that long to be heard. `cancel` buys that back by
  * un-scheduling the notes a swap invalidates.
  */
 const LOOKAHEAD_S = 1.5
@@ -45,10 +59,19 @@ const TICK_MS = 25
     one source can't be denser under the other. */
 const MAX_LOOP_EVENTS = 128
 
+/** A five-bar March at a 1/16 grid across three voices. */
+const MAX_MARCH_EVENTS = 5 * 16 * 3
+
+/** A hair of head start when a track defines the grid itself, so its own first
+    note isn't scheduled at exactly `currentTime` — which is to say, dropped. */
+const LAUNCH_LEAD = 0.05
+
 const MACRO_MAX = 127
 
 /** Sound Intent and FX both send 0..127; everything here works in 0..1. */
 const unit = (value: number) => Math.min(1, Math.max(0, value / MACRO_MAX))
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 // Nothing to reach for, so `connected` tracks `ready`: this source is up
 // exactly when the browser has let its audio context start.
@@ -68,6 +91,95 @@ const STATUS_WAITING: EngineStatus = {
   label: 'Built-in sound — tap to start',
   labelTitle: 'Browsers only allow audio to start from a click or key press',
   tags: [],
+}
+
+type QueuedHit = { at: number; sources: AudioScheduledSourceNode[] }
+
+/**
+ * One looping track: a sorted event list, how long a pass takes, when pass zero
+ * began, and a cursor into the next event to queue.
+ *
+ * There are two of these because MAIN and MARCH genuinely differ — different
+ * lengths, different voices, started and stopped independently — while the
+ * machinery of queueing ahead of the clock and taking queued notes back is
+ * identical for both.
+ */
+class LoopTrack<E extends { pos: number }> {
+  events: E[] = []
+  /** Seconds one pass takes. */
+  period = 2
+  /** Context time at which pass zero begins. May be in the future: that is a
+      track waiting for its downbeat. */
+  top = 0
+  running = false
+
+  private cursor = { cycle: 0, index: 0 }
+  private queued: QueuedHit[] = []
+
+  /** Point the cursor at the first event strictly after `from`. */
+  seek(from: number): void {
+    if (this.events.length === 0) return
+    let cycle = Math.max(0, Math.floor((from - this.top) / this.period))
+    let index = 0
+    while (
+      index < this.events.length &&
+      this.top + (cycle + this.events[index].pos) * this.period <= from
+    ) {
+      index++
+    }
+    if (index >= this.events.length) {
+      cycle++
+      index = 0
+    }
+    this.cursor = { cycle, index }
+  }
+
+  /** Hand every event up to `horizon` to `fire`, which schedules it and returns
+      the sources so they can be taken back later. */
+  pump(
+    now: number,
+    horizon: number,
+    fire: (event: E, at: number) => AudioScheduledSourceNode[],
+  ): void {
+    if (this.events.length === 0) return
+    // Bounded by the horizon, but guard anyway: a pathological period/pos
+    // combination must not spin here forever.
+    for (let guard = 0; guard < MAX_MARCH_EVENTS * 4; guard++) {
+      const { cycle, index } = this.cursor
+      const event = this.events[index]
+      const at = this.top + (cycle + event.pos) * this.period
+      if (at > horizon) break
+      if (at >= now) this.queued.push({ at, sources: fire(event, at) })
+      const next = index + 1
+      this.cursor =
+        next >= this.events.length ? { cycle: cycle + 1, index: 0 } : { cycle, index: next }
+    }
+    // Notes that have started are no longer ours to cancel.
+    this.queued = this.queued.filter((hit) => hit.at > now)
+  }
+
+  /** Un-schedule every queued note that hasn't started. Stopping a source
+      before its start time cancels it outright, so nothing is heard. */
+  cancel(now: number): void {
+    for (const hit of this.queued) {
+      if (hit.at <= now) continue
+      for (const source of hit.sources) {
+        // A source already stopped throws on a second stop; nothing to undo.
+        try {
+          source.stop(now)
+        } catch {
+          /* already finished */
+        }
+      }
+    }
+    this.queued = []
+  }
+
+  /** 0..1 through the current pass, or null before pass zero begins. */
+  phase(now: number): number | null {
+    if (now < this.top) return null
+    return ((now - this.top) % this.period) / this.period
+  }
 }
 
 /** A room, built rather than loaded: exponentially decaying noise is a
@@ -106,7 +218,10 @@ function saturationCurve(drive: number): Float32Array<ArrayBuffer> {
 
 export class WebAudioEngine implements SoundEngine {
   private ctx: AudioContext | null = null
-  private voiceBus: GainNode | null = null
+  // The shared bus the two faders feed is built and wired in `start()` and
+  // never touched again, so it is a local there rather than a field.
+  private mainGain: GainNode | null = null
+  private marchGain: GainNode | null = null
   private reverbSend: GainNode | null = null
   private saturator: WaveShaperNode | null = null
   private highpass: BiquadFilterNode | null = null
@@ -119,18 +234,20 @@ export class WebAudioEngine implements SoundEngine {
   // scheduled — including hits the loop queues ahead of the clock.
   private energy = 0.5
   private length = 0.5
+  /** Fader positions, held here as well as on the nodes so they survive being
+      set before the context exists. */
+  private gains: Record<TrackId, number> = { main: 1, march: 0.6 }
 
   // ── Loop state ────────────────────────────────────────────────────
-  private events: LoopEvent[] = []
-  private barDuration = 2
-  /** Context time of the top of bar 0. Preserved across pattern swaps so a
-      knob turned mid-loop doesn't restart the bar (matching the bridge). */
-  private barTop = 0
-  private cursor = { cycle: 0, index: 0 }
+  private readonly main = new LoopTrack<LoopEvent>()
+  private readonly march = new LoopTrack<MarchEvent>()
+  /** Context time of the downbeat both tracks count from. Preserved across
+      pattern swaps so a knob turned mid-loop doesn't restart the bar. */
+  private gridTop = 0
+  /** One March bar, kept so a phrase can be launched on a bar line of the
+      grid rather than wherever the gesture happened to end. */
+  private marchBar = 1
   private ticker: ReturnType<typeof setInterval> | null = null
-  /** Loop notes handed to Web Audio but not yet sounded, newest last, so a
-      pattern swap or a stop can take back the ones that haven't happened. */
-  private queued: { at: number; sources: AudioScheduledSourceNode[] }[] = []
 
   private disposed = false
   private detachGesture: (() => void) | null = null
@@ -175,7 +292,18 @@ export class WebAudioEngine implements SoundEngine {
 
     const voiceBus = ctx.createGain()
     voiceBus.connect(saturator)
-    this.voiceBus = voiceBus
+
+    // The two faders. Both feed the same bus, so the room and the master chain
+    // are shared — a mixer, not two separate outputs.
+    const mainGain = ctx.createGain()
+    mainGain.gain.value = this.gains.main
+    mainGain.connect(voiceBus)
+    this.mainGain = mainGain
+
+    const marchGain = ctx.createGain()
+    marchGain.gain.value = this.gains.march
+    marchGain.connect(voiceBus)
+    this.marchGain = marchGain
 
     const reverb = ctx.createConvolver()
     reverb.buffer = buildRoom(ctx)
@@ -223,36 +351,94 @@ export class WebAudioEngine implements SoundEngine {
     if (!ctx) return
     if (ctx.state !== 'running') void ctx.resume()
 
-    const wasPlaying = this.ticker !== null
-    this.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_LOOP_EVENTS)
-    this.barDuration = Math.min(30, Math.max(0.25, barDuration))
+    const wasRunning = this.main.running
+    this.main.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_LOOP_EVENTS)
+    this.main.period = clamp(barDuration, 0.25, 30)
+    this.main.running = true
 
-    if (!wasPlaying) {
-      // A fresh loop starts at the bar top, like the bridge's. A swap keeps
-      // barTop, so turning a knob doesn't restart the bar.
-      this.barTop = ctx.currentTime
-    }
+    // A loop starting from nothing lays down the grid — and a March already
+    // running re-phases onto it, because two tracks with two downbeats is the
+    // one thing this must never be. A swap keeps the grid, so turning a knob
+    // doesn't restart the bar.
+    //
+    // No launch lead here, unlike March: the first tap sounds its own note
+    // immediately, and a grid pushed 50ms into the future would make the loop's
+    // opening note flam against it.
+    if (!wasRunning) this.setGrid(ctx.currentTime)
+    this.main.top = this.gridTop
+
     // Take back everything still queued and re-queue from now, so the new
     // pattern is heard at once rather than after the lookahead drains.
-    this.cancelQueued()
-    this.seekCursor(ctx.currentTime)
-
-    if (!wasPlaying) {
-      this.tick()
-      this.ticker = setInterval(() => this.tick(), TICK_MS)
-    }
+    this.main.cancel(ctx.currentTime)
+    this.main.seek(ctx.currentTime)
+    this.ensureTicker()
   }
 
   stopLoop(): void {
-    if (this.ticker !== null) {
-      clearInterval(this.ticker)
-      this.ticker = null
-    }
     // Without this the loop would keep sounding for a lookahead's worth of
     // notes after PAUSE. Notes already ringing are left alone — stopping the
     // loop silences what comes next, not what is decaying.
-    this.cancelQueued()
-    this.events = []
+    this.main.cancel(this.ctx?.currentTime ?? 0)
+    this.main.events = []
+    this.main.running = false
+    this.stopTickerIfIdle()
+  }
+
+  startMarchLoop(
+    events: readonly MarchEvent[],
+    phraseDuration: number,
+    barDuration: number,
+  ): void {
+    const ctx = this.ctx
+    if (!ctx) return
+    if (ctx.state !== 'running') void ctx.resume()
+
+    this.march.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_MARCH_EVENTS)
+    this.march.period = clamp(phraseDuration, 0.25, 60)
+    this.march.running = true
+    this.marchBar = clamp(barDuration, 0.125, 30)
+
+    const from = ctx.currentTime + LAUNCH_LEAD
+    // With nothing else playing, March is what defines the grid. With the tapped
+    // loop already running it joins on that loop's next bar line, so the phrase
+    // opens on a downbeat the listener can already feel.
+    if (!this.main.running) this.gridTop = from
+    this.march.top = this.nextBar(from)
+
+    this.march.cancel(ctx.currentTime)
+    this.march.seek(ctx.currentTime)
+    this.ensureTicker()
+  }
+
+  stopMarchLoop(): void {
+    this.march.cancel(this.ctx?.currentTime ?? 0)
+    this.march.events = []
+    this.march.running = false
+    this.stopTickerIfIdle()
+  }
+
+  marchPhase(): number | null {
+    const ctx = this.ctx
+    if (!ctx || !this.march.running) return null
+    return this.march.phase(ctx.currentTime)
+  }
+
+  setTrackGain(track: TrackId, gain: number): void {
+    const value = clamp(gain, 0, 1)
+    this.gains[track] = value
+    this.setRamp((track === 'march' ? this.marchGain : this.mainGain)?.gain, value)
+  }
+
+  /**
+   * Put the shared downbeat at this instant.
+   *
+   * For the bridge engine, which plays its own loop in Live and borrows this
+   * one only for March: it can say *when* Live's loop started even though it
+   * cannot hand over the loop itself.
+   */
+  alignGrid(): void {
+    const ctx = this.ctx
+    if (ctx) this.setGrid(ctx.currentTime)
   }
 
   setPitch(pitch: number): void {
@@ -301,11 +487,13 @@ export class WebAudioEngine implements SoundEngine {
   dispose(): void {
     this.disposed = true
     this.stopLoop()
+    this.stopMarchLoop()
     this.detachGesture?.()
     this.listeners.clear()
     void this.ctx?.close()
     this.ctx = null
-    this.voiceBus = null
+    this.mainGain = null
+    this.marchGain = null
     this.reverbSend = null
     this.saturator = null
     this.highpass = null
@@ -313,11 +501,28 @@ export class WebAudioEngine implements SoundEngine {
 
   // ── Internals ─────────────────────────────────────────────────────
 
+  /** Move the grid, taking whatever is already running with it. */
+  private setGrid(at: number): void {
+    this.gridTop = at
+    this.main.top = at
+    if (this.march.running && this.ctx) {
+      this.march.top = this.nextBar(at)
+      this.march.cancel(this.ctx.currentTime)
+      this.march.seek(this.ctx.currentTime)
+    }
+  }
+
+  /** The first bar line of the grid at or after `after`. */
+  private nextBar(after: number): number {
+    const offset = Math.max(0, after - this.gridTop)
+    return this.gridTop + Math.ceil(offset / this.marchBar) * this.marchBar
+  }
+
   /** Schedule one hit of the selected pad. Returns the hit's sources so a
       queued loop note can be taken back; a live tap discards them. */
   private fire(when: number, velocity: number): AudioScheduledSourceNode[] {
     const ctx = this.ctx
-    const bus = this.voiceBus
+    const bus = this.mainGain
     if (!ctx || !bus) return []
     const voice = KIT[this.pitch - KIT_BASE_PITCH]
     if (!voice) return [] // a pitch outside the pad grid has no sound here
@@ -330,66 +535,36 @@ export class WebAudioEngine implements SoundEngine {
     })
   }
 
-  /** Point the cursor at the first event strictly after `from`. */
-  private seekCursor(from: number): void {
-    if (this.events.length === 0) return
-    const bar = this.barDuration
-    let cycle = Math.max(0, Math.floor((from - this.barTop) / bar))
-    let index = 0
-    while (index < this.events.length && this.barTop + (cycle + this.events[index].pos) * bar <= from) {
-      index++
-    }
-    if (index >= this.events.length) {
-      cycle++
-      index = 0
-    }
-    this.cursor = { cycle, index }
+  /** Schedule one March note. Its colour is fixed in the kit rather than taken
+      from ENERGY and LENGTH: March is a second instrument, not the one Sound
+      Intent is shaping. */
+  private fireMarch(event: MarchEvent, when: number): AudioScheduledSourceNode[] {
+    const ctx = this.ctx
+    const bus = this.marchGain
+    if (!ctx || !bus) return []
+    const { voice, ...params } = MARCH_KIT[event.voice]
+    return playVoice(ctx, bus, voice, when, params)
+  }
+
+  private ensureTicker(): void {
+    if (this.ticker !== null) return
+    this.tick()
+    this.ticker = setInterval(() => this.tick(), TICK_MS)
+  }
+
+  private stopTickerIfIdle(): void {
+    if (this.ticker === null || this.main.running || this.march.running) return
+    clearInterval(this.ticker)
+    this.ticker = null
   }
 
   private tick(): void {
     const ctx = this.ctx
-    if (!ctx || this.events.length === 0) return
-    const horizon = ctx.currentTime + LOOKAHEAD_S
-    const bar = this.barDuration
-
-    // Bounded by the horizon, but guard anyway: a pathological bar/pos
-    // combination must not spin here forever.
-    for (let guard = 0; guard < MAX_LOOP_EVENTS * 4; guard++) {
-      const { cycle, index } = this.cursor
-      const event = this.events[index]
-      const at = this.barTop + (cycle + event.pos) * bar
-      if (at > horizon) break
-      if (at >= ctx.currentTime) {
-        this.queued.push({ at, sources: this.fire(at, event.velocity) })
-      }
-      const nextIndex = index + 1
-      this.cursor =
-        nextIndex >= this.events.length
-          ? { cycle: cycle + 1, index: 0 }
-          : { cycle, index: nextIndex }
-    }
-    // Notes that have started are no longer ours to cancel.
-    this.queued = this.queued.filter((hit) => hit.at > ctx.currentTime)
-  }
-
-  /** Un-schedule every queued note that hasn't started. Stopping a source
-      before its start time cancels it outright, so nothing is heard. */
-  private cancelQueued(): void {
-    const ctx = this.ctx
     if (!ctx) return
     const now = ctx.currentTime
-    for (const hit of this.queued) {
-      if (hit.at <= now) continue
-      for (const source of hit.sources) {
-        // A source already stopped throws on a second stop; nothing to undo.
-        try {
-          source.stop(now)
-        } catch {
-          /* already finished */
-        }
-      }
-    }
-    this.queued = []
+    const horizon = now + LOOKAHEAD_S
+    this.main.pump(now, horizon, (event, at) => this.fire(at, event.velocity))
+    this.march.pump(now, horizon, (event, at) => this.fireMarch(event, at))
   }
 
   /** Move a parameter over a few milliseconds rather than in one step: an

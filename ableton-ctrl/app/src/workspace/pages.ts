@@ -16,20 +16,28 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
   // Tap window — a tap comes from Space or from a Selector mark.
   'rhythmic-intent': [
     // Sound Source heads the control column: it decides where every other
-    // window's sound comes out, so it is read before any of them.
-    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 1000, h: 424 },
-    { id: 'ri-1', kind: 'rhythmic-intent', title: 'Rhythmic intent', x: 64, y: 520, w: 1000, h: 656 },
-    { id: 'col-1', kind: 'collection', title: 'Collection', x: 1094, y: 520, w: 372, h: 656 },
+    // window's sound comes out — and, now that there are two tracks, how they
+    // sit against each other — so it is read before any of them.
+    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 1000, h: 720 },
+    // March Intent beside it rather than off on a page of its own: the two
+    // tracks are played together and share a clock, so they are looked at
+    // together. Its machinery stays out of sight in March Family.
+    { id: 'mi-1', kind: 'march-intent', title: 'March Intent', x: 1094, y: 64, w: 900, h: 720 },
+    { id: 'ri-1', kind: 'rhythmic-intent', title: 'Rhythmic intent', x: 64, y: 816, w: 1000, h: 656 },
+    { id: 'col-1', kind: 'collection', title: 'Collection', x: 1094, y: 816, w: 372, h: 656 },
     // Selector — four gesture marks; HIT and ROLL fire the shared tap.
-    { id: 'sel-1', kind: 'selector', title: 'Selector', x: 64, y: 1208, w: 564, h: 244 },
+    { id: 'sel-1', kind: 'selector', title: 'Selector', x: 64, y: 1504, w: 564, h: 244 },
     // Sound Intent under the Selector: what a tap sounds like, below what it is.
-    { id: 'si-1', kind: 'sound-intent', title: 'Sound Intent', x: 64, y: 1484, w: 564, h: 520 },
+    { id: 'si-1', kind: 'sound-intent', title: 'Sound Intent', x: 64, y: 1780, w: 564, h: 520 },
     // Ripple — the Selector's ROLL mark as a playable gesture. Standalone for
     // now: its own pad, no shared tap, nothing sent to Live.
-    { id: 'rip-1', kind: 'ripple', title: 'Ripple', x: 660, y: 1208, w: 484, h: 796 },
+    { id: 'rip-1', kind: 'ripple', title: 'Ripple', x: 660, y: 1504, w: 484, h: 796 },
     // FX — the room, not the instrument. Applies to the whole field at once.
-    { id: 'fx-1', kind: 'fx', title: 'FX', x: 1188, y: 1208, w: 560, h: 796 },
+    { id: 'fx-1', kind: 'fx', title: 'FX', x: 1188, y: 1504, w: 560, h: 796 },
     { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 2020, y: 344, w: 1400, h: 1380 },
+    // Backstage, so it sits off the played column entirely — under the Sound
+    // Visual, where nothing has to be moved to reach it.
+    { id: 'mf-1', kind: 'march-family', title: 'March Family', x: 2020, y: 1764, w: 1400, h: 1180 },
   ],
   'untitled-2': [],
   'untitled-3': [],
@@ -46,4 +54,6 @@ export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   fx: { minW: 360, minH: 380, maxW: 900, maxH: 800 },
   selector: { minW: 180, minH: 160, maxW: 1400, maxH: 900 },
   ripple: { minW: 300, minH: 380, maxW: 1000, maxH: 1100 },
+  'march-intent': { minW: 420, minH: 420, maxW: 1400, maxH: 900 },
+  'march-family': { minW: 520, minH: 400, maxW: 1400, maxH: 2000 },
 }

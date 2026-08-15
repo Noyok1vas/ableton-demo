@@ -50,6 +50,28 @@ bridge 的详细协议、Live 侧接线(MIDI Track 开关、REVERB 挂载等)见
 16 个音色发出(`app/src/transport/kit.ts`)。默认的 AUTO 会自己判断 —— 探测到
 bridge 就走 Ableton,没探测到就用内置音源。
 
+### 两条音轨
+
+March 是引擎里的第二条音轨(`transport/engine.ts` 的 `TrackId`):
+
+- **RHYTHM** —— 所有 tap:Rhythmic Intent 的循环 + Sound Intent 调的那个音色。
+- **MARCH** —— 生成出来的打击乐层,默认音量 60(Sound Source 窗口里两个 slider
+  分别控制;60 是"垫在下面"的起始配比,不是硬性规则)。
+
+两条轨共用一个 downbeat:`webAudioEngine.ts` 里的 `gridTop`。tapped loop 先响就
+由它定这个格子,March 在下一个小节线上切进来(像 Ableton 的 launch quantization,
+所以 release 之后可能要等最多一小节);tapped loop 从头重开时,March 会跟着重新
+对齐。换 pattern / 转旋钮不会动这个格子,所以不会把 March 顶掉重来。
+
+**March 始终在浏览器里出声**,即使 Sound Source 选的是 Ableton:一个 March 小节
+是三个音色同时响,bridge 一次只能发一个音、发给一个选中的乐器,要送进 Live 得先
+在 Live 里加一条 MIDI 轨和一个 rack。所以 `bridgeEngine.ts` 内部挂了一个只跑
+March 的 `WebAudioEngine`,并在 loop 开始的那一刻调 `alignGrid()` 去对齐 —— 这是
+浏览器能做到的最好近似,但它和 Live 是两个时钟。选 BUILT-IN 时两条轨在同一个
+AudioContext 里,对齐是精确的。
+
+生成逻辑(`march/grammar.ts` + `march/patterns.ts`)不依赖任何外部服务。
+
 ---
 
 ## 0.5 部署(公开 demo)

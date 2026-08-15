@@ -14,6 +14,20 @@
 /** One scheduled loop event: `pos` is 0..1 within the bar. */
 export type LoopEvent = { pos: number; velocity: number }
 
+/** The three fixed voices of the March instrument. They are named here rather
+    than in the March module because the *engine* is what resolves a voice to a
+    sound — March only says which of the three a step belongs to. */
+export type MarchVoiceId = 'low' | 'high' | 'tick'
+
+/** One scheduled March note: `pos` is 0..1 within the whole phrase, not within
+    a bar, so a five-bar phrase is one loop rather than five. */
+export type MarchEvent = { voice: MarchVoiceId; pos: number }
+
+/** The two tracks the mixer knows about. `'main'` is everything a tap plays —
+    Rhythmic Intent's loop and the instrument Sound Intent shapes; `'march'` is
+    the March layer, which is why it can sit under the other one. */
+export type TrackId = 'main' | 'march'
+
 /** Which tracks a macro write lands on. `'selected'` is an instrument property
     (Sound Intent); `'all'` is a property of the room (FX). */
 export type MacroScope = 'selected' | 'all'
@@ -60,6 +74,31 @@ export interface SoundEngine {
   startLoop(events: readonly LoopEvent[], barDuration: number): void
 
   stopLoop(): void
+
+  /** Start looping the March phrase, or swap the phrase of a running one.
+   *
+   * Two loops run side by side rather than one, because March is a second
+   * track: it has its own length (a phrase is one to five bars, the tapped loop
+   * is always two) and its own level. What they share is the grid — the engine
+   * launches March on the next `barDuration` boundary of the loop that is
+   * already running, so the two tracks agree about where the downbeat is
+   * instead of merely agreeing about tempo. */
+  startMarchLoop(
+    events: readonly MarchEvent[],
+    phraseDuration: number,
+    barDuration: number,
+  ): void
+
+  stopMarchLoop(): void
+
+  /** 0..1 through the March phrase; null when March is stopped, and null while
+      it is queued and waiting for its downbeat. The windows draw their playhead
+      from this, so what is drawn is what is scheduled. */
+  marchPhase(): number | null
+
+  /** Level of one track, 0..1. Two tracks, two faders — the reason March can be
+      the rhythm *behind* the rhythm rather than a second one competing with it. */
+  setTrackGain(track: TrackId, gain: number): void
 
   /** Move the mapping: every future note plays on this MIDI pitch. */
   setPitch(pitch: number): void
