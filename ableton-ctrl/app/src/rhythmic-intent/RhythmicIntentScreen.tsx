@@ -20,7 +20,7 @@ export function RhythmicIntentScreen() {
     setPitch,
     handleReset,
     playing,
-    playPos,
+    playhead,
     togglePlay,
   } = useSession()
 
@@ -32,9 +32,6 @@ export function RhythmicIntentScreen() {
         ? 'Recording'
         : 'Captured'
 
-  // The loop clock runs for as long as the loop is open, so the line keeps
-  // sweeping between takes — the Sound Visual's gradient is the same position.
-  const playhead = playing ? playPos : capture.state === 'ready' ? null : capture.progress
 
   return (
     <div className="ri-screen">

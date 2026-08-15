@@ -52,8 +52,10 @@ export type Session = {
   /** Clear the pattern, the knobs, the collection, and stop playback. */
   handleReset: () => void
   playing: boolean
-  /** 0..1 loop position while playing. */
-  playPos: number
+  /** 0..1 position of the loop, or null before there is a loop. The one
+      playhead: Rhythmic Intent draws it as a line, the Sound Visual as the
+      angular gradient turning the canvas, and both read it from here. */
+  playhead: number | null
   togglePlay: () => void
   collection: CollectionEntry[]
   selectedId: string | null
@@ -83,11 +85,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setPitch: engineSetPitch,
     onExternalTap,
   } = engine
-  // The tempo is the transport's; the loop's length follows from it. A ref
-  // too, for the playhead's rAF loop, which must not be re-created per change.
+  // The tempo is the transport's; the loop's length follows from it.
   const loopDuration = loopDurationFor(engine.bpm)
-  const loopDurationRef = useRef(loopDuration)
-  loopDurationRef.current = loopDuration
 
   const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS)
   const [collection, setCollection] = useState<CollectionEntry[]>([])
@@ -149,19 +148,17 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   // ── Loop playback ─────────────────────────────────────────────────
   // The *engine* schedules the looped notes (browser timers throttle when the
-  // tab is backgrounded — e.g. while Live has focus). The rAF loop here only
-  // animates the playhead, so a stalled tab never silences the loop.
+  // tab is backgrounded — e.g. while Live has focus), so a stalled tab never
+  // silences the loop. There is no playhead animation here: the capture's loop
+  // clock is already turning at the tempo, anchored to this same instant, so a
+  // second rAF loop would only be a second copy of one number — and a second
+  // 60 Hz state update pushed through every consumer of this session.
   const [playing, setPlaying] = useState(false)
-  const [playPos, setPlayPos] = useState(0)
   const playingRef = useRef(false)
-  const playStartRef = useRef(0)
-  const rafRef = useRef(0)
 
   const stopLoop = useCallback(() => {
-    cancelAnimationFrame(rafRef.current)
     playingRef.current = false
     setPlaying(false)
-    setPlayPos(0)
     engineStopLoop()
   }, [engineStopLoop])
 
@@ -169,19 +166,11 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const startLoop = useCallback(() => {
     playingRef.current = true
     setPlaying(true)
-    playStartRef.current = performance.now()
-    // The engine starts its loop at this instant too, so putting the capture
-    // clock here as well collapses the three clocks — heard, drawn, recorded —
-    // into one. Without it a tap played into a running loop would be filed at
-    // some unrelated phase of the pattern it was played against.
+    // The engine starts its loop at this instant, so putting the capture clock
+    // here too collapses the three clocks — heard, drawn, recorded — into one.
+    // Without it a tap played into a running loop would be filed at some
+    // unrelated phase of the pattern it was played against.
     captureAnchor()
-    const tick = (now: number) => {
-      if (!playingRef.current) return
-      const loop = loopDurationRef.current
-      setPlayPos((((now - playStartRef.current) / 1000) % loop) / loop)
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
   }, [captureAnchor])
 
   // While playing, (re)send the loop whenever the transformed pattern changes:
@@ -197,13 +186,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     // without it the new engine would never be told what to play.
   }, [playing, rendered, loopDuration, engineStartLoop, engineId])
 
-  useEffect(
-    () => () => {
-      cancelAnimationFrame(rafRef.current)
-      engineStopLoop()
-    },
-    [engineStopLoop],
-  )
+  useEffect(() => () => engineStopLoop(), [engineStopLoop])
 
   const togglePlay = useCallback(() => {
     if (playingRef.current) stopLoop()
@@ -298,7 +281,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     clearPattern,
     handleReset,
     playing,
-    playPos,
+    playhead: capture.state === 'ready' ? null : capture.progress,
     togglePlay,
     collection,
     selectedId,

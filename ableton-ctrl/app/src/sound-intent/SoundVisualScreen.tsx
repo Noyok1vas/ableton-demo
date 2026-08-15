@@ -389,8 +389,7 @@ function seedFromId(id: string): number {
 export function SoundVisualScreen() {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
-  const { rendered, playing, playPos, capture, removeTap, undoTap, canUndo, clearPattern } =
-    useRhythmicIntent()
+  const { rendered, playhead, removeTap, undoTap, canUndo, clearPattern } = useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Bridges from the sim (inside the effect) out to React.
   const setMarksRef = useRef<((marks: readonly Tap[]) => void) | null>(null)
@@ -456,13 +455,8 @@ export function SoundVisualScreen() {
   const fxRef = useRef(fx)
   fxRef.current = fx
 
-  // Exactly the rule Rhythmic Intent's own visualization uses, so the two
-  // playheads are the same playhead: for as long as a loop is open there IS a
-  // position, whether or not anything is being played or tapped — the two
-  // clocks are anchored together, so either source reads the same place.
-  // Written to a ref rather than passed in, because it moves every frame and
-  // the canvas — not React — is what redraws it.
-  const playhead = playing ? playPos : capture.state === 'ready' ? null : capture.progress
+  // The session's one playhead, mirrored into a ref rather than read at draw
+  // time: it moves every frame, and the canvas — not React — is what redraws it.
   const playheadRef = useRef(playhead)
   playheadRef.current = playhead
   const playheadOn = playhead !== null
@@ -472,6 +466,13 @@ export function SoundVisualScreen() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    // The field is drawn into this and blitted from it thereafter. Left on the
+    // default (accelerated) backing on purpose: the blit happens every frame
+    // and the pixel read-back only when a tone map is engaged, so this is the
+    // way round that keeps the frequent operation the cheap one.
+    const buffer = document.createElement('canvas')
+    const field = buffer.getContext('2d')
+    if (!field) return
 
     const taps: Tap[] = []
     const cores: CoreSpeck[] = []
@@ -486,6 +487,16 @@ export function SoundVisualScreen() {
     // passed, every mark is fixed and the last frame simply stays.
     let revealUntil = 0
     let rippleUntil = 0
+    // Was the last frame one of those? Kept so the frame *after* an animation
+    // ends still repaints the field once, at its finished state.
+    let wasAnimating = false
+    // The buffered field is stale and must be re-painted before the next blit —
+    // and `fieldGrid` remembers whether it was painted with the beat grid, which
+    // comes and goes with the loop.
+    let fieldDirty = true
+    let fieldGrid = false
+    // A pattern waiting to be placed, applied at the top of the next frame.
+    let pendingMarks: readonly Tap[] | null = null
     // The room, read live rather than snapshotted (see the FX block above).
     // `scatter` is REVERB's 0..1 amount; `toneLut` is null while both tone
     // sliders are at 0, and the post-process is skipped entirely.
@@ -504,6 +515,8 @@ export function SoundVisualScreen() {
       height = Math.max(1, Math.round(rect.height * dpr))
       canvas.width = width
       canvas.height = height
+      buffer.width = width
+      buffer.height = height
       // Geometry is in device pixels, so a resize invalidates every speck.
       // Seeded taps make this a faithful redraw, not a reshuffle.
       rebuildAll()
@@ -679,6 +692,7 @@ export function SoundVisualScreen() {
         spawnMark(tap, false, now)
         spawnTail(tap, false, now)
       }
+      fieldDirty = true
       scheduleDraw()
     }
 
@@ -687,6 +701,7 @@ export function SoundVisualScreen() {
     const setFx = (params: FxParams) => {
       scatter = clamp01((params.reverb - FX_MIN) / (FX_MAX - FX_MIN))
       toneLut = buildToneLut(params.highpass, params.saturate)
+      fieldDirty = true
       scheduleDraw()
     }
 
@@ -698,8 +713,7 @@ export function SoundVisualScreen() {
      * settling); the rest arrive already finished, because nothing about THEM
      * just happened.
      */
-    const setMarks = (next: readonly Tap[]) => {
-      const now = performance.now()
+    const applyMarks = (next: readonly Tap[], now: number) => {
       const before = new Set(taps.map((t) => t.id))
       taps.length = 0
       taps.push(...next)
@@ -713,6 +727,14 @@ export function SoundVisualScreen() {
         spawnMark(tap, fresh, now)
         spawnTail(tap, fresh, now)
       }
+      fieldDirty = true
+    }
+
+    /** Re-placing every speck is the expensive thing here, and a knob being
+        dragged asks for it faster than the screen can show it. So the list is
+        only remembered, and the work happens once, in the next frame. */
+    const setMarks = (next: readonly Tap[]) => {
+      pendingMarks = next
       scheduleDraw()
     }
 
@@ -722,8 +744,15 @@ export function SoundVisualScreen() {
 
     // ── Drawing ─────────────────────────────────────────────────────────
 
-    const frame = (now: number) => {
-      ctx.clearRect(0, 0, width, height)
+    /**
+     * The field — grid, marks, tails, ripples, tone map — painted into the
+     * buffer rather than onto the screen. It only has to be re-painted when
+     * something in it actually changes, which is what keeps the playhead's 60 Hz
+     * off the back of a hundred thousand specks: a frame that only turns the
+     * gradient blits this instead of re-laying the ink.
+     */
+    const paintField = (now: number) => {
+      field.clearRect(0, 0, width, height)
 
       const cx = width / 2
       const cy = height / 2
@@ -740,31 +769,31 @@ export function SoundVisualScreen() {
         // Spokes run past the corners rather than stopping at the ring: the
         // beat is a direction from the centre, not a segment of the circle.
         const reach = Math.hypot(width, height) / 2
-        ctx.globalAlpha = 1
-        ctx.strokeStyle = `rgba(0, 0, 0, ${GRID_ALPHA})`
-        ctx.lineWidth = Math.max(1, Math.round(dpr))
-        ctx.beginPath()
+        field.globalAlpha = 1
+        field.strokeStyle = `rgba(0, 0, 0, ${GRID_ALPHA})`
+        field.lineWidth = Math.max(1, Math.round(dpr))
+        field.beginPath()
         for (let beat = 0; beat < BEATS_PER_LOOP; beat++) {
           const theta = (beat / BEATS_PER_LOOP) * Math.PI * 2 - Math.PI / 2
-          ctx.moveTo(cx, cy)
-          ctx.lineTo(cx + Math.cos(theta) * reach, cy + Math.sin(theta) * reach)
+          field.moveTo(cx, cy)
+          field.lineTo(cx + Math.cos(theta) * reach, cy + Math.sin(theta) * reach)
         }
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.arc(cx, cy, CIRCLE_RADIUS * minDim(), 0, Math.PI * 2)
-        ctx.stroke()
+        field.stroke()
+        field.beginPath()
+        field.arc(cx, cy, CIRCLE_RADIUS * minDim(), 0, Math.PI * 2)
+        field.stroke()
       }
 
-      ctx.fillStyle = '#000000'
-      ctx.globalAlpha = BASE_ALPHA
+      field.fillStyle = '#000000'
+      field.globalAlpha = BASE_ALPHA
       for (const p of cores) {
-        ctx.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
+        field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
       }
 
       for (const p of tails) {
         if (p.revealAt > now) continue // the sweep hasn't reached this speck yet
-        ctx.globalAlpha = p.alpha
-        ctx.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
+        field.globalAlpha = p.alpha
+        field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
       }
 
       for (const ring of ripples) {
@@ -773,11 +802,11 @@ export function SoundVisualScreen() {
         // Ease-out to the resting radius, then nothing: u pins at 1 and the
         // ring is part of the pattern from there on.
         const r = ring.settleR * (1 - (1 - u) * (1 - u))
-        ctx.globalAlpha = BASE_ALPHA * RIPPLE_ALPHA * u
+        field.globalAlpha = BASE_ALPHA * RIPPLE_ALPHA * u
         for (const s of ring.specks) {
           const radius = r + s.jitter * ring.band
           if (radius <= 0) continue
-          ctx.fillRect(
+          field.fillRect(
             cx + ring.ox + Math.cos(s.angle) * radius + s.jx * stray,
             cy + ring.oy + Math.sin(s.angle) * radius + s.jy * stray,
             dot,
@@ -785,9 +814,9 @@ export function SoundVisualScreen() {
           )
         }
       }
-      ctx.globalAlpha = 1
+      field.globalAlpha = 1
 
-      // HIGH PASS FILTER + SATURATE, as one pass over the finished frame. The
+      // HIGH PASS FILTER + SATURATE, as one pass over the finished field. The
       // ink is black at some alpha, so re-mapping luminance is re-mapping alpha
       // and the RGB bytes can be left alone — including on pixels the taps never
       // touched, which is how an inverting map turns the surface itself black.
@@ -795,14 +824,41 @@ export function SoundVisualScreen() {
       // snapshotted later is what is on screen — which an SVG/CSS filter, the
       // cheaper way to do this, could not promise. The cost is the read-modify-
       // write over every pixel: ~8ms on a 1116×940 canvas versus ~0.8ms for the
-      // frame itself, which is why `toneLut` is null (and this whole block
-      // skipped) whenever both sliders sit at 0.
+      // ink itself, which is why `toneLut` is null (and this whole block
+      // skipped) whenever both sliders sit at 0 — and why this runs on a change
+      // rather than on a frame.
       if (toneLut) {
-        const image = ctx.getImageData(0, 0, width, height)
+        const image = field.getImageData(0, 0, width, height)
         const d = image.data
         for (let i = 3; i < d.length; i += 4) d[i] = toneLut[d[i]]
-        ctx.putImageData(image, 0, 0)
+        field.putImageData(image, 0, 0)
       }
+    }
+
+    /**
+     * One frame: the field, then the playhead over it. The field is re-painted
+     * only when something in it moved — a pattern change, a room change, a
+     * resize, or an animation still running — and otherwise blitted from the
+     * buffer, so a turning playhead costs one copy and one gradient.
+     */
+    const frame = (now: number) => {
+      if (pendingMarks) {
+        applyMarks(pendingMarks, now)
+        pendingMarks = null
+      }
+      const gridOn = playheadRef.current !== null
+      const animating = now < Math.max(revealUntil, rippleUntil)
+      // `wasAnimating` earns the one extra paint after an animation ends —
+      // without it the last specks of a tail would never be swept in.
+      if (fieldDirty || animating || wasAnimating || gridOn !== fieldGrid) {
+        paintField(now)
+        fieldDirty = false
+        fieldGrid = gridOn
+      }
+      wasAnimating = animating
+
+      ctx.clearRect(0, 0, width, height)
+      ctx.drawImage(buffer, 0, 0)
 
       // Where the loop is now, over the top of everything else (see the
       // playhead block above for why it sits outside the tone map).
@@ -815,7 +871,7 @@ export function SoundVisualScreen() {
         // tint is laid from the far side of the turn (1 - PLAYHEAD_SWEEP) up to
         // offset 1 — which is the same radius as offset 0. That wrap IS the
         // leading edge: full tint on one side of it, nothing on the other.
-        const g = ctx.createConicGradient(theta0, cx, cy)
+        const g = ctx.createConicGradient(theta0, width / 2, height / 2)
         const back = 1 - PLAYHEAD_SWEEP
         g.addColorStop(0, 'rgba(0, 0, 0, 0)')
         g.addColorStop(back, 'rgba(0, 0, 0, 0)')
@@ -829,8 +885,7 @@ export function SoundVisualScreen() {
       // Keep animating while a tail is still sweeping out, a ring is still
       // settling, or the playhead is running; once all three have stopped the
       // last frame stays on screen untouched — that frame is the pattern.
-      const busy = now < Math.max(revealUntil, rippleUntil) || playheadRef.current !== null
-      rafId = busy ? requestAnimationFrame(frame) : 0
+      rafId = animating || gridOn ? requestAnimationFrame(frame) : 0
     }
 
     setFx(fxRef.current) // the room the sim starts in

@@ -33,14 +33,47 @@ const radiusFor = (velocity: number) =>
 
 const xFor = (pos: number) => PAD_X + pos * TRACK_W
 
-export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizationProps) {
-  const gridLines = Array.from({ length: GRID_DIVISIONS + 1 }, (_, i) => {
-    const isBeat = i % (GRID_DIVISIONS / BEATS_PER_LOOP) === 0
-    // Barline: the loop spans two bars, so the midpoint reads as a downbeat.
-    const isBar = i % (GRID_DIVISIONS / BARS_PER_LOOP) === 0
-    return { x: xFor(i / GRID_DIVISIONS), isBeat, isBar }
-  })
+// The staff the pattern is drawn on: the 1/16 grid (fine lines, stronger on
+// each beat, heaviest on a barline), the beat numbers, and the centre line. It
+// is the same picture every time, while the playhead above it moves every
+// frame — so it is built once at module load rather than per render.
+const STAFF = (
+  <>
+    {Array.from({ length: GRID_DIVISIONS + 1 }, (_, i) => (
+      <line
+        key={i}
+        x1={xFor(i / GRID_DIVISIONS)}
+        y1={GRID_TOP}
+        x2={xFor(i / GRID_DIVISIONS)}
+        y2={GRID_BOTTOM}
+        stroke={i % (GRID_DIVISIONS / BEATS_PER_LOOP) === 0 ? 'var(--line-strong)' : 'var(--line-fine)'}
+        // Barline: the loop spans two bars, so the midpoint reads as a downbeat.
+        strokeWidth={i % (GRID_DIVISIONS / BARS_PER_LOOP) === 0 ? '1.5' : '1'}
+      />
+    ))}
+    {Array.from({ length: BEATS_PER_LOOP }, (_, beat) => (
+      <text
+        key={`beat-${beat}`}
+        x={xFor(beat / BEATS_PER_LOOP)}
+        y={LABEL_Y}
+        className="rhythm-vis-beat num"
+        textAnchor="middle"
+      >
+        {beat + 1}
+      </text>
+    ))}
+    <line
+      x1={PAD_X}
+      y1={CENTER_Y}
+      x2={W - PAD_X}
+      y2={CENTER_Y}
+      stroke="var(--line-fine)"
+      strokeWidth="1"
+    />
+  </>
+)
 
+export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizationProps) {
   return (
     <svg
       className="rhythm-vis"
@@ -48,41 +81,7 @@ export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizati
       role="img"
       aria-label="Two-bar rhythm pattern"
     >
-      {/* 1/16 grid: fine lines, stronger on each beat, heaviest on a barline */}
-      {gridLines.map(({ x, isBeat, isBar }, i) => (
-        <line
-          key={i}
-          x1={x}
-          y1={GRID_TOP}
-          x2={x}
-          y2={GRID_BOTTOM}
-          stroke={isBeat ? 'var(--line-strong)' : 'var(--line-fine)'}
-          strokeWidth={isBar ? '1.5' : '1'}
-        />
-      ))}
-
-      {/* Beat numbers 1–8 */}
-      {Array.from({ length: BEATS_PER_LOOP }, (_, beat) => (
-        <text
-          key={beat}
-          x={xFor(beat / BEATS_PER_LOOP)}
-          y={LABEL_Y}
-          className="rhythm-vis-beat num"
-          textAnchor="middle"
-        >
-          {beat + 1}
-        </text>
-      ))}
-
-      {/* Center line the events sit on */}
-      <line
-        x1={PAD_X}
-        y1={CENTER_Y}
-        x2={W - PAD_X}
-        y2={CENTER_Y}
-        stroke="var(--line-fine)"
-        strokeWidth="1"
-      />
+      {STAFF}
 
       {taps.map((tap) => {
         const x = xFor(tap.finalPos)
