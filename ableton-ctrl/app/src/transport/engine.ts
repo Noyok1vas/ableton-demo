@@ -11,8 +11,38 @@
  * resolving those names to its own nodes rather than to Live's parameters.
  */
 
-/** One scheduled loop event: `pos` is 0..1 within the bar. */
-export type LoopEvent = { pos: number; velocity: number }
+/**
+ * The four sound identities a tap can carry — the Selector's marks, named here
+ * for the same reason MarchVoiceId is: the *engine* resolves an identity to a
+ * sound. Everything above only says which of the four a tap was.
+ *
+ *   hit     — the rhythmic weight: a kick
+ *   tick    — the lighter rhythmic event: a hi-hat
+ *   splash  — the accent: a clap
+ *   scatter — the atmosphere: a soft noise texture, not a drum hit
+ *
+ * A note with no identity plays the pad the PITCH mapping selects, which is
+ * what a hardware pad's own taps do.
+ */
+export type SoundVoiceId = 'hit' | 'tick' | 'splash' | 'scatter'
+
+/**
+ * One scheduled loop event: `pos` is 0..1 within the bar. `voice` is the sound
+ * identity the tap was played with (absent means the selected pad), and
+ * `character` is that identity's one axis at the moment of input, 0..1 —
+ * absent for an identity that has none (SPLASH) and for a hardware pad's taps.
+ *
+ * Character travels WITH the event rather than being read from the Selector at
+ * play time. That is the whole of the v0.3 model: an event is a snapshot, so a
+ * loop can hold a soft hit and a hard one, and moving the slider afterwards
+ * changes neither.
+ */
+export type LoopEvent = {
+  pos: number
+  velocity: number
+  voice?: SoundVoiceId
+  character?: number
+}
 
 /** The three fixed voices of the March instrument. They are named here rather
     than in the March module because the *engine* is what resolves a voice to a
@@ -65,8 +95,10 @@ export interface SoundEngine {
       context, …). Status arrives through `onStatus`. */
   start(): void
 
-  /** Play one note now. `velocity` is 0..1. */
-  noteOn(velocity: number): void
+  /** Play one note now. `velocity` is 0..1; `voice` is the sound identity it
+      was played with (or absent for the selected pad) and `character` that
+      identity's axis at the moment of input. */
+  noteOn(velocity: number, voice?: SoundVoiceId, character?: number): void
 
   /** Start looping, or swap the pattern of a running loop. The *engine* owns
       the scheduling: browser timers throttle when the tab is backgrounded, so

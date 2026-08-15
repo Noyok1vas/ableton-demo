@@ -105,6 +105,8 @@ export function transformPattern(
       loosePos,
       finalPos,
       velocity: tap.velocity,
+      voice: tap.voice,
+      character: tap.character,
       kept: keptIndices.has(index),
     }
   })

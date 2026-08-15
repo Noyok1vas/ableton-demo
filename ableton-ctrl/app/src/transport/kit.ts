@@ -11,7 +11,7 @@
  * queued ahead of the clock — see webAudioEngine's scheduler.
  */
 
-import type { MarchVoiceId } from './engine.ts'
+import type { MarchVoiceId, SoundVoiceId } from './engine.ts'
 
 /** One pad, as a recipe rather than a sound file. `decay` is the voice's
     natural length in seconds at LENGTH's midpoint; LENGTH scales it. */
@@ -20,12 +20,18 @@ export type Voice = { label: string } & (
   | { kind: 'tom'; freq: number; decay: number }
   | { kind: 'snare'; tone: number; noiseMix: number; decay: number }
   | { kind: 'clap'; decay: number }
-  | { kind: 'hat'; cutoff: number; decay: number }
+  // `ring` 0..1 brings up the narrow metallic band an OPEN hat sustains — the
+  // part that is not simply a longer closed hat.
+  | { kind: 'hat'; cutoff: number; decay: number; ring?: number }
   | { kind: 'cymbal'; cutoff: number; decay: number }
   | { kind: 'rim'; decay: number }
   | { kind: 'bell'; freqs: [number, number]; decay: number }
   | { kind: 'block'; freq: number; decay: number }
   | { kind: 'shaker'; decay: number }
+  // Not a hit at all: a bed of filtered noise that swells in and rustles away.
+  // `cutoff` is where its band sits, `q` how narrow it is (low = full and wide,
+  // high = thin), `wobble` how fast the grain stirs (Hz).
+  | { kind: 'texture'; cutoff: number; q: number; wobble: number; decay: number }
 )
 
 /** Lowest pad — C1, bottom-left of the grid, matching PAD_BASE_PITCH. */
@@ -93,6 +99,148 @@ export const MARCH_KIT: Record<MarchVoiceId, MarchVoiceSpec> = {
   },
 }
 
+/**
+ * The four sound identities of the Selector: what HIT, TAP, SPLASH and SCATTER
+ * actually sound like.
+ *
+ * Their own kit rather than four of the 16 pads, for the same reason March has
+ * one: the pads are an instrument the performer chooses from, while these four
+ * are fixed roles in one composition — weight, lighter pulse, accent,
+ * atmosphere — and each is tuned to sit against the other three rather than to
+ * be a good general-purpose drum. They are still coloured live by ENERGY and
+ * LENGTH, which is what separates them from March's fixed voices: these ARE
+ * the instrument Sound Intent shapes.
+ *
+ * `level` trims one identity against the others *before* ENERGY and velocity;
+ * the per-kind TRIM below still applies on top, since these use the same
+ * synthesis the pads do.
+ */
+export type SoundVoiceSpec = { voice: Voice; level: number }
+
+export const SOUND_TYPE_KIT: Record<SoundVoiceId, SoundVoiceSpec> = {
+  // A classic electronic kick: low, solid, punchy. The deep pitch drop is the
+  // punch, and the long-ish body is what makes it feel grounded rather than
+  // clicky. This is the composition's rhythmic weight, so it carries full level.
+  hit: {
+    voice: { label: 'HIT', kind: 'kick', freq: 45, snap: 3.6, decay: 0.5 },
+    level: 1,
+  },
+  // A hi-hat: short, high, and the light event against HIT's weight. Its
+  // character runs from a rounder hat with some wash in it to a crisp one that
+  // is over almost before it registers — see resolveSoundVoice.
+  tick: {
+    voice: { label: 'TICK', kind: 'hat', cutoff: 8400, decay: 0.042 },
+    level: 0.78,
+  },
+  // A clap: sharp, immediate, brighter than HIT, and — because it is three
+  // fast bursts and a tail rather than one envelope — expressive in a way a
+  // drum hit is not. Loud enough to read as an accent, short enough not to
+  // become a second backbone.
+  splash: {
+    voice: { label: 'SPLASH', kind: 'clap', decay: 0.22 },
+    level: 0.92,
+  },
+  // Not a hit: filtered noise that swells in and rustles away, well under the
+  // others in level. The decay is long enough that one SCATTER covers most of
+  // a two-bar loop on its own, so the loop repeating it produces a continuous
+  // bed rather than a pulse — which is the point. SCATTER is the air the other
+  // three happen in.
+  scatter: {
+    voice: { label: 'SCATTER', kind: 'texture', cutoff: 2600, q: 0.6, wobble: 7.5, decay: 2.4 },
+    level: 0.42,
+  },
+}
+
+// ── Character → the voice that actually sounds ────────────────────────────
+// One 0..1 axis per identity, resolved here rather than at the call site so
+// that every path to a note — a live tap, a queued loop event, an audition in
+// the Selector — resolves it the same way. The values below ARE the axis: what
+// SOFT and HARD mean is these numbers and nothing else.
+
+// HIT: no numbers of its own. SOFT←→HARD is the existing Energy parameter under
+// a better name — it drives the same loudness-and-brightness pair that hitting
+// something harder drives, which is exactly what `energy` already did.
+
+// TICK: ROUNDED ←→ CRISPY, one continuous move over the same hi-hat.
+//
+// Rounded is the closed end of a hat: short, dry, damped, gone almost as soon
+// as it starts. Crispy is the open end: longer, brighter, with the metallic
+// band (`ring`) up underneath giving it wash and ring-out — an open hat is what
+// "crisp" (all transient, no dampening) actually sounds like, not what "round"
+// does. The axis runs FROM the short closed one TO the long open one, which is
+// why every pair below is ordered that way.
+const TICK_ROUNDED_DECAY = 0.026
+const TICK_CRISPY_DECAY = 0.3
+const TICK_ROUNDED_CUTOFF = 9900 // all edge, no body
+const TICK_CRISPY_CUTOFF = 6800 // more body under it
+// The crispy end spreads the same gesture over ten times the time, so it needs
+// trimming to sit at the same weight rather than reading as an accent.
+const TICK_CRISPY_TRIM = 0.84
+
+// SCATTER: airy to dense, both ends noise. The band walks DOWN and WIDENS —
+// thin and high becomes full and occupied. Nothing pitched is introduced at any
+// point of the travel; a wide low band is still a band of noise.
+const SCATTER_AIRY_CUTOFF = 5600
+const SCATTER_DENSE_CUTOFF = 1250
+const SCATTER_AIRY_Q = 1.15 // narrow → thin, breathable
+const SCATTER_DENSE_Q = 0.32 // wide → full, saturated
+const SCATTER_AIRY_WOBBLE = 11 // a fast flutter reads as air moving
+const SCATTER_DENSE_WOBBLE = 4.5 // a slow stir reads as mass
+const SCATTER_AIRY_LEVEL = 0.6
+const SCATTER_DENSE_LEVEL = 1.35
+
+const lerp = (a: number, b: number, u: number) => a + (b - a) * u
+
+/** What one identity plus its character comes to: the voice to play, the trim
+    to play it at, and — for HIT alone — the energy to play it with, which is
+    what that identity's axis controls. */
+export type ResolvedVoice = { voice: Voice; level: number; energy?: number }
+
+/**
+ * Resolve a sound identity and its recorded character into a voice.
+ *
+ * `character` is the value the EVENT carries, not the slider's current
+ * position — every caller passes what was snapshotted at the moment of input,
+ * which is what lets one bar hold a soft hit and a hard one.
+ */
+export function resolveSoundVoice(id: SoundVoiceId, character?: number): ResolvedVoice {
+  const spec = SOUND_TYPE_KIT[id]
+  if (character == null) return { voice: spec.voice, level: spec.level }
+  const c = Math.min(1, Math.max(0, character))
+
+  switch (spec.voice.kind) {
+    case 'kick':
+      return { voice: spec.voice, level: spec.level, energy: c }
+
+    case 'hat':
+      return {
+        voice: {
+          ...spec.voice,
+          decay: lerp(TICK_ROUNDED_DECAY, TICK_CRISPY_DECAY, c),
+          cutoff: lerp(TICK_ROUNDED_CUTOFF, TICK_CRISPY_CUTOFF, c),
+          // The wash belongs to the crispy/open end and is absent at rounded.
+          ring: c,
+        },
+        level: spec.level * lerp(1, TICK_CRISPY_TRIM, c),
+      }
+
+    case 'texture':
+      return {
+        voice: {
+          ...spec.voice,
+          cutoff: lerp(SCATTER_AIRY_CUTOFF, SCATTER_DENSE_CUTOFF, c),
+          q: lerp(SCATTER_AIRY_Q, SCATTER_DENSE_Q, c),
+          wobble: lerp(SCATTER_AIRY_WOBBLE, SCATTER_DENSE_WOBBLE, c),
+        },
+        level: spec.level * lerp(SCATTER_AIRY_LEVEL, SCATTER_DENSE_LEVEL, c),
+      }
+
+    // SPLASH and anything else: fixed by design, character ignored.
+    default:
+      return { voice: spec.voice, level: spec.level }
+  }
+}
+
 /** How a single hit is coloured by the live parameters. */
 export type HitParams = {
   /** 0..1 from the tap. */
@@ -105,7 +253,9 @@ export type HitParams = {
 }
 
 // One noise buffer per context, shared by every noise-based voice: two seconds
-// covers the longest cymbal even fully stretched by LENGTH.
+// covers the longest cymbal even fully stretched by LENGTH. SCATTER's texture
+// outlasts it, so that one voice loops the buffer instead of running off its
+// end (see `noiseSource`'s `loop`).
 const noiseBuffers = new WeakMap<BaseAudioContext, AudioBuffer>()
 
 function noise(ctx: BaseAudioContext): AudioBuffer {
@@ -137,11 +287,24 @@ function envelope(
   return gain
 }
 
-function noiseSource(ctx: BaseAudioContext, when: number, duration: number): AudioBufferSourceNode {
+function noiseSource(
+  ctx: BaseAudioContext,
+  when: number,
+  duration: number,
+  loop = false,
+): AudioBufferSourceNode {
   const source = ctx.createBufferSource()
   source.buffer = noise(ctx)
   // Start at a random offset so repeated hits aren't bit-identical.
-  source.start(when, Math.random() * 1.5, duration)
+  const offset = Math.random() * 1.5
+  if (loop) {
+    // For anything longer than the buffer: wrap rather than fall silent.
+    source.loop = true
+    source.start(when, offset)
+    source.stop(when + duration)
+  } else {
+    source.start(when, offset, duration)
+  }
   return source
 }
 
@@ -208,6 +371,11 @@ const TRIM: Record<Voice['kind'], number> = {
   bell: 2.2,
   block: 4,
   shaker: 1.5,
+  // Set by the same measurement as the rest, but read as RMS rather than peak:
+  // this voice has no transient, so its peak says nothing about how loud it is.
+  // At 1.5 it renders about 19dB under HIT's RMS — present as air under a loop,
+  // gone the moment you listen for it as a drum.
+  texture: 1.5,
 }
 
 /**
@@ -306,6 +474,15 @@ export function playVoice(
         .connect(highpass(ctx, Math.max(voice.cutoff, open)))
         .connect(gain)
         .connect(dest)
+      // What you actually hear when a hat opens is not just more of the same
+      // hiss but a narrow band ringing under it, so an open hat gets that band
+      // layered in rather than only a longer envelope. Without it the far end
+      // of CLOSED→OPEN reads as a hat someone forgot to stop.
+      if (voice.ring) {
+        const body = track(noiseSource(ctx, when, decay + 0.05))
+        const bodyGain = envelope(ctx, when, level * 0.34 * voice.ring, decay * 0.95, 0.005)
+        body.connect(bandpass(ctx, 9200, 8)).connect(bodyGain).connect(dest)
+      }
       break
     }
 
@@ -349,6 +526,31 @@ export function playVoice(
       // Slower attack than a hat: beads take a moment to hit the shell.
       const gain = envelope(ctx, when, level * 0.4, decay, 0.008)
       source.connect(highpass(ctx, Math.max(5600, open))).connect(gain).connect(dest)
+      break
+    }
+
+    case 'texture': {
+      // The one voice with no transient. Noise through a wide band — soft
+      // static rather than a hiss — swelling in over a long attack instead of
+      // snapping on, and stirred by a slow LFO so it rustles like sand rather
+      // than sitting there as a flat tone. Everything here is the opposite of
+      // the percussive envelope above, which is the point: SCATTER has to read
+      // as air, not as a fourth drum.
+      const attack = decay * 0.28
+      const span = attack + decay + 0.05
+      const source = track(noiseSource(ctx, when, span, true))
+      // ENERGY opens the band upward, the way it brightens every other voice;
+      // the character has already set where the band sits and how wide it is.
+      const band = bandpass(ctx, voice.cutoff * (0.55 + 0.9 * energy), voice.q)
+      // Amplitude stir: the LFO adds to a standing gain, so the bed breathes
+      // between roughly 0.45 and 1 instead of pulsing to silence.
+      const stir = ctx.createGain()
+      stir.gain.value = 0.72
+      const depth = ctx.createGain()
+      depth.gain.value = 0.28
+      track(tone(ctx, 'sine', voice.wobble, when, span)).connect(depth).connect(stir.gain)
+      const gain = envelope(ctx, when, level * 0.5, decay, attack)
+      source.connect(band).connect(stir).connect(gain).connect(dest)
       break
     }
   }

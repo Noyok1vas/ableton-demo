@@ -16,8 +16,10 @@
  * properties of the room, so they hang on the master chain and change what is
  * already sounding — exactly the split FX and Sound Intent describe.
  *
- * Two tracks play through it. MAIN is every tap: the pad Sound Intent shapes
- * and the loop Rhythmic Intent holds. MARCH is the generated percussion layer,
+ * Two tracks play through it. MAIN is every tap: the four Selector identities
+ * (see SOUND_TYPE_KIT), or the selected pad for a tap that carries none, both
+ * shaped by Sound Intent and held in Rhythmic Intent's loop. MARCH is the
+ * generated percussion layer,
  * with its own length and its own fader, which is what lets it sit *behind* the
  * other one. They meet at the room, so FX describes both, and — the part that
  * matters musically — they count from one shared downbeat, `gridTop`.
@@ -33,9 +35,10 @@ import type {
   MacroScope,
   MarchEvent,
   SoundEngine,
+  SoundVoiceId,
   TrackId,
 } from './engine.ts'
-import { KIT, KIT_BASE_PITCH, MARCH_KIT, playVoice } from './kit.ts'
+import { KIT, KIT_BASE_PITCH, MARCH_KIT, playVoice, resolveSoundVoice } from './kit.ts'
 
 /**
  * How far ahead of the clock notes are queued.
@@ -337,13 +340,13 @@ export class WebAudioEngine implements SoundEngine {
     }
   }
 
-  noteOn(velocity = 1): void {
+  noteOn(velocity = 1, voice?: SoundVoiceId, character?: number): void {
     const ctx = this.ctx
     if (!ctx) return
     // A tap *is* a gesture, so this is the moment a suspended context can
     // legally start; the note itself lands a few ms later.
     if (ctx.state !== 'running') void ctx.resume()
-    this.fire(ctx.currentTime, velocity)
+    this.fire(ctx.currentTime, velocity, voice, character)
   }
 
   startLoop(events: readonly LoopEvent[], barDuration: number): void {
@@ -518,17 +521,37 @@ export class WebAudioEngine implements SoundEngine {
     return this.gridTop + Math.ceil(offset / this.marchBar) * this.marchBar
   }
 
-  /** Schedule one hit of the selected pad. Returns the hit's sources so a
-      queued loop note can be taken back; a live tap discards them. */
-  private fire(when: number, velocity: number): AudioScheduledSourceNode[] {
+  /**
+   * Schedule one note. A note that carries a sound identity plays that
+   * identity's voice — HIT is a kick wherever it is played from, which is what
+   * makes the four Selector marks four sounds rather than four pictures of the
+   * same one. A note without one falls back to the pad the PITCH mapping
+   * selects, which is how a hardware pad's own taps still play what is under
+   * the finger.
+   *
+   * `character` is the identity's axis as the event recorded it, so a loop
+   * replays each note at the hardness or openness it was played with rather
+   * than at whatever the Selector says now. HIT's axis IS energy, which is why
+   * the resolver can hand one back and override the live macro for that note.
+   *
+   * Returns the hit's sources so a queued loop note can be taken back; a live
+   * tap discards them.
+   */
+  private fire(
+    when: number,
+    velocity: number,
+    sound?: SoundVoiceId,
+    character?: number,
+  ): AudioScheduledSourceNode[] {
     const ctx = this.ctx
     const bus = this.mainGain
     if (!ctx || !bus) return []
-    const voice = KIT[this.pitch - KIT_BASE_PITCH]
+    const identity = sound ? resolveSoundVoice(sound, character) : undefined
+    const voice = identity?.voice ?? KIT[this.pitch - KIT_BASE_PITCH]
     if (!voice) return [] // a pitch outside the pad grid has no sound here
     return playVoice(ctx, bus, voice, when, {
-      velocity: Math.min(1, Math.max(0, velocity)),
-      energy: this.energy,
+      velocity: Math.min(1, Math.max(0, velocity)) * (identity?.level ?? 1),
+      energy: identity?.energy ?? this.energy,
       // LENGTH's midpoint is a voice's natural decay; the ends roughly halve
       // and double it.
       lengthScale: 0.45 + this.length * 1.7,
@@ -563,7 +586,9 @@ export class WebAudioEngine implements SoundEngine {
     if (!ctx) return
     const now = ctx.currentTime
     const horizon = now + LOOKAHEAD_S
-    this.main.pump(now, horizon, (event, at) => this.fire(at, event.velocity))
+    this.main.pump(now, horizon, (event, at) =>
+      this.fire(at, event.velocity, event.voice, event.character),
+    )
     this.march.pump(now, horizon, (event, at) => this.fireMarch(event, at))
   }
 

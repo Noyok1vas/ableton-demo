@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { IDENTITY_CHARACTER } from './character.ts'
 import { renderPatternTile, type Pattern } from './patterns.ts'
 
 /**
- * One selector mark. The pattern is rasterized once into a small tile and then
- * drawn scaled to fit, with smoothing — that upscale is what gives the marks
- * their soft, printed look instead of a crisp vector edge.
+ * One selector mark — the IDENTITY level. The pattern is rasterized once into a
+ * small tile and then drawn scaled to fit, with smoothing; that upscale is what
+ * gives the marks their soft, printed look instead of a crisp vector edge.
+ *
+ * Deliberately fixed at IDENTITY_CHARACTER and never redrawn. This icon answers
+ * "which sound is this", and the answer does not change when a slider moves —
+ * the panel's preview is where the current state lives. Keeping the two apart
+ * is what lets the grid stay a stable set of four things to choose between.
  */
 export function SelectorIcon({ pattern }: { pattern: Pattern }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // The grain is random per rasterization; keep one tile per pattern so a
   // resize (or a re-render) doesn't reshuffle the mark's texture.
-  const tile = useMemo(() => renderPatternTile(pattern), [pattern])
+  const tile = useMemo(() => renderPatternTile(pattern, IDENTITY_CHARACTER), [pattern])
 
   useEffect(() => {
     const canvas = canvasRef.current

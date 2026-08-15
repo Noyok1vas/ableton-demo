@@ -34,13 +34,16 @@ function toMacroValue(value: number): number {
     loop stays Rhythmic Intent's answer — one that keeps changing as the knobs
     turn. `params` is a snapshot of the Semantic State at the moment of the tap,
     so a later visual/sound reads the values it was fired with even if the
-    sliders move afterwards. `gesture` is the Selector mark that fired it and
-    `repeats` the RIPPLE count it carried — both snapshotted for the same
-    reason as `params`: a mark is whatever it was when it sounded. */
+    sliders move afterwards. `gesture` is the sound identity that fired it —
+    which voice sounded and which mark is drawn — `character` that identity's
+    axis at the instant of the press (null for SPLASH, which has none), and
+    `repeats` the Ripple window's count. All snapshotted for the same reason as
+    `params`: a mark is whatever it was when it sounded. */
 export type SoundTap = {
   id: string
   params: SoundParams
   gesture: PatternId
+  character: number | null
   repeats: number
 }
 
@@ -53,7 +56,7 @@ export type SoundIntentSessionValue = {
       `gesture`/`repeats` describe which mark sounded. Currently drives only the
       Sound Visual; the Ableton parameter send will hang off the same call once
       dimensions are mapped. */
-  emitTap: (id: string, gesture: PatternId, repeats: number) => void
+  emitTap: (id: string, gesture: PatternId, repeats: number, character: number | null) => void
   /** Subscribe to taps (the Sound Visual canvas does). Returns an unsubscribe. */
   onTap: (listener: TapListener) => () => void
 }
@@ -103,8 +106,8 @@ export function SoundIntentSession({ children }: { children: ReactNode }) {
   }, [engineId, engineReady, setMacro])
 
   const emitTap = useCallback(
-    (id: string, gesture: PatternId, repeats: number) => {
-      const tap: SoundTap = { id, params: { ...paramsRef.current }, gesture, repeats }
+    (id: string, gesture: PatternId, repeats: number, character: number | null) => {
+      const tap: SoundTap = { id, params: { ...paramsRef.current }, gesture, character, repeats }
       for (const listener of listeners.current) listener(tap)
       // TODO: once the five dimensions are mapped, also push these params to
       // Ableton here (via the bridge) so sound + visual share this one event.

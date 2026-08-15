@@ -16,6 +16,7 @@ import type {
   MarchEvent,
   SoundEngine,
   SoundSourceId,
+  SoundVoiceId,
   TrackId,
 } from './engine.ts'
 
@@ -101,8 +102,11 @@ export type SoundEngineSessionValue = {
       Typed into the Sound Source window; the loop re-times to follow. */
   bpm: number
   setBpm: (bpm: number) => void
-  /** Play one note now. `velocity` is 0..1. */
-  noteOn: (velocity?: number) => void
+  /** Play one note now. `velocity` is 0..1; `voice` is the Selector identity
+      the tap carried (or absent for the pad the PITCH mapping selects) and
+      `character` that identity's axis at the moment of input. Also the
+      Selector panel's audition, which sounds a note without recording one. */
+  noteOn: (velocity?: number, voice?: SoundVoiceId, character?: number) => void
   /** Start or replace the looping bar. */
   startLoop: (events: readonly LoopEvent[], barDuration: number) => void
   stopLoop: () => void
@@ -222,8 +226,8 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer)
   }, [source, bridgeEngineConnected])
 
-  const noteOn = useCallback((velocity = 1) => {
-    engineRef.current?.noteOn(velocity)
+  const noteOn = useCallback((velocity = 1, voice?: SoundVoiceId, character?: number) => {
+    engineRef.current?.noteOn(velocity, voice, character)
   }, [])
 
   const startLoop = useCallback((events: readonly LoopEvent[], barDuration: number) => {

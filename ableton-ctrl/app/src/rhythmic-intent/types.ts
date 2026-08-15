@@ -1,3 +1,5 @@
+import type { SoundVoiceId } from '../transport/engine.ts'
+
 /** One captured tap. `time` is seconds from the first tap of the loop. `id` is
     stable for the life of the tap: it is what a later edit (the Sound Visual's
     UNDO, a double-click on a mark) names, and what the Sound Visual keys its
@@ -7,6 +9,22 @@ export type Tap = {
   time: number
   /** 0..1. GUI taps are uniform (1.0); a hardware pad will supply real values later. */
   velocity: number
+  /** Which of the four Selector identities was played. Part of the recorded
+      pattern rather than of the Sound Visual's own bookkeeping, because it is
+      part of what was played: it has to survive being stored in the Collection
+      and loaded back, and it is what the engine resolves to a sound. Absent for
+      a tap that came from a hardware pad, which plays whatever pad the PITCH
+      mapping points at. */
+  voice?: SoundVoiceId
+  /** That identity's character axis at the instant this tap fired, 0..1 — the
+      snapshot the whole v0.3 model turns on.
+   *
+   * It is a COPY, not a link. Once it is here, moving the Selector's slider
+   * changes what the next tap will be and nothing about this one, which is what
+   * lets a bar hold a soft hit and a hard one and stay that way. Absent means
+   * the identity has no axis (SPLASH — the spec's `characterValue: null`) or
+   * the tap came from hardware. */
+  character?: number
 }
 
 export type CaptureState = 'ready' | 'recording' | 'complete'
@@ -73,6 +91,12 @@ export type RenderedTap = {
   /** Final position after tightness + phase, 0..1. */
   finalPos: number
   velocity: number
+  /** The identity and character this tap was played with — carried through
+      untouched, since no transform has any business changing what a tap WAS.
+      TIGHTNESS and PHASE move when a sound happened; they do not get to edit
+      what it sounded like. */
+  voice?: SoundVoiceId
+  character?: number
   /** False when removed by the density control. */
   kept: boolean
 }

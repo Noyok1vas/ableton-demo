@@ -6,7 +6,6 @@ import { SOUND_MAX, SOUND_MIN } from './types.ts'
 import { useFx } from '../fx/session.tsx'
 import { FX_MAX, FX_MIN, type FxParams } from '../fx/types.ts'
 import type { PatternId } from '../selector/patterns.ts'
-import { REPEAT_INTERVAL_MS, RIPPLE_MAX } from '../ripple/types.ts'
 import './sound-intent.css'
 
 /** The direction a speck strays in when REVERB scatters the field: a fixed
@@ -27,35 +26,22 @@ type CoreSpeck = { x: number; y: number } & Stray
     `revealAt = 0`, i.e. already fully swept, so a resize redraws instantly. */
 type TailSpeck = { x: number; y: number; alpha: number; revealAt: number } & Stray
 
-/** One speck of a ripple ring: polar around the mark's centre, so only the
-    radius moves while the ring settles. */
-type RingSpeck = { angle: number; jitter: number } & Stray
-
-/** One repeat of a RIPPLE mark on its way to its resting radius. Specks are
-    polar around the mark's own centre, so only the radius has to move; once
-    `bornAt + RIPPLE_SETTLE_MS` has passed nothing about the ring changes
-    again. */
-type RippleRing = {
-  /** Mark centre, device px from the canvas centre — the tap's point on the
-      bar circle, shared by every ring of the mark. */
-  ox: number
-  oy: number
-  settleR: number
-  band: number
-  /** When this repeat sounds. 0 means "long settled" — used when a mark is
-      re-placed after a resize, where it must appear finished, not replayed. */
-  bornAt: number
-  specks: RingSpeck[]
-}
+/** One grain of a SCATTER patch. Like every other speck it belongs to a mark at
+    a moment; what makes it its own type is the alpha, which varies per grain —
+    a spatter made of identical specks reads as a soft disc rather than as
+    thrown texture. */
+type GrainSpeck = { x: number; y: number; alpha: number } & Stray
 
 /** The loop's record: everything on screen is a pure function of this list,
     which is what makes a full re-place possible whenever it changes — a knob
     turned in Rhythmic Intent, a tap added, one deleted, the canvas resized.
     `id` is Rhythmic Intent's tap id, so a mark keeps its identity (and its
     seed, and its snapshot) while `pos` moves underneath it. `energy` and
-    `length` are the two mapped Sound Dimensions, `gesture` decides which mark
-    the tap draws and `repeats` is RIPPLE's ring count — all snapshotted at the
-    tap, so a later slider move never edits a mark that has already sounded. */
+    `length` are the two mapped Sound Dimensions, `gesture` is the sound
+    identity that decides WHICH of the four marks the tap draws and `character`
+    is that identity's axis, which decides what that mark LOOKS LIKE within its
+    own kind — all snapshotted at the tap, so a later slider move never edits a
+    mark that has already sounded. */
 type Tap = {
   id: string
   pos: number
@@ -63,7 +49,7 @@ type Tap = {
   length: number
   seed: number
   gesture: PatternId
-  repeats: number
+  character: number | null
 }
 
 // Tuning for the ink-drop look (see reference image 2): a tap lands as a
@@ -132,6 +118,51 @@ const ENERGY_MAX_RADIUS = 1.4 // …and at energy 100
 const ENERGY_MIN_DENSITY = 0.12 // share of PARTICLES_PER_TAP at energy 0
 const ENERGY_MAX_DENSITY = 1 // …and at energy 100
 
+// ── Character → variation within a mark ───────────────────────────────────
+// The v0.3 addition, and the whole point of it: identity says WHICH mark, and
+// character says what that mark is LIKE. Two HITs are both solid discs and
+// still visibly a soft one and a hard one.
+//
+// Every number here is read from the TAP's own snapshot, never from the
+// Selector. Moving a slider changes what the next mark will be and nothing
+// about the ones already on the ring — the canvas is a record, not a view.
+//
+// HIT — SOFT ←→ HARD. Its axis IS Energy (see kit.ts), so a hit with a
+// character uses it in place of the global ENERGY and gets that dimension's
+// existing size-and-density treatment for free. What is new is the
+// DISTRIBUTION: a soft hit is an even, fuzzy-edged cloud with no middle; a hard
+// one gathers its ink into a genuinely dark core behind a tighter edge. Same
+// disc either way — the mark never becomes another shape.
+const HIT_SOFT_CLUSTER = 0.5 // radius sampling exponent: 0.5 is an even disc…
+const HIT_HARD_CLUSTER = 0.33 // …and below it the ink pulls into the centre
+const HIT_SOFT_EDGE = 2.4 // multiplier on EDGE_SOFT — soft bleeds outward…
+const HIT_HARD_EDGE = 0.6 // …and hard stops where it stops
+
+// TICK — ROUNDED ←→ CRISPY. The ring stays hollow at every point of the
+// travel; what changes is its size and whether it is one line or many marks.
+// Rounded is a small unbroken contour; crispy is a wider circle divided into
+// separate arcs, each holding less and less of its share — the same shape gone
+// granular, which is what the Selector's preview shows too.
+const TICK_ROUND_SCALE = 0.85 // multiplier on TICK_RADIUS when fully rounded…
+const TICK_CRISP_SCALE = 1.38 // …and when fully crispy
+const TICK_BREAK_FROM = 0.18 // below this the contour stays solid
+const TICK_MIN_SEGMENTS = 8
+const TICK_MAX_SEGMENTS = 20
+const TICK_MIN_DUTY = 0.3 // share of a segment that stays ink, at fully crispy
+
+// SCATTER — AIRY ←→ DENSE. How occupied the patch is, three ways at once: how
+// many grains it holds, how strongly each prints, and how much of it lies
+// outside the clumps. Airy is a few separated specklings; dense closes the
+// patch up. Character owns this axis alone — ENERGY deliberately does NOT also
+// scale it, because two controls fighting over one quantity is how a prototype
+// stops telling you anything.
+const SCATTER_AIRY_COUNT = 0.35 // share of SCATTER_GRAINS at airy…
+const SCATTER_DENSE_COUNT = 1.4 // …and at dense
+const SCATTER_AIRY_INK = 0.55 // multiplier on SCATTER_ALPHA at airy…
+const SCATTER_DENSE_INK = 1.3 // …and at dense
+const SCATTER_AIRY_LOOSE = 0.24 // share of grains free of a clump at airy…
+const SCATTER_DENSE_LOOSE = 0.66 // …and at dense, where the patch evens out
+
 // ── Length → ink tail ─────────────────────────────────────────────────────
 // LENGTH is Sound Intent's second dimension: how long a sound rings on after it
 // is struck. On this canvas time IS the angle around the circle, so length gets
@@ -182,28 +213,61 @@ const TAIL_BIAS = 1.6
 const TAIL_GROWTH_S = 0.9
 const TAIL_SWEEP_EASE = 0.75
 
-// ── Ripple → a mark that settles ──────────────────────────────────────────
-// The RIPPLE gesture lands as concentric rings instead of a blot: one ring per
-// repeat, all of them centred on the tap's own point of the bar circle, and
-// each born when its repeat sounds — the ratchet interval read on the same
-// clock as everything else here. Then they stop. Every ring eases out to a
-// fixed radius and stays there, because this canvas is the bar's pattern,
-// waiting to be snapshotted, not a live animation; the Ripple window is where
-// the wave keeps travelling.
+// ── Tick → a ring ○ ───────────────────────────────────────────────────────
+// The hat's mark: HIT's own outline with nothing inside it. One contour, no
+// repeats — the whole point of the pair is that ● and ○ are the same mark in
+// two states.
 //
-// Ring i settles at (i+1)/RIPPLE_MAX of the mark's radius — fixed slots, the
-// same convention as the Ripple window's resting preview, so a count reads the
-// same in both places.
-// Wider than a blot: four rings have to stay separable at the size a window
-// actually gets on the canvas, not just at full screen.
-const RIPPLE_OUTER_RADIUS = 0.1 // outermost ring, as a fraction of minDim
-const RIPPLE_SPECKS_PER_RING = 340
-const RIPPLE_BAND = 0.0035 // ring thickness (gaussian sigma), fraction of minDim
-const RIPPLE_SETTLE_MS = 420 // one ring's travel from the centre to its radius
-const RIPPLE_ALPHA = 0.85 // ink strength once settled, as a multiple of BASE_ALPHA
-// Bounds the cost of the full-field redraw, the same way MAX_CORE_PARTICLES
-// does for blots: ~80 four-ring marks.
-const MAX_RIPPLE_RINGS = 320
+// Sized a shade wider than the blot at the same Energy, because an outline
+// reads smaller than a filled shape of equal radius; ENERGY scales it exactly
+// as it scales HIT, so the two stay a matched pair right across the slider.
+const TICK_RADIUS = 0.048 // ring radius, as a fraction of minDim
+const TICK_BAND = 0.0035 // outline thickness (gaussian sigma), fraction of minDim
+const TICK_SPECKS = 1100 // ink in the outline at full density
+// TICK, SPLASH and HIT all draw into `cores`, at the same BASE_ALPHA. That is
+// on purpose: the three are one graphic system, and what separates them is
+// shape alone — filled, hollow, radiating. A hollow mark that were also faint
+// would read as a weak HIT rather than as its own thing.
+
+// ── Splash → one solid burst ✳ ────────────────────────────────────────────
+// The clap's sharp transient: eight long strokes out of a small, very dense
+// middle. Deliberately NOT rings and NOT anything that expands — a clap is one
+// instant, so its mark is one shape, complete the moment it lands.
+//
+// The strokes carry most of the ink and hold their width along their length,
+// which is what makes the mark read as something thrown outward rather than as
+// a star glyph stamped on the ring.
+const SPLASH_CORE_RADIUS = 0.011 // the dense centre, as a fraction of minDim
+const SPLASH_RAYS = 8
+const SPLASH_REACH = 0.088 // how far a stroke throws, fraction of minDim
+const SPLASH_RAY_WIDTH = 0.0038 // stroke half-width at the core (gaussian sigma)
+const SPLASH_RAY_TAPER = 0.3 // share of that width lost by the tip
+const SPLASH_SPECKS = 2600
+const SPLASH_CORE_SHARE = 0.18 // share of the ink held in the centre
+// Ink along a stroke: barely biased, so the ray reads as an even line that ends
+// rather than as a spike thinning from the moment it leaves.
+const SPLASH_RAY_BIAS = 1.15
+// Reach varies a little per stroke — a burst is energetic, not engineered.
+const SPLASH_REACH_JITTER = 0.22
+
+// ── Scatter → a spattered patch on the ring ───────────────────────────────
+// SCATTER is an event like the other three: it lands at its own point of the
+// bar circle, as a patch of spattered grain rather than a defined shape. It is
+// the same texture the Selector shows, at the same sort of density — a handful
+// of soft clumps with grain thrown between them, wider and looser than any of
+// the other marks but still plainly a mark AT a time.
+//
+// Its specks keep their own alpha (unlike the other three) and are drawn first,
+// under everything: a patch is atmosphere that happens to have a moment, so it
+// should sit behind whatever else shares that corner of the ring.
+const SCATTER_PATCH_RADIUS = 0.062 // the patch's extent, as a fraction of minDim
+const SCATTER_BLOBS = 8 // soft clumps inside it…
+const SCATTER_BLOB_SPREAD = 0.019 // …each this wide (gaussian sigma), fraction of minDim
+const SCATTER_GRAINS = 2400 // grains per patch at full density
+const MAX_GRAIN_PARTICLES = 44000
+// Subtle by contract: the patch has to read as texture rather than as a second
+// kind of blot. Each grain also varies within this, so it stays spatter.
+const SCATTER_ALPHA = 0.42 // multiple of BASE_ALPHA, at a grain's strongest
 
 // ── The beat grid → where the whole beats are ─────────────────────────────
 // The bottom layer, drawn for as long as the loop is open — which is exactly as
@@ -352,9 +416,18 @@ function makeRng(seed: number): () => number {
  * Canvas-owned diffusion visual. React owns the page/state; the canvas owns all
  * drawing, animation, and the particle sim. Each tap lands on a big circle —
  * the bar's timeline bent into a ring (12 o'clock is the bar start, clockwise)
- * — as the mark of whichever gesture fired it: BLOOM leaves an ink blot, RIPPLE
- * leaves concentric rings, one per repeat. Sound Intent's LENGTH then smears
- * that mark into a clockwise tail along the ring — how long the sound rings on.
+ * — as the mark of whichever of the four sound identities fired it:
+ *
+ *   HIT     ● a solid ink blot          (the kick)
+ *   TICK    ○ a ring, whole or broken   (the hat)
+ *   SPLASH  ✳ one solid radial burst    (the clap)
+ *   SCATTER · a spattered patch of grain (the noise)
+ *
+ * All four are marks at a moment. What separates SCATTER is only that it is
+ * texture rather than a shape — a wider, looser patch, drawn underneath the
+ * others where they overlap. Sound Intent's LENGTH then smears each mark but
+ * that one into a clockwise tail — how long the sound rings on.
+ *
  * Marks persist; the ring only clears on RESET or on the tap that begins a
  * fresh loop. Over all of it turns the playhead: the same position Rhythmic
  * Intent's line marks, drawn here as an angular gradient sweeping the whole
@@ -374,7 +447,7 @@ type Snapshot = {
   length: number
   seed: number
   gesture: PatternId
-  repeats: number
+  character: number | null
 }
 
 /** A seed for a tap that arrived without one — a pattern loaded from the
@@ -412,7 +485,7 @@ export function SoundVisualScreen() {
           length: tap.params.d2,
           seed: (Math.random() * 0xffffffff) >>> 0,
           gesture: tap.gesture,
-          repeats: tap.repeats,
+          character: tap.character,
         })
       }),
     [onTap],
@@ -435,8 +508,13 @@ export function SoundVisualScreen() {
               energy: p.d1,
               length: p.d2,
               seed: seedFromId(t.id),
-              gesture: 'bloom',
-              repeats: 1,
+              // The tap itself remembers which identity and character it was
+              // played with — that is what survives a Collection entry being
+              // loaded back, so a reloaded pattern draws the marks it was
+              // played with rather than four identical blots. A tap with
+              // neither came from a hardware pad.
+              gesture: t.voice ?? 'hit',
+              character: t.character ?? null,
             }
             snapshotsRef.current.set(t.id, snapshot)
           }
@@ -475,18 +553,20 @@ export function SoundVisualScreen() {
     if (!field) return
 
     const taps: Tap[] = []
+    // HIT's blot, TICK's ring and SPLASH's burst all live here: three shapes,
+    // one kind of speck, one draw pass.
     const cores: CoreSpeck[] = []
     const tails: TailSpeck[] = []
-    const ripples: RippleRing[] = []
+    // SCATTER's patches, kept apart because they are drawn first and faintest.
+    const grains: GrainSpeck[] = []
     let width = 0
     let height = 0
     let dpr = 1
     let rafId = 0
-    // The canvas redraws while either of these is still in the future: tails
-    // are being swept out, or ripple rings are still settling. Once both have
-    // passed, every mark is fixed and the last frame simply stays.
+    // The canvas redraws while this is still in the future — tails are being
+    // swept out. Once it passes, every mark is fixed and the last frame simply
+    // stays. Nothing else here animates: all four marks land complete.
     let revealUntil = 0
-    let rippleUntil = 0
     // Was the last frame one of those? Kept so the frame *after* an animation
     // ends still repaints the field once, at its finished state.
     let wasAnimating = false
@@ -524,12 +604,63 @@ export function SoundVisualScreen() {
 
     // ── Spawning ────────────────────────────────────────────────────────
 
-    /** The blot: Energy's territory. FX never re-spawns it, only re-draws it. */
+    /** Where a mark sits: the bar bent into a ring, 0 at 12 o'clock, clockwise
+        around. Shared by the three marks that have a moment; SCATTER, which has
+        none, never calls it. */
+    const markCentre = (tap: Tap, dim: number) => {
+      const theta = tap.pos * Math.PI * 2 - Math.PI / 2
+      return { ox: Math.cos(theta) * CIRCLE_RADIUS * dim, oy: Math.sin(theta) * CIRCLE_RADIUS * dim }
+    }
+
+    /** Make room for `count` more core specks by shedding the oldest ink. Every
+        mark lands complete: a bar denser than the cap loses its earliest marks
+        rather than spawning a late tap with nothing in it. The cap rides the
+        ink correction, so it still means "a full 1/16 bar of marks" rather than
+        "fewer taps the bigger the window gets". */
+    const makeRoom = (count: number, inkScale: number) => {
+      const overflow = cores.length + count - Math.round(MAX_CORE_PARTICLES * inkScale)
+      if (overflow > 0) cores.splice(0, overflow)
+    }
+
+    /** The tap's ENERGY as 0..1 — how hard the whole instrument is being
+        played, read from its snapshot. */
+    const energyOf = (tap: Tap) => clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
+
+    /** The tap's character as 0..1, or 0.5 for an identity that has no axis —
+        SPLASH, which is drawn the same way every time by design. */
+    const characterOf = (tap: Tap) => (tap.character === null ? 0.5 : clamp01(tap.character))
+
+    /** TICK's ring radius: ENERGY sizes it as it sizes every mark, and ROUNDED
+        → CRISPY widens it on top. Shared with the tail, which has to know where
+        the hollow is in order to keep out of it. */
+    const tickRingRadius = (tap: Tap, dim: number) =>
+      TICK_RADIUS *
+      lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, energyOf(tap)) *
+      lerp(TICK_ROUND_SCALE, TICK_CRISP_SCALE, characterOf(tap)) *
+      dim
+
+    /**
+     * The HIT blot, SOFT ←→ HARD.
+     *
+     * Its character IS Energy, so a hit that carries one uses it in place of
+     * the global ENERGY and inherits that dimension's size and density
+     * treatment unchanged — which is what "map the existing parameter onto the
+     * slider" has to mean if it is to mean anything. On top of that the
+     * character redistributes the ink: soft spreads evenly and bleeds at the
+     * edge, hard pulls into a dark core behind a tighter one.
+     *
+     * FX never re-spawns this, only re-draws it.
+     */
     const spawnCore = (tap: Tap) => {
       const dim = minDim()
       const rand = makeRng(tap.seed)
-      const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
+      // Character replaces ENERGY for a hit rather than multiplying it: one
+      // quantity, one control. A hit with no character (a hardware pad's) still
+      // reads the global dimension, exactly as before.
+      const e = tap.character === null ? energyOf(tap) : clamp01(tap.character)
       const coreR = CORE_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * dim
+      const cluster = lerp(HIT_SOFT_CLUSTER, HIT_HARD_CLUSTER, e)
+      const edge = EDGE_SOFT * lerp(HIT_SOFT_EDGE, HIT_HARD_EDGE, e) * dim
       const inkScale = ink()
       const count = Math.max(
         1,
@@ -540,21 +671,18 @@ export function SoundVisualScreen() {
             inkScale,
         ),
       )
-      // The bar bent into a ring: 0 at 12 o'clock, clockwise around.
-      const theta = tap.pos * Math.PI * 2 - Math.PI / 2
-      const ox = Math.cos(theta) * CIRCLE_RADIUS * dim
-      const oy = Math.sin(theta) * CIRCLE_RADIUS * dim
-      // Always land a full blot. If the bar is denser than the cap, shed the
-      // oldest ink first — never spawn 0 particles and "lose" a late tap.
-      // The cap rides the same factor, so it still means "a full 1/16 bar of
-      // blots" rather than "fewer taps the bigger the window gets".
-      const overflow = cores.length + count - Math.round(MAX_CORE_PARTICLES * inkScale)
-      if (overflow > 0) cores.splice(0, overflow)
+      const { ox, oy } = markCentre(tap, dim)
+      makeRoom(count, inkScale)
       for (let i = 0; i < count; i++) {
-        // sqrt sampling gives uniform 2D density (no centre spike, no hard
-        // ring); the gaussian softener lets the boundary bleed a hair.
+        // The exponent is the whole soft/hard distribution: 0.5 is sqrt
+        // sampling, i.e. uniform 2D density with no centre spike, and anything
+        // below it gathers ink toward the middle. The gaussian softener then
+        // lets the boundary bleed — a lot when soft, barely at all when hard.
         const angle = rand() * Math.PI * 2
-        const radius = Math.max(0, coreR * Math.sqrt(rand()) + gaussianFrom(rand) * EDGE_SOFT * dim)
+        const radius = Math.max(
+          0,
+          coreR * Math.pow(rand(), cluster) + gaussianFrom(rand) * edge,
+        )
         cores.push({
           x: ox + Math.cos(angle) * radius,
           y: oy + Math.sin(angle) * radius,
@@ -565,58 +693,209 @@ export function SoundVisualScreen() {
     }
 
     /**
-     * The RIPPLE mark: `tap.repeats` rings on the tap's point of the bar
-     * circle, born in the order their repeats sound. `animate` is true for a
-     * live tap, where the rings arrive and settle in front of you; false for a
-     * rebuild, where the mark must appear already finished.
+     * The TICK mark, ROUNDED ←→ CRISPY: a ring on the tap's point of the bar
+     * circle.
+     *
+     * The same specks and the same alpha as the blot, placed on a circle
+     * instead of through a disc — which is the whole relationship between the
+     * two sounds, drawn. Nothing repeats: what a hat has is an outline and an
+     * inside that stays empty.
+     *
+     * Character widens that circle and BREAKS it. Rounded is one small
+     * unbroken contour; crispy is a larger one divided into separate arcs. The
+     * break is done by choosing which arc each speck belongs to rather than by
+     * masking a finished ring — same cost, and the arcs come out with definite
+     * ends instead of feathered ones, which is what "crisp" means here.
      */
-    const spawnRipple = (tap: Tap, animate: boolean, now: number) => {
+    const spawnTickRing = (tap: Tap) => {
       const dim = minDim()
       const rand = makeRng(tap.seed)
-      const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
-      // Energy sizes and thickens the mark, exactly as it sizes a blot.
-      const outer = RIPPLE_OUTER_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * dim
-      const perRing = Math.max(
+      const e = energyOf(tap)
+      const c = characterOf(tap)
+      const ringR = tickRingRadius(tap, dim)
+      const band = TICK_BAND * dim
+      // How broken the contour is. Solid until TICK_BREAK_FROM: a hat that is
+      // only slightly crisp should not already be a dotted line.
+      const b = clamp01((c - TICK_BREAK_FROM) / (1 - TICK_BREAK_FROM))
+      const segments = Math.round(lerp(TICK_MIN_SEGMENTS, TICK_MAX_SEGMENTS, b))
+      const duty = lerp(1, TICK_MIN_DUTY, b)
+      const step = (Math.PI * 2) / segments
+      const inkScale = ink()
+      const count = Math.max(
         1,
-        Math.round(RIPPLE_SPECKS_PER_RING * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * ink()),
+        Math.round(TICK_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * inkScale),
       )
-      const theta = tap.pos * Math.PI * 2 - Math.PI / 2
-      const ox = Math.cos(theta) * CIRCLE_RADIUS * dim
-      const oy = Math.sin(theta) * CIRCLE_RADIUS * dim
-
-      const repeats = Math.max(1, Math.min(RIPPLE_MAX, tap.repeats))
-      const overflow = ripples.length + repeats - MAX_RIPPLE_RINGS
-      if (overflow > 0) ripples.splice(0, overflow)
-
-      for (let i = 0; i < repeats; i++) {
-        const specks = new Array<RingSpeck>(perRing)
-        for (let j = 0; j < perRing; j++) {
-          specks[j] = {
-            angle: rand() * Math.PI * 2,
-            jitter: gaussianFrom(rand),
-            jx: gaussianFrom(rand),
-            jy: gaussianFrom(rand),
-          }
-        }
-        ripples.push({
-          ox,
-          oy,
-          settleR: (outer * (i + 1)) / RIPPLE_MAX,
-          band: RIPPLE_BAND * dim,
-          bornAt: animate ? now + i * REPEAT_INTERVAL_MS : 0,
-          specks,
+      const { ox, oy } = markCentre(tap, dim)
+      makeRoom(count, inkScale)
+      for (let i = 0; i < count; i++) {
+        // Pick an arc, then a place inside the share of it that is still ink.
+        // At duty 1 this is exactly a uniform angle round the whole circle.
+        const angle = (Math.floor(rand() * segments) + 0.5 + (rand() - 0.5) * duty) * step
+        // The band is what keeps the outline ink rather than a drawn stroke —
+        // a hairline of specks scattered either side of the true circle.
+        const radius = ringR + gaussianFrom(rand) * band
+        if (radius <= 0) continue
+        cores.push({
+          x: ox + Math.cos(angle) * radius,
+          y: oy + Math.sin(angle) * radius,
+          jx: gaussianFrom(rand),
+          jy: gaussianFrom(rand),
         })
-      }
-      if (animate) {
-        const last = now + (repeats - 1) * REPEAT_INTERVAL_MS + RIPPLE_SETTLE_MS
-        rippleUntil = Math.max(rippleUntil, last)
       }
     }
 
-    /** One tap, one mark — which one is the gesture's business. */
-    const spawnMark = (tap: Tap, animate: boolean, now: number) => {
-      if (tap.gesture === 'ripple') spawnRipple(tap, animate, now)
-      else spawnCore(tap)
+    /**
+     * The SPLASH mark: a solid impact throwing eight spikes, all of it landing
+     * at once. Most of the ink goes into the spikes, biased toward the centre
+     * and narrowing to points, so the mark reads as energy leaving one place
+     * rather than as a drawn star.
+     */
+    const spawnSplash = (tap: Tap) => {
+      const dim = minDim()
+      const rand = makeRng(tap.seed)
+      const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
+      const scale = lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e)
+      const coreR = SPLASH_CORE_RADIUS * scale * dim
+      const reach = SPLASH_REACH * scale * dim
+      const inkScale = ink()
+      const total = Math.max(
+        1,
+        Math.round(SPLASH_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * inkScale),
+      )
+      const coreCount = Math.round(total * SPLASH_CORE_SHARE)
+      const { ox, oy } = markCentre(tap, dim)
+      makeRoom(total, inkScale)
+
+      // The impact itself — the same uniform disc HIT uses, at a fraction of
+      // the size, so the centre of a SPLASH is unmistakably solid.
+      for (let i = 0; i < coreCount; i++) {
+        const angle = rand() * Math.PI * 2
+        const radius = coreR * Math.sqrt(rand())
+        cores.push({
+          x: ox + Math.cos(angle) * radius,
+          y: oy + Math.sin(angle) * radius,
+          jx: gaussianFrom(rand),
+          jy: gaussianFrom(rand),
+        })
+      }
+
+      // …and the strokes out of it. Each speck picks a ray, a distance along it
+      // and a lateral offset. The width is held nearly constant along the
+      // stroke rather than closing to a point, which is what makes it read as a
+      // thrown line instead of a spike.
+      for (let i = coreCount; i < total; i++) {
+        const ray = Math.floor(rand() * SPLASH_RAYS)
+        // One stroke points straight up, matching the Selector icon.
+        const angle = (ray / SPLASH_RAYS) * Math.PI * 2 - Math.PI / 2
+        const t = Math.pow(rand(), SPLASH_RAY_BIAS)
+        const along = t * reach * (1 + (rand() - 0.5) * SPLASH_REACH_JITTER)
+        const width = SPLASH_RAY_WIDTH * dim * (1 - SPLASH_RAY_TAPER * t) * scale
+        const lateral = gaussianFrom(rand) * width
+        const cos = Math.cos(angle)
+        const sin = Math.sin(angle)
+        cores.push({
+          // Along the ray, then off it at right angles.
+          x: ox + cos * along - sin * lateral,
+          y: oy + sin * along + cos * lateral,
+          jx: gaussianFrom(rand),
+          jy: gaussianFrom(rand),
+        })
+      }
+    }
+
+    /**
+     * The SCATTER mark: a spattered patch at the tap's own point of the bar
+     * circle.
+     *
+     * An event like the other three, and placed like them — but where they are
+     * shapes, this is texture: a handful of soft clumps with grain thrown
+     * between them, the same thing the Selector shows and at about the same
+     * density. Wider and looser than any other mark, so it still reads as noise
+     * rather than as a fourth kind of blot, but it has a moment and sits at it.
+     *
+     * AIRY ←→ DENSE is how occupied the patch is, moved three ways at once: how
+     * many grains, how strongly each prints, and how much of it lies outside
+     * the clumps. Airy is a few separated specklings; dense closes it up. It
+     * stays a spatter at both ends — many things, never one thing.
+     */
+    const spawnScatter = (tap: Tap) => {
+      const dim = minDim()
+      const rand = makeRng(tap.seed)
+      const c = characterOf(tap)
+      const inkScale = ink()
+      // Character owns this patch's density outright; ENERGY is deliberately
+      // absent (see the constants above).
+      const count = Math.max(
+        1,
+        Math.round(SCATTER_GRAINS * lerp(SCATTER_AIRY_COUNT, SCATTER_DENSE_COUNT, c) * inkScale),
+      )
+      const strength = SCATTER_ALPHA * lerp(SCATTER_AIRY_INK, SCATTER_DENSE_INK, c)
+      const loose = lerp(SCATTER_AIRY_LOOSE, SCATTER_DENSE_LOOSE, c)
+      const overflow = grains.length + count - Math.round(MAX_GRAIN_PARTICLES * inkScale)
+      if (overflow > 0) grains.splice(0, overflow)
+
+      const { ox, oy } = markCentre(tap, dim)
+      const patchR = SCATTER_PATCH_RADIUS * dim
+
+      // The clumps the grain gathers into. Without them the patch is evenly
+      // seeded and reads as a soft disc; with them it has thin and thick
+      // passages, which is what a spatter actually looks like — and at the airy
+      // end those passages ARE the negative space.
+      const blobs = new Array<{ cx: number; cy: number; sigma: number }>(SCATTER_BLOBS)
+      for (let k = 0; k < SCATTER_BLOBS; k++) {
+        // sqrt keeps the clumps evenly spread through the patch rather than
+        // piled at its middle.
+        const angle = rand() * Math.PI * 2
+        const radius = patchR * Math.sqrt(rand())
+        blobs[k] = {
+          cx: ox + Math.cos(angle) * radius,
+          cy: oy + Math.sin(angle) * radius,
+          sigma: (0.45 + rand()) * SCATTER_BLOB_SPREAD * dim,
+        }
+      }
+
+      for (let i = 0; i < count; i++) {
+        let x: number
+        let y: number
+        if (rand() < loose) {
+          // Free grain, anywhere in the patch — the spatter between the clumps.
+          const angle = rand() * Math.PI * 2
+          const radius = patchR * Math.sqrt(rand())
+          x = ox + Math.cos(angle) * radius
+          y = oy + Math.sin(angle) * radius
+        } else {
+          const blob = blobs[Math.floor(rand() * SCATTER_BLOBS)]
+          x = blob.cx + gaussianFrom(rand) * blob.sigma
+          y = blob.cy + gaussianFrom(rand) * blob.sigma
+        }
+        grains.push({
+          x,
+          y,
+          // Varied per grain: an even alpha over thousands of specks is a grey
+          // wash, and this has to stay grain.
+          alpha: BASE_ALPHA * strength * (0.3 + 0.7 * rand()),
+          jx: gaussianFrom(rand),
+          jy: gaussianFrom(rand),
+        })
+      }
+    }
+
+    /** One tap, one mark — which one is the sound identity's business. All four
+        land complete, so none of them needs the clock. */
+    const spawnMark = (tap: Tap) => {
+      switch (tap.gesture) {
+        case 'tick':
+          spawnTickRing(tap)
+          break
+        case 'splash':
+          spawnSplash(tap)
+          break
+        case 'scatter':
+          spawnScatter(tap)
+          break
+        default:
+          spawnCore(tap)
+      }
     }
 
     /**
@@ -626,6 +905,10 @@ export function SoundVisualScreen() {
      * once because the canvas changed size, not the sound.
      */
     const spawnTail = (tap: Tap, sweep: boolean, now: number) => {
+      // SCATTER is already a spread of ink across a patch; a tail smeared out
+      // of it would run into whatever shares that stretch of the ring and stop
+      // both marks reading. Its length is heard, not drawn.
+      if (tap.gesture === 'scatter') return
       const v = clamp01((tap.length - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
       if (v <= 0) return // length 0 — the sound stops dead, nothing leaves the mark
 
@@ -651,6 +934,13 @@ export function SoundVisualScreen() {
 
       const theta0 = tap.pos * Math.PI * 2 - Math.PI / 2
       const ringR = CIRCLE_RADIUS * dim
+      // TICK is the one mark whose inside is part of what it means. The tail is
+      // densest at its head, so left alone it fills that inside with ink and
+      // the circle stops reading as hollow — the whole distinction from HIT,
+      // lost to an unrelated slider. So for TICK alone the tail leaves from the
+      // outline outward: nothing lands within the circle.
+      const { ox, oy } = markCentre(tap, dim)
+      const hollowR = tap.gesture === 'tick' ? tickRingRadius(tap, dim) : 0
       for (let i = 0; i < count; i++) {
         // s is 0..1 along the tail, biased toward the head.
         const s = Math.pow(rand(), TAIL_BIAS)
@@ -661,9 +951,12 @@ export function SoundVisualScreen() {
         const lateral =
           gaussianFrom(rand) * spread * (TAIL_HEAD_WIDTH + (1 - TAIL_HEAD_WIDTH) * s) * dim
         const radius = ringR + lateral
+        const x = Math.cos(theta) * radius
+        const y = Math.sin(theta) * radius
+        if (hollowR > 0 && Math.hypot(x - ox, y - oy) < hollowR) continue
         tails.push({
-          x: Math.cos(theta) * radius,
-          y: Math.sin(theta) * radius,
+          x,
+          y,
           alpha: BASE_ALPHA * TAIL_HEAD_ALPHA * Math.exp(-decay * s),
           revealAt: sweep ? now + TAIL_GROWTH_S * 1000 * Math.pow(s, TAIL_SWEEP_EASE) : 0,
           jx: gaussianFrom(rand),
@@ -684,12 +977,11 @@ export function SoundVisualScreen() {
     const rebuildAll = () => {
       cores.length = 0
       tails.length = 0
-      ripples.length = 0
+      grains.length = 0
       revealUntil = 0
-      rippleUntil = 0
       const now = performance.now()
       for (const tap of taps) {
-        spawnMark(tap, false, now)
+        spawnMark(tap)
         spawnTail(tap, false, now)
       }
       fieldDirty = true
@@ -709,9 +1001,8 @@ export function SoundVisualScreen() {
      * The pattern changed: a tap added, one deleted or undone, a knob turned.
      * Everything is re-placed from the new list — seeded per tap id, so a mark
      * that only moved redraws as itself at its new angle. Only marks that were
-     * not here a moment ago animate (the tail sweeping out, the ripple rings
-     * settling); the rest arrive already finished, because nothing about THEM
-     * just happened.
+     * not here a moment ago animate (the tail sweeping out); the rest arrive
+     * already finished, because nothing about THEM just happened.
      */
     const applyMarks = (next: readonly Tap[], now: number) => {
       const before = new Set(taps.map((t) => t.id))
@@ -719,12 +1010,11 @@ export function SoundVisualScreen() {
       taps.push(...next)
       cores.length = 0
       tails.length = 0
-      ripples.length = 0
+      grains.length = 0
       revealUntil = 0
-      rippleUntil = 0
       for (const tap of taps) {
         const fresh = !before.has(tap.id)
-        spawnMark(tap, fresh, now)
+        spawnMark(tap)
         spawnTail(tap, fresh, now)
       }
       fieldDirty = true
@@ -785,6 +1075,16 @@ export function SoundVisualScreen() {
       }
 
       field.fillStyle = '#000000'
+
+      // SCATTER patches first, under everything: they are the widest and
+      // loosest of the marks, so anything sharing their stretch of the ring
+      // should sit on top rather than behind.
+      for (const p of grains) {
+        field.globalAlpha = p.alpha
+        field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
+      }
+
+      // HIT, TAP and SPLASH — three shapes at one strength.
       field.globalAlpha = BASE_ALPHA
       for (const p of cores) {
         field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
@@ -794,25 +1094,6 @@ export function SoundVisualScreen() {
         if (p.revealAt > now) continue // the sweep hasn't reached this speck yet
         field.globalAlpha = p.alpha
         field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
-      }
-
-      for (const ring of ripples) {
-        const u = clamp01((now - ring.bornAt) / RIPPLE_SETTLE_MS)
-        if (u <= 0) continue // this repeat hasn't sounded yet
-        // Ease-out to the resting radius, then nothing: u pins at 1 and the
-        // ring is part of the pattern from there on.
-        const r = ring.settleR * (1 - (1 - u) * (1 - u))
-        field.globalAlpha = BASE_ALPHA * RIPPLE_ALPHA * u
-        for (const s of ring.specks) {
-          const radius = r + s.jitter * ring.band
-          if (radius <= 0) continue
-          field.fillRect(
-            cx + ring.ox + Math.cos(s.angle) * radius + s.jx * stray,
-            cy + ring.oy + Math.sin(s.angle) * radius + s.jy * stray,
-            dot,
-            dot,
-          )
-        }
       }
       field.globalAlpha = 1
 
@@ -847,7 +1128,7 @@ export function SoundVisualScreen() {
         pendingMarks = null
       }
       const gridOn = playheadRef.current !== null
-      const animating = now < Math.max(revealUntil, rippleUntil)
+      const animating = now < revealUntil
       // `wasAnimating` earns the one extra paint after an animation ends —
       // without it the last specks of a tail would never be swept in.
       if (fieldDirty || animating || wasAnimating || gridOn !== fieldGrid) {
@@ -882,9 +1163,9 @@ export function SoundVisualScreen() {
         ctx.fillStyle = '#000000'
       }
 
-      // Keep animating while a tail is still sweeping out, a ring is still
-      // settling, or the playhead is running; once all three have stopped the
-      // last frame stays on screen untouched — that frame is the pattern.
+      // Keep animating while a tail is still sweeping out or the playhead is
+      // running; once both have stopped the last frame stays on screen
+      // untouched — that frame is the pattern.
       rafId = animating || gridOn ? requestAnimationFrame(frame) : 0
     }
 

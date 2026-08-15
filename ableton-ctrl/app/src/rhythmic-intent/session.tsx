@@ -20,7 +20,7 @@ import {
   type TransformParams,
 } from './types.ts'
 import { useSoundEngine } from '../transport/session.tsx'
-import type { EngineStatus } from '../transport/engine.ts'
+import type { EngineStatus, SoundVoiceId } from '../transport/engine.ts'
 
 export type Session = {
   capture: TapCapture
@@ -36,9 +36,12 @@ export type Session = {
   pitch: number
   /** Move the mapping to a different MIDI pitch. */
   setPitch: (pitch: number) => void
-  /** Record a tap into the GUI and sound the note on the engine. Returns the
-      new tap's id, so whoever fired it can attach its own record to that tap. */
-  handleTap: () => string
+  /** Record a tap into the GUI and sound the note on the engine, played with
+      the sound identity `voice` at character `character` — both stored on the
+      tap, so the loop replays it as itself and no later slider move can edit
+      it. Returns the new tap's id, so whoever fired it can attach its own
+      record to that tap. */
+  handleTap: (voice?: SoundVoiceId, character?: number) => string
   /** Drop one tap by id — the Sound Visual's double-click on a mark. */
   removeTap: (id: string) => void
   /** Drop the tap added most recently — the Sound Visual's UNDO. */
@@ -178,7 +181,14 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!playing) return
     engineStartLoop(
-      rendered.filter((t) => t.kept).map((t) => ({ pos: t.finalPos, velocity: t.velocity })),
+      rendered
+        .filter((t) => t.kept)
+        .map((t) => ({
+          pos: t.finalPos,
+          velocity: t.velocity,
+          voice: t.voice,
+          character: t.character,
+        })),
       loopDuration,
     )
     // `engineId` keeps a running loop alive across a source switch: the send
@@ -209,9 +219,9 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   // instant, so a note added at a position the cycle has already passed waits
   // for the next time round, exactly as an overdub should.
   const applyTap = useCallback(
-    (velocity: number, sound: boolean) => {
-      const id = captureTap(velocity)
-      if (sound) noteOn(velocity)
+    (velocity: number, sound: boolean, voice?: SoundVoiceId, character?: number) => {
+      const id = captureTap(velocity, voice, character)
+      if (sound) noteOn(velocity, voice, character)
       if (!playingRef.current) startLoop()
       return id
     },
@@ -226,10 +236,15 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   }, [playing, tapCount, stopLoop])
 
   // GUI button / Space: uniform velocity, the engine plays the note.
-  const handleTap = useCallback(() => applyTap(1, true), [applyTap])
+  const handleTap = useCallback(
+    (voice?: SoundVoiceId, character?: number) => applyTap(1, true, voice, character),
+    [applyTap],
+  )
 
-  // Physical pad → engine → here. Real velocity, no echo. A ref keeps the
-  // subscription stable while always calling the latest applyTap.
+  // Physical pad → engine → here. Real velocity, no echo, and no identity: the
+  // pad plays whatever the PITCH mapping points at, so the note it already
+  // sounded is not one of the four. A ref keeps the subscription stable while
+  // always calling the latest applyTap.
   const applyTapRef = useRef(applyTap)
   applyTapRef.current = applyTap
   useEffect(() => onExternalTap((velocity) => applyTapRef.current(velocity, false)), [onExternalTap])
