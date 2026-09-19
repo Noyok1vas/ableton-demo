@@ -116,6 +116,17 @@
   display: block;
   width: 100%;
   height: 100%;
+  /* The ring is the only thing here you can take hold of, so the cursor says so
+     only over a mark — everywhere else the canvas is a record, not a control. */
+  touch-action: none;
+}
+
+.sv-canvas--grab {
+  cursor: grab;
+}
+
+.sv-canvas--grabbing {
+  cursor: grabbing;
 }
 
 .sv-hint {

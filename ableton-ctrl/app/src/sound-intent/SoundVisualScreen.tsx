@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { useSoundIntent } from './session.tsx'
 import { useSession as useRhythmicIntent } from '../rhythmic-intent/session.tsx'
 import { BEATS_PER_LOOP } from '../rhythmic-intent/types.ts'
@@ -339,6 +346,15 @@ const HIGHPASS_INVERT_FROM = 0.85
 const SATURATE_MAX_FLOOR = 0.75
 
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
+/** Fold a position into one turn of the loop, [0, 1). */
+const wrapPos = (p: number) => ((p % 1) + 1) % 1
+/** The shorter of the two ways round from one position to another, signed,
+    in (-0.5, 0.5] — a step forward past the seam is a step forward, not a
+    near-complete lap backwards. */
+const shortestStep = (d: number) => {
+  const w = wrapPos(d)
+  return w > 0.5 ? w - 1 : w
+}
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
 /** HIGH PASS FILTER's map: white → black → white, with the black stop at
@@ -462,7 +478,8 @@ function seedFromId(id: string): number {
 export function SoundVisualScreen() {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
-  const { rendered, playhead, removeTap, undoTap, canUndo, clearPattern } = useRhythmicIntent()
+  const { rendered, playhead, removeTap, moveTap, undoTap, canUndo, clearPattern } =
+    useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Bridges from the sim (inside the effect) out to React.
   const setMarksRef = useRef<((marks: readonly Tap[]) => void) | null>(null)
@@ -525,6 +542,11 @@ export function SoundVisualScreen() {
 
   const marksRef = useRef(marks)
   marksRef.current = marks
+  // A drag edits a tap's RAW position, which `marks` no longer carries —
+  // they hold the transformed one the canvas draws at. The pattern is the
+  // only place both live side by side.
+  const renderedRef = useRef(rendered)
+  renderedRef.current = rendered
 
   useEffect(() => {
     setMarksRef.current?.(marks)
@@ -1199,21 +1221,26 @@ export function SoundVisualScreen() {
     scheduleRef.current?.()
   }, [playheadOn])
 
-  /** Double-click a mark to take that note out of the loop. The hit test runs
-      on the same geometry the canvas draws with — the transformed position, not
-      where the tap originally fell — so what you click is what you get. */
-  const handleDoubleClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+  /** Where a pointer is, in the canvas's own terms: device px measured from the
+      centre, which is where the ring is centred and where every mark's position
+      is measured from. Null when the canvas has no area to measure against. */
+  const pointerAt = (event: { clientX: number; clientY: number }) => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    // Client px → device px, measured from the canvas centre, which is where
-    // the ring is centred and where every mark's position is measured from.
+    if (rect.width === 0 || rect.height === 0) return null
     const scale = canvas.width / rect.width
-    const x = (event.clientX - rect.left) * scale - canvas.width / 2
-    const y = (event.clientY - rect.top) * scale - canvas.height / 2
-    const dim = Math.min(canvas.width, canvas.height)
+    return {
+      x: (event.clientX - rect.left) * scale - canvas.width / 2,
+      y: (event.clientY - rect.top) * scale - canvas.height / 2,
+      dim: Math.min(canvas.width, canvas.height),
+    }
+  }
 
+  /** Which mark is under a point, or null. The hit test runs on the same
+      geometry the canvas draws with — the transformed position, not where the
+      tap originally fell — so what you grab is what you see. */
+  const markAt = ({ x, y, dim }: { x: number; y: number; dim: number }) => {
     let hit: string | null = null
     let best = HIT_RADIUS * dim
     for (const mark of marksRef.current) {
@@ -1226,6 +1253,70 @@ export function SoundVisualScreen() {
         hit = mark.id
       }
     }
+    return hit
+  }
+
+  /** The inverse of `markCentre`: a point on the canvas back to its position
+      around the loop, 0 at 12 o'clock, clockwise. Only the angle is read — a
+      mark is dragged along the ring, so how far from it the cursor strays does
+      not matter, and the mark cannot be pulled off the circle. */
+  const loopPosAt = ({ x, y }: { x: number; y: number }) =>
+    wrapPos(Math.atan2(y, x) / (Math.PI * 2) + 0.25)
+
+  /** Drag a mark to move that note around the loop. What moves is the tap's own
+      moment; TIGHTNESS and PHASE still apply on top, so a dragged mark feels the
+      same grid pull as a played one and the image never claims a timing the loop
+      will not play.
+
+      The tap's position is carried forward a step at a time rather than measured
+      from where the drag began, so a mark can be walked the whole way round the
+      ring — an absolute measure would read three-quarters forward as a quarter
+      back the moment the drag passed the halfway mark. */
+  const dragRef = useRef<{ pointerId: number; id: string; pos: number; cursor: number } | null>(
+    null,
+  )
+  const [grabbing, setGrabbing] = useState(false)
+  const [hovering, setHovering] = useState(false)
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return
+    const point = pointerAt(event)
+    if (!point) return
+    const id = markAt(point)
+    if (!id) return
+    const tap = renderedRef.current.find((t) => t.id === id)
+    if (!tap) return
+    dragRef.current = { pointerId: event.pointerId, id, pos: tap.rawPos, cursor: loopPosAt(point) }
+    setGrabbing(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const point = pointerAt(event)
+    if (!point) return
+    const drag = dragRef.current
+    if (!drag) {
+      setHovering(markAt(point) !== null)
+      return
+    }
+    if (event.pointerId !== drag.pointerId) return
+    const cursor = loopPosAt(point)
+    drag.pos = wrapPos(drag.pos + shortestStep(cursor - drag.cursor))
+    drag.cursor = cursor
+    moveTap(drag.id, drag.pos)
+  }
+
+  const endDrag = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setGrabbing(false)
+  }
+
+  /** Double-click a mark to take that note out of the loop. */
+  const handleDoubleClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+    const point = pointerAt(event)
+    if (!point) return
+    const hit = markAt(point)
     if (hit) removeTap(hit)
   }
 
@@ -1236,7 +1327,16 @@ export function SoundVisualScreen() {
 
   return (
     <div className="sv-screen">
-      <canvas ref={canvasRef} className="sv-canvas" onDoubleClick={handleDoubleClick} />
+      <canvas
+        ref={canvasRef}
+        className={`sv-canvas${grabbing ? ' sv-canvas--grabbing' : hovering ? ' sv-canvas--grab' : ''}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerLeave={() => setHovering(false)}
+        onDoubleClick={handleDoubleClick}
+      />
       {marks.length === 0 && <div className="sv-hint">Tap to sound</div>}
       <button type="button" className="sv-reset" onClick={handleReset}>
         RESET
