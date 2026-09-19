@@ -44,6 +44,11 @@ export type Session = {
   handleTap: (voice?: SoundVoiceId, character?: number) => string
   /** Drop one tap by id — the Sound Visual's double-click on a mark. */
   removeTap: (id: string) => void
+  /** Put one tap at `pos` (0..1) of the loop — the Sound Visual's drag on a
+      mark. The position is the RAW one, the tap's own moment: TIGHTNESS and
+      PHASE are applied on top of it as they are to every other tap, so a
+      dragged mark obeys the same grid pull as a played one. */
+  moveTap: (id: string, pos: number) => void
   /** Drop the tap added most recently — the Sound Visual's UNDO. */
   undoTap: () => void
   /** True while there is anything left to take back. */
@@ -205,7 +210,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   // ── Actions ───────────────────────────────────────────────────────
   const { tap: captureTap, reset: captureReset, load: captureLoad } = capture
-  const { remove: removeTap, undo: undoTap } = capture
+  const { remove: removeTap, move: captureMove, undo: undoTap } = capture
 
   // Core tap path. `sound` is false for physical-pad taps — the source has
   // already played the note (with real velocity), so echoing it would double.
@@ -272,6 +277,11 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     [collection, captureLoad],
   )
 
+  const moveTap = useCallback(
+    (id: string, pos: number) => captureMove(id, pos * loopDuration),
+    [captureMove, loopDuration],
+  )
+
   const setParam = useCallback(
     <K extends keyof TransformParams>(key: K, value: number) => {
       setParams((prev) => ({ ...prev, [key]: value }))
@@ -291,6 +301,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setPitch,
     handleTap,
     removeTap,
+    moveTap,
     undoTap,
     canUndo: hasPattern,
     clearPattern,

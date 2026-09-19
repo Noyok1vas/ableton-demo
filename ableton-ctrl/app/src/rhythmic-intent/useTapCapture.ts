@@ -15,6 +15,12 @@ export type TapCapture = {
   tap: (velocity?: number, voice?: SoundVoiceId, character?: number) => string
   /** Drop one tap by id — a double-click on its mark in the Sound Visual. */
   remove: (id: string) => void
+  /** Put one tap at a different point in the loop, in seconds from its zero —
+      the Sound Visual's drag on a mark. Only the moment moves: velocity, voice
+      and character are what the tap WAS, and dragging it is not a re-performance.
+      The time wraps, so a mark dragged past the seam comes round the other side
+      instead of piling up at the end. */
+  move: (id: string, time: number) => void
   /** Drop the most recently added tap — the Sound Visual's UNDO. Note this is
       add order, not loop order: it takes back the last thing you played, which
       may sit anywhere in the loop. */
@@ -173,6 +179,17 @@ export function useTapCapture(
     [dropTo],
   )
 
+  /** Unlike `remove`, this cannot empty the pattern, so it writes straight
+      through rather than going via `dropTo`. */
+  const move = useCallback(
+    (id: string, time: number) => {
+      const duration = durationRef.current
+      const wrapped = ((time % duration) + duration) % duration
+      setAllTaps(tapsRef.current.map((t) => (t.id === id ? { ...t, time: wrapped } : t)))
+    },
+    [setAllTaps],
+  )
+
   const undo = useCallback(() => dropTo(tapsRef.current.slice(0, -1)), [dropTo])
 
   const anchor = useCallback(() => {
@@ -220,5 +237,5 @@ export function useTapCapture(
 
   useEffect(() => stopTimers, [stopTimers])
 
-  return { state, taps, progress, tap, remove, undo, anchor, reset, load }
+  return { state, taps, progress, tap, remove, move, undo, anchor, reset, load }
 }
