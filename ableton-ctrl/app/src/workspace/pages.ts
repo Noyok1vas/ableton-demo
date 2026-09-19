@@ -10,20 +10,16 @@ export const PAGES: Page[] = [
 
 /** Each page owns its windows. Only the first page has content in this pass. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
-  // Demo build: only the four windows a visitor needs. Sound Source, March
-  // Intent, Rhythmic intent, Sound Intent, Ripple and March Family are all
-  // omitted here — they either drive Live over the bridge, which no visitor
-  // has, or they are machinery the demo does not explain. Their sessions still
-  // mount in App.tsx, so the Sound Visual keeps reading them.
+  // Demo build: the four visitor windows, plus Sound Source so an iPad
+  // visitor can see which kit is live, the mix, and whether the browser
+  // has actually unlocked audio. March / Rhythmic intent / Sound Intent /
+  // Ripple / March Family stay omitted — their sessions still mount.
   //
-  // Three columns: Collection as a narrow ledger on the left, the Sound Visual
-  // as the stage, and a right column split between what the sound is (Sound
-  // Selector) and the room it lands in (FX).
-  // The right column is 540 wide because the Selector's grid drops to two
-  // columns under 460px of container (selector.css): at this width the four
-  // identities stay in the single row they are meant to be read as.
+  // Left column is Sound Source over Collection; centre is the stage;
+  // the right column is 540 so the Selector's four identities stay one row.
   'rhythmic-intent': [
-    { id: 'col-1', kind: 'collection', title: 'Collection', x: 64, y: 64, w: 700, h: 1440 },
+    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 700, h: 340 },
+    { id: 'col-1', kind: 'collection', title: 'Collection', x: 64, y: 420, w: 700, h: 1084 },
     { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 800, y: 64, w: 1470, h: 1440 },
     { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 2306, y: 64, w: 540, h: 702 },
     { id: 'fx-1', kind: 'fx', title: 'FX', x: 2306, y: 802, w: 540, h: 702 },

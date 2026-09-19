@@ -260,25 +260,11 @@ export class WebAudioEngine implements SoundEngine {
   }
 
   start(): void {
-    if (this.disposed || this.detachGesture || this.ctx) return
-
-    // Do not open an AudioContext here. iOS Safari only allows a context that
-    // is created (or resumed) inside a real user gesture to leave `suspended`.
-    // Opening it from the mount effect would leave every visitor silent until
-    // a second, easy-to-miss unlock — and often forever on iPad.
+    if (this.disposed || this.ctx) return
+    // Wait for noteOn / startLoop. Creating the context on a canvas pan or
+    // pinch leaves it suspended on iPad, and later notes scheduled after
+    // resume() never sound even though the visual tap already landed.
     this.setStatus(STATUS_WAITING)
-    const unlock = () => {
-      this.ensureContext()
-    }
-    window.addEventListener('pointerdown', unlock)
-    window.addEventListener('touchstart', unlock, { passive: true })
-    window.addEventListener('keydown', unlock)
-    this.detachGesture = () => {
-      window.removeEventListener('pointerdown', unlock)
-      window.removeEventListener('touchstart', unlock)
-      window.removeEventListener('keydown', unlock)
-      this.detachGesture = null
-    }
   }
 
   /** Build the graph on first use (ideally inside a gesture) and resume it. */
@@ -289,7 +275,11 @@ export class WebAudioEngine implements SoundEngine {
       return this.ctx
     }
 
-    const ctx = new AudioContext()
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return null
+    const ctx = new Ctx()
     this.ctx = ctx
     this.buildGraph(ctx)
     this.primeContext(ctx)
@@ -386,28 +376,19 @@ export class WebAudioEngine implements SoundEngine {
   noteOn(velocity = 1, voice?: SoundVoiceId, character?: number): void {
     const ctx = this.ensureContext()
     if (!ctx) return
-    const play = () => this.fire(ctx.currentTime, velocity, voice, character)
-    if (ctx.state === 'running') {
-      play()
-      return
-    }
-    // Resume was kicked from this same gesture; schedule the hit once it lands.
-    void ctx.resume().then(() => {
-      if (ctx.state === 'running') play()
-    })
+    // Fire in this same turn as the tap. Waiting for resume().then() is
+    // outside the iOS user-gesture stack: the visual still records, the
+    // note is dropped. Desktop never notices because the context is already
+    // running by the time the promise settles.
+    this.fire(ctx.currentTime, velocity, voice, character)
+    if (ctx.state !== 'running') this.resumeContext(ctx)
   }
 
   startLoop(events: readonly LoopEvent[], barDuration: number): void {
     const ctx = this.ensureContext()
     if (!ctx) return
-    const begin = () => this.beginLoop(ctx, events, barDuration)
-    if (ctx.state === 'running') {
-      begin()
-      return
-    }
-    void ctx.resume().then(() => {
-      if (ctx.state === 'running') begin()
-    })
+    this.beginLoop(ctx, events, barDuration)
+    if (ctx.state !== 'running') this.resumeContext(ctx)
   }
 
   private beginLoop(
@@ -455,14 +436,8 @@ export class WebAudioEngine implements SoundEngine {
   ): void {
     const ctx = this.ensureContext()
     if (!ctx) return
-    const begin = () => this.beginMarchLoop(ctx, events, phraseDuration, barDuration)
-    if (ctx.state === 'running') {
-      begin()
-      return
-    }
-    void ctx.resume().then(() => {
-      if (ctx.state === 'running') begin()
-    })
+    this.beginMarchLoop(ctx, events, phraseDuration, barDuration)
+    if (ctx.state !== 'running') this.resumeContext(ctx)
   }
 
   private beginMarchLoop(
