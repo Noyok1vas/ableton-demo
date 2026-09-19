@@ -4,7 +4,7 @@ import { DraggableWindow } from './DraggableWindow.tsx'
 import { ZoomControl } from './ZoomControl.tsx'
 import { INITIAL_WINDOWS, WINDOW_LIMITS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
-import { clampScale } from './viewUtils.ts'
+import { MAX_SCALE } from './types.ts'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
@@ -19,9 +19,12 @@ import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
 
-/** Breathing room around the four windows so two fingers can land on the
- *  canvas instead of a title bar. Still capped at scale 1 on a wide monitor. */
-const FIT_PAD = 96
+/** Floor for a fit pass only — must stay below any real iPad Safari viewport
+ *  so the four windows can always enter the screen. Free pinch uses MIN_SCALE. */
+const FIT_SCALE_FLOOR = 0.05
+
+/** Zoom control + home-indicator clearance reserved at the bottom of a fit. */
+const FIT_BOTTOM_CHROME = 64
 
 function windowContent(kind: WindowKind) {
   switch (kind) {
@@ -51,28 +54,38 @@ function windowContent(kind: WindowKind) {
 /**
  * Fit the windows' bounding box into the surface and centre it. Capped at 1
  * so a wide monitor shows the layout at its designed size rather than
- * blowing it up.
+ * blowing it up. Never raises the scale above what fits — a MIN_SCALE floor
+ * here used to leave the layout hanging off an iPad Safari viewport.
  */
 function fitView(windows: WindowState[], width: number, height: number): View {
   if (windows.length === 0 || width === 0 || height === 0) return INITIAL_VIEW
-  const pad = FIT_PAD
+  const padX = Math.max(12, Math.min(32, width * 0.02))
+  const padY = Math.max(12, Math.min(24, height * 0.02))
   const minX = Math.min(...windows.map((w) => w.x))
   const minY = Math.min(...windows.map((w) => w.y))
   const contentW = Math.max(...windows.map((w) => w.x + w.w)) - minX
   const contentH = Math.max(...windows.map((w) => w.y + w.h)) - minY
-  const scale = clampScale(
-    Math.min(1, (width - pad * 2) / contentW, (height - pad * 2) / contentH),
-  )
+  const availW = Math.max(1, width - padX * 2)
+  const availH = Math.max(1, height - padY * 2 - FIT_BOTTOM_CHROME)
+  const needed = Math.min(1, availW / contentW, availH / contentH)
+  // Fit must succeed even when that means going under the interactive floor.
+  const scale = Math.min(MAX_SCALE, Math.max(FIT_SCALE_FLOOR, needed))
   return {
     scale,
     x: (width - contentW * scale) / 2 - minX * scale,
-    y: (height - contentH * scale) / 2 - minY * scale,
+    y: (height - contentH * scale - FIT_BOTTOM_CHROME) / 2 + padY / 2 - minY * scale,
   }
 }
 
 function surfaceSize() {
   const rect = document.querySelector('.surface')?.getBoundingClientRect()
-  return rect ? { width: rect.width, height: rect.height } : null
+  if (!rect) return null
+  // iPad Safari's toolbars shrink the visual viewport below the layout size;
+  // fitting against the larger number leaves the bottom windows clipped.
+  const vv = window.visualViewport
+  const width = vv ? Math.min(rect.width, vv.width) : rect.width
+  const height = vv ? Math.min(rect.height, vv.height) : rect.height
+  return { width, height }
 }
 
 function usePortrait() {

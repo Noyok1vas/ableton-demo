@@ -42,5 +42,5 @@ export type WindowLimits = {
   maxH: number
 }
 
-export const MIN_SCALE = 0.15
+export const MIN_SCALE = 0.05
 export const MAX_SCALE = 8
