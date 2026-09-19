@@ -31,8 +31,12 @@ export function ZoomControl({ view, onViewChange, onReset }: ZoomControlProps) {
     const mq = window.matchMedia('(pointer: coarse)')
     const sync = () => setCoarse(mq.matches)
     sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', sync)
+      return () => mq.removeEventListener('change', sync)
+    }
+    mq.addListener(sync)
+    return () => mq.removeListener(sync)
   }, [])
 
   useEffect(() => {

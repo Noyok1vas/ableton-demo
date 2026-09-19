@@ -66,26 +66,48 @@ function fitView(windows: WindowState[], width: number, height: number): View {
   const contentW = Math.max(...windows.map((w) => w.x + w.w)) - minX
   const contentH = Math.max(...windows.map((w) => w.y + w.h)) - minY
   const availW = Math.max(1, width - padX * 2)
-  const availH = Math.max(1, height - padY * 2 - FIT_BOTTOM_CHROME)
+  // Never let the chrome reservation eat the whole height on a short Safari UI.
+  const bottomChrome = Math.min(FIT_BOTTOM_CHROME, Math.max(0, height * 0.12))
+  const availH = Math.max(1, height - padY * 2 - bottomChrome)
   const needed = Math.min(1, availW / contentW, availH / contentH)
   // Fit must succeed even when that means going under the interactive floor.
   const scale = Math.min(MAX_SCALE, Math.max(FIT_SCALE_FLOOR, needed))
   return {
     scale,
     x: (width - contentW * scale) / 2 - minX * scale,
-    y: (height - contentH * scale - FIT_BOTTOM_CHROME) / 2 + padY / 2 - minY * scale,
+    y: (height - contentH * scale - bottomChrome) / 2 + padY / 2 - minY * scale,
   }
 }
 
 function surfaceSize() {
   const rect = document.querySelector('.surface')?.getBoundingClientRect()
-  if (!rect) return null
-  // iPad Safari's toolbars shrink the visual viewport below the layout size;
-  // fitting against the larger number leaves the bottom windows clipped.
+  if (!rect || rect.width < 32 || rect.height < 32) return null
+
+  let { width, height } = rect
   const vv = window.visualViewport
-  const width = vv ? Math.min(rect.width, vv.width) : rect.width
-  const height = vv ? Math.min(rect.height, vv.height) : rect.height
+  // iPad Safari can report a near-zero visualViewport during the first paint.
+  // Fitting against that shrinks the layout into a speck on a white canvas —
+  // which reads as a blank page. Only honour a plausible toolbar inset.
+  if (
+    vv &&
+    vv.width >= Math.min(width * 0.6, 480) &&
+    vv.height >= Math.min(height * 0.6, 320)
+  ) {
+    width = Math.min(width, vv.width)
+    height = Math.min(height, vv.height)
+  }
   return { width, height }
+}
+
+function subscribeMedia(mq: MediaQueryList, sync: () => void) {
+  sync()
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }
+  // Safari < 14
+  mq.addListener(sync)
+  return () => mq.removeListener(sync)
 }
 
 function usePortrait() {
@@ -93,11 +115,9 @@ function usePortrait() {
     () => typeof window !== 'undefined' && window.matchMedia('(orientation: portrait)').matches,
   )
   useEffect(() => {
-    const mq = window.matchMedia('(orientation: portrait)')
-    const sync = () => setPortrait(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
+    return subscribeMedia(window.matchMedia('(orientation: portrait)'), () => {
+      setPortrait(window.matchMedia('(orientation: portrait)').matches)
+    })
   }, [])
   return portrait
 }
@@ -120,7 +140,11 @@ export function Workspace() {
 
   const applyFit = useCallback(() => {
     const size = surfaceSize()
-    if (size) setView(fitView(windowsRef.current, size.width, size.height))
+    if (!size) return
+    const next = fitView(windowsRef.current, size.width, size.height)
+    setView((prev) =>
+      prev.scale === next.scale && prev.x === next.x && prev.y === next.y ? prev : next,
+    )
   }, [])
 
   const onViewChange = useCallback((next: View) => {
@@ -141,12 +165,21 @@ export function Workspace() {
     const onResize = () => {
       if (!userAdjusted.current) applyFit()
     }
+    // Safari often settles the toolbar / visualViewport a tick after first paint.
+    const raf = window.requestAnimationFrame(() => {
+      if (!userAdjusted.current) applyFit()
+    })
+    const delayed = window.setTimeout(onResize, 250)
     window.addEventListener('resize', onResize)
     window.addEventListener('orientationchange', onResize)
+    window.addEventListener('pageshow', onResize)
     window.visualViewport?.addEventListener('resize', onResize)
     return () => {
+      window.cancelAnimationFrame(raf)
+      window.clearTimeout(delayed)
       window.removeEventListener('resize', onResize)
       window.removeEventListener('orientationchange', onResize)
+      window.removeEventListener('pageshow', onResize)
       window.visualViewport?.removeEventListener('resize', onResize)
     }
   }, [applyFit])

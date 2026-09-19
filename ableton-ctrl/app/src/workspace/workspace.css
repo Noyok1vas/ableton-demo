@@ -285,7 +285,8 @@
   padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
   background: var(--canvas);
   color: var(--text);
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 28px;
+  font-weight: 600;
   text-align: center;
+  line-height: 1.4;
 }
