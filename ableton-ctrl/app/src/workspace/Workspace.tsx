@@ -1,10 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useLayoutEffect, useState } from 'react'
 import { CanvasSurface } from './CanvasSurface.tsx'
 import { DraggableWindow } from './DraggableWindow.tsx'
-import { PageMenu } from './PageMenu.tsx'
-import { ZoomControl } from './ZoomControl.tsx'
-import { INITIAL_WINDOWS, PAGES, WINDOW_LIMITS } from './pages.ts'
+import { INITIAL_WINDOWS, WINDOW_LIMITS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
+import { clampScale } from './viewUtils.ts'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
@@ -44,13 +43,45 @@ function windowContent(kind: WindowKind) {
   }
 }
 
+/**
+ * The demo ships without a zoom control, so the canvas has to arrive already
+ * framed: fit the windows' bounding box into the surface and centre it. Capped
+ * at 1 so a wide monitor shows the layout at its designed size rather than
+ * blowing it up. Runs once — after that the view belongs to the visitor.
+ */
+function fitView(windows: WindowState[], width: number, height: number): View {
+  if (windows.length === 0 || width === 0 || height === 0) return INITIAL_VIEW
+  const pad = 40
+  const minX = Math.min(...windows.map((w) => w.x))
+  const minY = Math.min(...windows.map((w) => w.y))
+  const contentW = Math.max(...windows.map((w) => w.x + w.w)) - minX
+  const contentH = Math.max(...windows.map((w) => w.y + w.h)) - minY
+  const scale = clampScale(
+    Math.min(1, (width - pad * 2) / contentW, (height - pad * 2) / contentH),
+  )
+  return {
+    scale,
+    x: (width - contentW * scale) / 2 - minX * scale,
+    y: (height - contentH * scale) / 2 - minY * scale,
+  }
+}
+
 export function Workspace() {
-  const [pageId, setPageId] = useState<PageId>('rhythmic-intent')
+  // No page menu in the demo, so the page never changes.
+  const pageId: PageId = 'rhythmic-intent'
   const [view, setView] = useState<View>(INITIAL_VIEW)
   const [windowsByPage, setWindowsByPage] =
     useState<Record<PageId, WindowState[]>>(INITIAL_WINDOWS)
 
   const windows = windowsByPage[pageId]
+
+  useLayoutEffect(() => {
+    const rect = document.querySelector('.surface')?.getBoundingClientRect()
+    if (rect) setView(fitView(INITIAL_WINDOWS[pageId], rect.width, rect.height))
+    // Mount only: re-fitting later would yank the canvas out from under a
+    // visitor who has panned or zoomed it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const updateWindow = useCallback(
     (id: string, patch: Partial<WindowState>) => {
@@ -79,9 +110,6 @@ export function Workspace() {
       </CanvasSurface>
 
       {windows.length === 0 && <div className="workspace-empty">This page is empty</div>}
-
-      <PageMenu pages={PAGES} currentId={pageId} onSelect={setPageId} />
-      <ZoomControl view={view} onViewChange={setView} onReset={() => setView(INITIAL_VIEW)} />
     </div>
   )
 }

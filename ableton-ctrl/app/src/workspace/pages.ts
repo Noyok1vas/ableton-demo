@@ -10,37 +10,23 @@ export const PAGES: Page[] = [
 
 /** Each page owns its windows. Only the first page has content in this pass. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
-  // Two columns: the controls on the left, read top to bottom, and the Sound
-  // Visual to their right as the stage, vertically centred on the column and
-  // sized so the whole ring is legible without filling the canvas. There is no
-  // Tap window — a tap comes from Space or from a Selector mark.
+  // Demo build: only the four windows a visitor needs. Sound Source, March
+  // Intent, Rhythmic intent, Sound Intent, Ripple and March Family are all
+  // omitted here — they either drive Live over the bridge, which no visitor
+  // has, or they are machinery the demo does not explain. Their sessions still
+  // mount in App.tsx, so the Sound Visual keeps reading them.
+  //
+  // Three columns: Collection as a narrow ledger on the left, the Sound Visual
+  // as the stage, and a right column split between what the sound is (Sound
+  // Selector) and the room it lands in (FX).
+  // The right column is 540 wide because the Selector's grid drops to two
+  // columns under 460px of container (selector.css): at this width the four
+  // identities stay in the single row they are meant to be read as.
   'rhythmic-intent': [
-    // Sound Source heads the control column: it decides where every other
-    // window's sound comes out — and, now that there are two tracks, how they
-    // sit against each other — so it is read before any of them.
-    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 1000, h: 720 },
-    // March Intent beside it rather than off on a page of its own: the two
-    // tracks are played together and share a clock, so they are looked at
-    // together. Its machinery stays out of sight in March Family.
-    { id: 'mi-1', kind: 'march-intent', title: 'March Intent', x: 1094, y: 64, w: 900, h: 720 },
-    { id: 'ri-1', kind: 'rhythmic-intent', title: 'Rhythmic intent', x: 64, y: 816, w: 1000, h: 656 },
-    { id: 'col-1', kind: 'collection', title: 'Collection', x: 1094, y: 816, w: 372, h: 656 },
-    // Sound Selector — the four identities and, underneath, the selected one's
-    // character. Tall because that panel is half the window: the grid answers
-    // which sound, the panel answers what it currently sounds like.
-    { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 64, y: 1504, w: 564, h: 796 },
-    // Sound Intent below it: the dimensions that apply to every sound, under
-    // the ones that belong to a single sound.
-    { id: 'si-1', kind: 'sound-intent', title: 'Sound Intent', x: 64, y: 2332, w: 564, h: 520 },
-    // Ripple — the ratchet as a playable gesture, kept while the Sound Visual's
-    // TICK mark is a single ring. Standalone: its own pad, nothing sent to Live.
-    { id: 'rip-1', kind: 'ripple', title: 'Ripple', x: 660, y: 1504, w: 484, h: 796 },
-    // FX — the room, not the instrument. Applies to the whole field at once.
-    { id: 'fx-1', kind: 'fx', title: 'FX', x: 1188, y: 1504, w: 560, h: 796 },
-    { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 2020, y: 344, w: 1400, h: 1380 },
-    // Backstage, so it sits off the played column entirely — under the Sound
-    // Visual, where nothing has to be moved to reach it.
-    { id: 'mf-1', kind: 'march-family', title: 'March Family', x: 2020, y: 1764, w: 1400, h: 1180 },
+    { id: 'col-1', kind: 'collection', title: 'Collection', x: 64, y: 64, w: 700, h: 1440 },
+    { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 800, y: 64, w: 1470, h: 1440 },
+    { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 2306, y: 64, w: 540, h: 702 },
+    { id: 'fx-1', kind: 'fx', title: 'FX', x: 2306, y: 802, w: 540, h: 702 },
   ],
   'untitled-2': [],
   'untitled-3': [],
@@ -51,7 +37,7 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   'sound-source': { minW: 420, minH: 260, maxW: 1200, maxH: 720 },
   'rhythmic-intent': { minW: 720, minH: 600, maxW: 1600, maxH: 1040 },
-  collection: { minW: 300, minH: 280, maxW: 720, maxH: 1200 },
+  collection: { minW: 300, minH: 280, maxW: 720, maxH: 1600 },
   'sound-intent': { minW: 360, minH: 420, maxW: 900, maxH: 1040 },
   'sound-visual': { minW: 320, minH: 320, maxW: 2400, maxH: 2400 },
   fx: { minW: 360, minH: 380, maxW: 900, maxH: 800 },
