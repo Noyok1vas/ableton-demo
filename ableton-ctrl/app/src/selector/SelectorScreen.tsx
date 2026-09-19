@@ -31,9 +31,10 @@ const FLASH_MS = 90
 export function SelectorScreen() {
   const { fireTap, recording } = useTap()
   const { gesture, setGesture, character, setCharacter } = useSelector()
-  const { noteOn } = useSoundEngine()
+  const { noteOn, status, source } = useSoundEngine()
   const [flashing, setFlashing] = useState<PatternId | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const needsUnlock = source === 'builtin' && !status.ready
 
   useEffect(
     () => () => {
@@ -77,6 +78,11 @@ export function SelectorScreen() {
 
   return (
     <div className="sel-screen">
+      {needsUnlock && (
+        <p className="sel-audio-unlock" role="status">
+          Tap HIT / SPLASH / TICK / SCATTER once to start sound
+        </p>
+      )}
       <div className="sel-grid">
         {PATTERNS.map((pattern) => {
           const isSelected = gesture === pattern.id

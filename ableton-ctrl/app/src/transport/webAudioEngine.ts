@@ -254,13 +254,51 @@ export class WebAudioEngine implements SoundEngine {
 
   private disposed = false
   private detachGesture: (() => void) | null = null
+  private onVisibility = () => {
+    if (document.visibilityState !== 'visible' || !this.ctx) return
+    this.resumeContext(this.ctx)
+  }
 
   start(): void {
-    if (this.disposed || this.ctx) return
+    if (this.disposed || this.detachGesture || this.ctx) return
+
+    // Do not open an AudioContext here. iOS Safari only allows a context that
+    // is created (or resumed) inside a real user gesture to leave `suspended`.
+    // Opening it from the mount effect would leave every visitor silent until
+    // a second, easy-to-miss unlock — and often forever on iPad.
+    this.setStatus(STATUS_WAITING)
+    const unlock = () => {
+      this.ensureContext()
+    }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('touchstart', unlock, { passive: true })
+    window.addEventListener('keydown', unlock)
+    this.detachGesture = () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('touchstart', unlock)
+      window.removeEventListener('keydown', unlock)
+      this.detachGesture = null
+    }
+  }
+
+  /** Build the graph on first use (ideally inside a gesture) and resume it. */
+  private ensureContext(): AudioContext | null {
+    if (this.disposed) return null
+    if (this.ctx) {
+      this.resumeContext(this.ctx)
+      return this.ctx
+    }
 
     const ctx = new AudioContext()
     this.ctx = ctx
+    this.buildGraph(ctx)
+    this.primeContext(ctx)
+    this.resumeContext(ctx)
+    document.addEventListener('visibilitychange', this.onVisibility)
+    return ctx
+  }
 
+  private buildGraph(ctx: AudioContext): void {
     // Master chain, built once and left running.
     const master = ctx.createGain()
     // Leaves headroom for the first transient of a stack, which slips past the
@@ -316,44 +354,67 @@ export class WebAudioEngine implements SoundEngine {
     reverbSend.gain.value = 0 // FX's REVERB rests at 0 — a dry room
     voiceBus.connect(reverbSend).connect(reverb)
     this.reverbSend = reverbSend
+  }
 
-    // A context created outside a user gesture starts suspended. Resume on the
-    // first interaction anywhere, so the pad is live by the time it is pressed.
-    if (ctx.state === 'running') {
-      this.setStatus(STATUS_READY)
-    } else {
-      const resume = () => {
-        void ctx.resume().then(() => {
-          if (ctx.state === 'running') {
-            this.detachGesture?.()
-            this.setStatus(STATUS_READY)
-          }
-        })
-      }
-      window.addEventListener('pointerdown', resume)
-      window.addEventListener('keydown', resume)
-      this.detachGesture = () => {
-        window.removeEventListener('pointerdown', resume)
-        window.removeEventListener('keydown', resume)
-        this.detachGesture = null
-      }
+  /** A one-sample buffer some iOS builds need before the first real note. */
+  private primeContext(ctx: AudioContext): void {
+    try {
+      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate)
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(ctx.destination)
+      source.start(0)
+    } catch {
+      // Priming is best-effort; resume + the real note still carry the unlock.
     }
   }
 
+  private resumeContext(ctx: AudioContext): void {
+    if (ctx.state === 'running') {
+      this.detachGesture?.()
+      this.setStatus(STATUS_READY)
+      return
+    }
+    void ctx.resume().then(() => {
+      if (ctx.state === 'running') {
+        this.detachGesture?.()
+        this.setStatus(STATUS_READY)
+      }
+    })
+  }
+
   noteOn(velocity = 1, voice?: SoundVoiceId, character?: number): void {
-    const ctx = this.ctx
+    const ctx = this.ensureContext()
     if (!ctx) return
-    // A tap *is* a gesture, so this is the moment a suspended context can
-    // legally start; the note itself lands a few ms later.
-    if (ctx.state !== 'running') void ctx.resume()
-    this.fire(ctx.currentTime, velocity, voice, character)
+    const play = () => this.fire(ctx.currentTime, velocity, voice, character)
+    if (ctx.state === 'running') {
+      play()
+      return
+    }
+    // Resume was kicked from this same gesture; schedule the hit once it lands.
+    void ctx.resume().then(() => {
+      if (ctx.state === 'running') play()
+    })
   }
 
   startLoop(events: readonly LoopEvent[], barDuration: number): void {
-    const ctx = this.ctx
+    const ctx = this.ensureContext()
     if (!ctx) return
-    if (ctx.state !== 'running') void ctx.resume()
+    const begin = () => this.beginLoop(ctx, events, barDuration)
+    if (ctx.state === 'running') {
+      begin()
+      return
+    }
+    void ctx.resume().then(() => {
+      if (ctx.state === 'running') begin()
+    })
+  }
 
+  private beginLoop(
+    ctx: AudioContext,
+    events: readonly LoopEvent[],
+    barDuration: number,
+  ): void {
     const wasRunning = this.main.running
     this.main.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_LOOP_EVENTS)
     this.main.period = clamp(barDuration, 0.25, 30)
@@ -392,10 +453,24 @@ export class WebAudioEngine implements SoundEngine {
     phraseDuration: number,
     barDuration: number,
   ): void {
-    const ctx = this.ctx
+    const ctx = this.ensureContext()
     if (!ctx) return
-    if (ctx.state !== 'running') void ctx.resume()
+    const begin = () => this.beginMarchLoop(ctx, events, phraseDuration, barDuration)
+    if (ctx.state === 'running') {
+      begin()
+      return
+    }
+    void ctx.resume().then(() => {
+      if (ctx.state === 'running') begin()
+    })
+  }
 
+  private beginMarchLoop(
+    ctx: AudioContext,
+    events: readonly MarchEvent[],
+    phraseDuration: number,
+    barDuration: number,
+  ): void {
     this.march.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_MARCH_EVENTS)
     this.march.period = clamp(phraseDuration, 0.25, 60)
     this.march.running = true
@@ -492,6 +567,7 @@ export class WebAudioEngine implements SoundEngine {
     this.stopLoop()
     this.stopMarchLoop()
     this.detachGesture?.()
+    document.removeEventListener('visibilitychange', this.onVisibility)
     this.listeners.clear()
     void this.ctx?.close()
     this.ctx = null

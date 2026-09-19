@@ -17,6 +17,18 @@
   container-type: inline-size;
 }
 
+.sel-audio-unlock {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--ink-pure);
+  color: var(--surface);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 .sel-grid {
   flex: 0 0 auto;
   display: grid;
