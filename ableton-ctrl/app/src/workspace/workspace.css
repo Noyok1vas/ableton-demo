@@ -15,6 +15,7 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
+  touch-action: none;
 }
 
 .surface-bg {
@@ -251,16 +252,24 @@
 }
 
 @media (pointer: coarse) {
-  .zoomctl {
-    height: 44px;
+  .zoomctl,
+  .zoomctl--touch {
+    height: 52px;
   }
 
   .zoomctl-btn {
-    width: 44px;
+    width: 52px;
+    font-size: 22px;
+  }
+
+  .zoomctl-readout {
+    min-width: 64px;
+    font-size: 15px;
   }
 
   .zoomctl-reset {
     padding: 0 var(--space-4);
+    font-size: 15px;
   }
 }
 
