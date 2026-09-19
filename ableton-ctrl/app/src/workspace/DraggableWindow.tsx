@@ -1,36 +1,30 @@
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { CANVAS_PINCH_EVENT } from './CanvasSurface.tsx'
-import type { WindowLimits, WindowState } from './types.ts'
-import { clamp } from './viewUtils.ts'
+import type { WindowState } from './types.ts'
 
 type DraggableWindowProps = {
   window: WindowState
   /** Current canvas zoom, so screen deltas convert to canvas deltas. */
   scale: number
-  limits: WindowLimits
   onChange: (patch: Partial<WindowState>) => void
   children: ReactNode
 }
 
 /**
- * A window on the canvas: drag by its title bar, resize from the bottom-right
- * corner within `limits`. Both gestures divide the screen-space pointer delta
- * by `scale` because the window sits inside the zoomed layer.
+ * A window on the canvas: drag by its title bar. Size is fixed by the page
+ * layout — the demo no longer exposes a resize grip.
  */
 export function DraggableWindow({
   window: win,
   scale,
-  limits,
   onChange,
   children,
 }: DraggableWindowProps) {
   const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null)
-  const resize = useRef<{ px: number; py: number; w: number; h: number } | null>(null)
 
   useEffect(() => {
     const cancel = () => {
       drag.current = null
-      resize.current = null
     }
     document.addEventListener(CANVAS_PINCH_EVENT, cancel)
     return () => document.removeEventListener(CANVAS_PINCH_EVENT, cancel)
@@ -51,22 +45,6 @@ export function DraggableWindow({
     drag.current = null
   }
 
-  const onResizePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.stopPropagation()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    resize.current = { px: e.clientX, py: e.clientY, w: win.w, h: win.h }
-  }
-  const onResizePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!resize.current) return
-    onChange({
-      w: clamp(resize.current.w + (e.clientX - resize.current.px) / scale, limits.minW, limits.maxW),
-      h: clamp(resize.current.h + (e.clientY - resize.current.py) / scale, limits.minH, limits.maxH),
-    })
-  }
-  const onResizePointerUp = () => {
-    resize.current = null
-  }
-
   return (
     <div className="cwindow" style={{ left: win.x, top: win.y, width: win.w, height: win.h }}>
       <div
@@ -79,15 +57,6 @@ export function DraggableWindow({
         <span className="cwindow-title">{win.title}</span>
       </div>
       <div className="cwindow-body">{children}</div>
-      <div
-        className="cwindow-resize"
-        aria-label="Resize window"
-        style={{ transform: `scale(${1 / scale})` }}
-        onPointerDown={onResizePointerDown}
-        onPointerMove={onResizePointerMove}
-        onPointerUp={onResizePointerUp}
-        onPointerCancel={onResizePointerUp}
-      />
     </div>
   )
 }

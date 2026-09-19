@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { CanvasSurface } from './CanvasSurface.tsx'
 import { DraggableWindow } from './DraggableWindow.tsx'
 import { ZoomControl } from './ZoomControl.tsx'
-import { INITIAL_WINDOWS, WINDOW_LIMITS } from './pages.ts'
+import { INITIAL_WINDOWS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
 import { MAX_SCALE } from './types.ts'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
@@ -202,7 +202,6 @@ export function Workspace() {
             key={w.id}
             window={w}
             scale={view.scale}
-            limits={WINDOW_LIMITS[w.kind]}
             onChange={(patch) => updateWindow(w.id, patch)}
           >
             {windowContent(w.kind)}

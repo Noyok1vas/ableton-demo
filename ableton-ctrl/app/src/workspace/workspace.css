@@ -83,31 +83,6 @@
   overflow: hidden;
 }
 
-.cwindow-resize {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  /* Hit target ≥ 44px; the visible triangle stays a corner mark. */
-  width: 44px;
-  height: 44px;
-  cursor: nwse-resize;
-  touch-action: none;
-  background: none;
-  /* Inverse-scaled in the component so the hit target stays ~44px on screen. */
-  transform-origin: bottom right;
-}
-
-.cwindow-resize::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 22px;
-  height: 22px;
-  background: var(--line-strong);
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-}
-
 /* ── Empty-page hint ────────────────────────────────── */
 
 .workspace-empty {
