@@ -188,6 +188,10 @@ const SCATTER_AIRY_WOBBLE = 11 // a fast flutter reads as air moving
 const SCATTER_DENSE_WOBBLE = 4.5 // a slow stir reads as mass
 const SCATTER_AIRY_LEVEL = 0.6
 const SCATTER_DENSE_LEVEL = 1.35
+// How long the texture voice takes to reach full volume — independent of
+// LENGTH (`decay`, below), which is the tail, not the onset. See the 'texture'
+// case for why the two used to be tied together.
+const TEXTURE_ATTACK = 0.045
 
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
 
@@ -531,12 +535,21 @@ export function playVoice(
 
     case 'texture': {
       // The one voice with no transient. Noise through a wide band — soft
-      // static rather than a hiss — swelling in over a long attack instead of
+      // static rather than a hiss — swelling in over a short attack instead of
       // snapping on, and stirred by a slow LFO so it rustles like sand rather
       // than sitting there as a flat tone. Everything here is the opposite of
       // the percussive envelope above, which is the point: SCATTER has to read
       // as air, not as a fourth drum.
-      const attack = decay * 0.28
+      //
+      // The attack is fixed rather than a share of `decay`: decay is LENGTH's
+      // knob, and LENGTH is how long the bed rings on after the hit, not how
+      // long the hit takes to arrive. Tying the two together meant turning
+      // LENGTH up — or just sitting at its default — pushed the attack past
+      // 800ms, so the sound was still swelling in half a beat after the tap
+      // that triggered it and a player had nothing to place on the beat. A
+      // fixed 45ms keeps the swell (SCATTER still reads as air, not a click)
+      // without it eating the downbeat.
+      const attack = TEXTURE_ATTACK
       const span = attack + decay + 0.05
       const source = track(noiseSource(ctx, when, span, true))
       // ENERGY opens the band upward, the way it brightens every other voice;
