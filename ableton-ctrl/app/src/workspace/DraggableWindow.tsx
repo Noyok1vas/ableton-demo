@@ -1,4 +1,5 @@
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { CANVAS_PINCH_EVENT } from './CanvasSurface.tsx'
 import type { WindowLimits, WindowState } from './types.ts'
 import { clamp } from './viewUtils.ts'
 
@@ -25,6 +26,15 @@ export function DraggableWindow({
 }: DraggableWindowProps) {
   const drag = useRef<{ px: number; py: number; x: number; y: number } | null>(null)
   const resize = useRef<{ px: number; py: number; w: number; h: number } | null>(null)
+
+  useEffect(() => {
+    const cancel = () => {
+      drag.current = null
+      resize.current = null
+    }
+    document.addEventListener(CANVAS_PINCH_EVENT, cancel)
+    return () => document.removeEventListener(CANVAS_PINCH_EVENT, cancel)
+  }, [])
 
   const onTitlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -72,6 +82,7 @@ export function DraggableWindow({
       <div
         className="cwindow-resize"
         aria-label="Resize window"
+        style={{ transform: `scale(${1 / scale})` }}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}
         onPointerUp={onResizePointerUp}

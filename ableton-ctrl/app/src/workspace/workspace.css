@@ -6,6 +6,7 @@
   inset: 0;
   overflow: hidden;
   background: var(--canvas);
+  overscroll-behavior: none;
 }
 
 /* ── Canvas surface ─────────────────────────────────── */
@@ -21,6 +22,8 @@
   inset: 0;
   cursor: grab;
   background-color: var(--canvas);
+  /* Browser pinch/pan stays off the empty canvas; two-finger zoom is JS. */
+  touch-action: none;
 }
 
 .surface-bg:active {
@@ -83,11 +86,23 @@
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 20px;
-  height: 20px;
+  /* Hit target ≥ 44px; the visible triangle stays a corner mark. */
+  width: 44px;
+  height: 44px;
   cursor: nwse-resize;
   touch-action: none;
-  /* Solid triangle filling the bottom-right corner. */
+  background: none;
+  /* Inverse-scaled in the component so the hit target stays ~44px on screen. */
+  transform-origin: bottom right;
+}
+
+.cwindow-resize::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
   background: var(--line-strong);
   clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
@@ -185,14 +200,15 @@
 
 .zoomctl {
   position: fixed;
-  right: var(--space-3);
-  bottom: var(--space-3);
+  right: max(var(--space-3), env(safe-area-inset-right));
+  bottom: max(var(--space-3), env(safe-area-inset-bottom));
   z-index: 10;
   display: flex;
   align-items: stretch;
   height: 36px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
+  touch-action: manipulation;
 }
 
 .zoomctl-btn,
@@ -232,4 +248,35 @@
 .zoomctl-btn:hover,
 .zoomctl-reset:hover {
   background: var(--surface-2);
+}
+
+@media (pointer: coarse) {
+  .zoomctl {
+    height: 44px;
+  }
+
+  .zoomctl-btn {
+    width: 44px;
+  }
+
+  .zoomctl-reset {
+    padding: 0 var(--space-4);
+  }
+}
+
+/* Shown from JS when the viewport is portrait — landscape is the only layout. */
+.workspace-rotate {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  padding: var(--space-5);
+  padding-top: max(var(--space-5), env(safe-area-inset-top));
+  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+  background: var(--canvas);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 500;
+  text-align: center;
 }
