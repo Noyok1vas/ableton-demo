@@ -17,6 +17,7 @@ import {
   type SoundParams,
 } from './types.ts'
 import { useSoundEngine } from '../transport/session.tsx'
+import { loadSaved, mergeNumbers, useSaved } from '../persist.ts'
 import type { PatternId } from '../selector/patterns.ts'
 
 /** Dimensions that drive a sound macro, id → the macro's exact name. */
@@ -76,7 +77,10 @@ export function useSoundIntent(): SoundIntentSessionValue {
  */
 export function SoundIntentSession({ children }: { children: ReactNode }) {
   const { setMacro, status, engineId } = useSoundEngine()
-  const [params, setParams] = useState<SoundParams>(DEFAULT_SOUND_PARAMS)
+  const [params, setParams] = useState<SoundParams>(() =>
+    mergeNumbers(DEFAULT_SOUND_PARAMS, loadSaved('sound'), SOUND_MIN, SOUND_MAX),
+  )
+  useSaved('sound', params)
 
   // Mirror params in a ref so emitTap always snapshots the current values
   // without needing to be re-created on every slider move.

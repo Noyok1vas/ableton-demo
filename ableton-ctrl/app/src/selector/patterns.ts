@@ -13,8 +13,12 @@
  *
  * HIT and TICK are deliberately the same mark in two states, filled and hollow,
  * because that is the relationship the two sounds have. The Sound Visual draws
- * the same four marks on its ring — these icons are the key to that canvas, so
- * a change here belongs in SoundVisualScreen too.
+ * the same marks on its ring — these icons are the key to that canvas, so a
+ * change here belongs in SoundVisualScreen too.
+ *
+ * SNARE, TOM, RIM and CYMBAL do not have marks of their own yet. Until they do,
+ * each is a PLACEHOLDER: one soft dot diffusing into grain, sized differently
+ * per voice so the four can at least be told apart.
  */
 
 import type { SoundVoiceId } from '../transport/engine.ts'
@@ -219,13 +223,48 @@ function scatterField(x: number, y: number, c: number): number {
   return clamp01(v)
 }
 
+// ── 5. PLACEHOLDER — a diffuse dot, for the voices still without a mark ───
+// A dense centre that gives way to grain with no edge at all: the one shape
+// that says "a sound happened here" and nothing about which. `spread` is the
+// only thing that differs per voice; the character widens it a little on top,
+// so the panel's slider still visibly does something.
+export const PLACEHOLDER_SPREAD: Partial<Record<PatternId, number>> = {
+  snare: 1,
+  tom: 1.2,
+  rim: 0.7,
+  cymbal: 1.45,
+}
+const PLACEHOLDER_SIGMA = 0.3
+
+function placeholderField(spread: number) {
+  return (x: number, y: number, c: number): number => {
+    const sigma = PLACEHOLDER_SIGMA * spread * lerp(0.85, 1.2, c)
+    const r = Math.hypot(x, y) / sigma
+    return clamp01(Math.exp(-r * r) * 1.15)
+  }
+}
+
+const placeholder = (id: PatternId, label: string): Pattern => ({
+  id,
+  label,
+  field: placeholderField(PLACEHOLDER_SPREAD[id] ?? 1),
+  maxInk: 0.82,
+  // Full grain: the diffusion IS the grain breaking the dot up.
+  grain: 1.4,
+})
+
 export const PATTERNS: Pattern[] = [
   // Ids ARE the sound identities now, so a mark, a voice and a drawn shape all
   // answer to the same name — the Sound Visual and the engine both key off this.
+  // Same order as SOUND_VOICES: the original four, then the expansion.
   { id: 'splash', label: 'Splash', field: splashField, maxInk: 0.94, grain: 1.0 },
   { id: 'hit', label: 'Hit', field: hitField, maxInk: 0.96, grain: 1.0 },
   { id: 'tick', label: 'Tick', field: tickField, maxInk: 0.9, grain: 0.9 },
   { id: 'scatter', label: 'Scatter', field: scatterField, maxInk: 0.78, grain: 0.6 },
+  placeholder('snare', 'Snare'),
+  placeholder('tom', 'Tom'),
+  placeholder('rim', 'Rim'),
+  placeholder('cymbal', 'Cymbal'),
 ]
 
 /** Rasterization size of a mark. Deliberately low: the tile is drawn scaled up

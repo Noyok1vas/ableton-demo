@@ -1,16 +1,14 @@
-import {
-  BARS_PER_LOOP,
-  BEATS_PER_LOOP,
-  GRID_DIVISIONS,
-  type CaptureState,
-  type RenderedTap,
-} from './types.ts'
+import { useMemo } from 'react'
+import { BARS_PER_LOOP, type CaptureState, type RenderedTap } from './types.ts'
 
 type RhythmVisualizationProps = {
   taps: readonly RenderedTap[]
   state: CaptureState
   /** 0..1 playhead position (recording or loop playback), null to hide. */
   playhead: number | null
+  /** The loop's 1/16 steps and beats — both follow the transport's meter. */
+  gridDivisions: number
+  beatsPerLoop: number
 }
 
 // ViewBox geometry. The SVG scales uniformly to the container width, so all
@@ -35,26 +33,26 @@ const xFor = (pos: number) => PAD_X + pos * TRACK_W
 
 // The staff the pattern is drawn on: the 1/16 grid (fine lines, stronger on
 // each beat, heaviest on a barline), the beat numbers, and the centre line. It
-// is the same picture every time, while the playhead above it moves every
-// frame — so it is built once at module load rather than per render.
-const STAFF = (
+// only changes with the meter, while the playhead above it moves every frame —
+// so it is memoized on the two numbers the meter decides.
+const staff = (divisions: number, beats: number) => (
   <>
-    {Array.from({ length: GRID_DIVISIONS + 1 }, (_, i) => (
+    {Array.from({ length: divisions + 1 }, (_, i) => (
       <line
         key={i}
-        x1={xFor(i / GRID_DIVISIONS)}
+        x1={xFor(i / divisions)}
         y1={GRID_TOP}
-        x2={xFor(i / GRID_DIVISIONS)}
+        x2={xFor(i / divisions)}
         y2={GRID_BOTTOM}
-        stroke={i % (GRID_DIVISIONS / BEATS_PER_LOOP) === 0 ? 'var(--line-strong)' : 'var(--line-fine)'}
+        stroke={i % (divisions / beats) === 0 ? 'var(--line-strong)' : 'var(--line-fine)'}
         // Barline: the loop spans two bars, so the midpoint reads as a downbeat.
-        strokeWidth={i % (GRID_DIVISIONS / BARS_PER_LOOP) === 0 ? '1.5' : '1'}
+        strokeWidth={i % (divisions / BARS_PER_LOOP) === 0 ? '1.5' : '1'}
       />
     ))}
-    {Array.from({ length: BEATS_PER_LOOP }, (_, beat) => (
+    {Array.from({ length: beats }, (_, beat) => (
       <text
         key={`beat-${beat}`}
-        x={xFor(beat / BEATS_PER_LOOP)}
+        x={xFor(beat / beats)}
         y={LABEL_Y}
         className="rhythm-vis-beat num"
         textAnchor="middle"
@@ -73,7 +71,14 @@ const STAFF = (
   </>
 )
 
-export function RhythmVisualization({ taps, state, playhead }: RhythmVisualizationProps) {
+export function RhythmVisualization({
+  taps,
+  state,
+  playhead,
+  gridDivisions,
+  beatsPerLoop,
+}: RhythmVisualizationProps) {
+  const STAFF = useMemo(() => staff(gridDivisions, beatsPerLoop), [gridDivisions, beatsPerLoop])
   return (
     <svg
       className="rhythm-vis"

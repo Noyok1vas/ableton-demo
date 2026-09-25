@@ -100,8 +100,8 @@ export const MARCH_KIT: Record<MarchVoiceId, MarchVoiceSpec> = {
 }
 
 /**
- * The four sound identities of the Selector: what HIT, TAP, SPLASH and SCATTER
- * actually sound like.
+ * The eight sound identities of the Selector: what HIT, TICK, SPLASH, SCATTER,
+ * SNARE, TOM, RIM and CYMBAL actually sound like.
  *
  * Their own kit rather than four of the 16 pads, for the same reason March has
  * one: the pads are an instrument the performer chooses from, while these four
@@ -149,6 +149,32 @@ export const SOUND_TYPE_KIT: Record<SoundVoiceId, SoundVoiceSpec> = {
     voice: { label: 'SCATTER', kind: 'texture', cutoff: 2600, q: 0.6, wobble: 7.5, decay: 2.4 },
     level: 0.42,
   },
+  // ── The drum-synth expansion: four conventional voices ─────────────────
+  // Plain drums rather than roles, so the kit covers what a drum machine is
+  // expected to cover. Each still has one character axis (see below) except
+  // RIM, which is fixed the way SPLASH is.
+  //
+  // A snare: pitched body under the rattle. The backbone HIT and SPLASH were
+  // standing in for.
+  snare: {
+    voice: { label: 'SNARE', kind: 'snare', tone: 190, noiseMix: 0.72, decay: 0.2 },
+    level: 0.9,
+  },
+  // A tom whose character is its pitch — low floor tom to high rack tom.
+  tom: {
+    voice: { label: 'TOM', kind: 'tom', freq: 118, decay: 0.32 },
+    level: 0.92,
+  },
+  // A rimshot click: short, dry, cutting.
+  rim: {
+    voice: { label: 'RIM', kind: 'rim', decay: 0.07 },
+    level: 0.8,
+  },
+  // Crash to ride on one axis: the long dark wash to the shorter bright ping.
+  cymbal: {
+    voice: { label: 'CYMBAL', kind: 'cymbal', cutoff: 7000, decay: 1.1 },
+    level: 0.62,
+  },
 }
 
 // ── Character → the voice that actually sounds ────────────────────────────
@@ -192,6 +218,29 @@ const SCATTER_DENSE_LEVEL = 1.35
 // LENGTH (`decay`, below), which is the tail, not the onset. See the 'texture'
 // case for why the two used to be tied together.
 const TEXTURE_ATTACK = 0.045
+
+// SNARE: TIGHT ←→ LOOSE. Tight is a short, body-forward crack; loose lets the
+// snares rattle on and take over from the shell.
+const SNARE_TIGHT_DECAY = 0.11
+const SNARE_LOOSE_DECAY = 0.34
+const SNARE_TIGHT_NOISE = 0.58
+const SNARE_LOOSE_NOISE = 0.86
+const SNARE_TIGHT_TONE = 215
+const SNARE_LOOSE_TONE = 175
+
+// TOM: LOW ←→ HIGH. Pitch is the tom's whole character; a higher tom is also a
+// shorter one, the way a smaller drum is.
+const TOM_LOW_FREQ = 78
+const TOM_HIGH_FREQ = 196
+const TOM_LOW_DECAY = 0.44
+const TOM_HIGH_DECAY = 0.22
+
+// CYMBAL: CRASH ←→ RIDE. A crash is lower-cut and rings long; a ride is
+// brighter and shorter, a ping more than a wash.
+const CYMBAL_CRASH_CUTOFF = 5000
+const CYMBAL_RIDE_CUTOFF = 9400
+const CYMBAL_CRASH_DECAY = 1.45
+const CYMBAL_RIDE_DECAY = 0.7
 
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
 
@@ -239,7 +288,38 @@ export function resolveSoundVoice(id: SoundVoiceId, character?: number): Resolve
         level: spec.level * lerp(SCATTER_AIRY_LEVEL, SCATTER_DENSE_LEVEL, c),
       }
 
-    // SPLASH and anything else: fixed by design, character ignored.
+    case 'snare':
+      return {
+        voice: {
+          ...spec.voice,
+          decay: lerp(SNARE_TIGHT_DECAY, SNARE_LOOSE_DECAY, c),
+          noiseMix: lerp(SNARE_TIGHT_NOISE, SNARE_LOOSE_NOISE, c),
+          tone: lerp(SNARE_TIGHT_TONE, SNARE_LOOSE_TONE, c),
+        },
+        level: spec.level,
+      }
+
+    case 'tom':
+      return {
+        voice: {
+          ...spec.voice,
+          freq: lerp(TOM_LOW_FREQ, TOM_HIGH_FREQ, c),
+          decay: lerp(TOM_LOW_DECAY, TOM_HIGH_DECAY, c),
+        },
+        level: spec.level,
+      }
+
+    case 'cymbal':
+      return {
+        voice: {
+          ...spec.voice,
+          cutoff: lerp(CYMBAL_CRASH_CUTOFF, CYMBAL_RIDE_CUTOFF, c),
+          decay: lerp(CYMBAL_CRASH_DECAY, CYMBAL_RIDE_DECAY, c),
+        },
+        level: spec.level,
+      }
+
+    // SPLASH, RIM and anything else: fixed by design, character ignored.
     default:
       return { voice: spec.voice, level: spec.level }
   }

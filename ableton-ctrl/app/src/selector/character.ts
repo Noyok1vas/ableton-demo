@@ -43,17 +43,21 @@ export const CHARACTER: Record<SoundVoiceId, CharacterAxis | null> = {
   // Thin high noise → full wide noise. Still noise at every point of the
   // travel: the band moves and widens, nothing pitched is ever introduced.
   scatter: { ends: ['AIRY', 'DENSE'], initial: 0.45 },
+  // The drum-synth four. Each axis is the one thing a drum machine's own knob
+  // for that voice would most likely be: snappy, pitch, and crash-or-ride.
+  snare: { ends: ['TIGHT', 'LOOSE'], initial: 0.45 },
+  tom: { ends: ['LOW', 'HIGH'], initial: 0.4 },
+  // Fixed, like SPLASH: a click is a click.
+  rim: null,
+  cymbal: { ends: ['CRASH', 'RIDE'], initial: 0.3 },
 }
 
 /** Every identity's starting character, and the shape the session holds. */
 export type CharacterState = Record<SoundVoiceId, number>
 
-export const DEFAULT_CHARACTER: CharacterState = {
-  hit: CHARACTER.hit?.initial ?? 0.5,
-  tick: CHARACTER.tick?.initial ?? 0.5,
-  splash: 0.5,
-  scatter: CHARACTER.scatter?.initial ?? 0.5,
-}
+export const DEFAULT_CHARACTER = Object.fromEntries(
+  (Object.keys(CHARACTER) as SoundVoiceId[]).map((id) => [id, CHARACTER[id]?.initial ?? 0.5]),
+) as CharacterState
 
 /**
  * The character an event fired right now would carry — `null` for an identity
@@ -78,4 +82,10 @@ export const CHARACTER_NOTE: Record<SoundVoiceId, string> = {
     'Splash is fixed in this version. An accent that is always the same accent gives the other three something to be measured against — its editable character comes later.',
   scatter:
     'Airy to dense moves the noise band down and widens it: thin and high at one end, full and occupied at the other. It stays noise the whole way — nothing pitched is introduced.',
+  snare:
+    'Tight to loose lets the snares ring on: a short, body-forward crack at one end, a longer rattle that buries the shell at the other. Its mark is a placeholder for now.',
+  tom: 'Low to high is the tom\'s pitch, from floor tom to rack tom — and a higher drum is a shorter one. Its mark is a placeholder for now.',
+  rim: 'Rim is fixed in this version: one short, dry click. Its mark is a placeholder for now.',
+  cymbal:
+    'Crash to ride moves the metal from a long, darker wash to a shorter, brighter ping. Its mark is a placeholder for now.',
 }

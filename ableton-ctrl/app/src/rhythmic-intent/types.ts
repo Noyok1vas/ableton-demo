@@ -1,4 +1,5 @@
 import type { SoundVoiceId } from '../transport/engine.ts'
+import { barSecondsFor, sixteenthsPerBar, type Meter } from '../transport/meter.ts'
 
 /** One captured tap. `time` is seconds from the first tap of the loop. `id` is
     stable for the life of the tap: it is what a later edit (the Sound Visual's
@@ -32,7 +33,7 @@ export type CaptureState = 'ready' | 'recording' | 'complete'
 export type TransformParams = {
   /** 0..100 — 0 preserves raw timing, 100 snaps fully to the 1/16 grid. */
   tightness: number
-  /** 0..GRID_DIVISIONS-1 — discrete 1/16-step rotation of the whole pattern. */
+  /** 0..gridDivisions-1 — discrete 1/16-step rotation of the whole pattern. */
   phase: number
   /** 0..100 — 100 keeps every tap; lower values remove taps (never adds). */
   density: number
@@ -44,17 +45,19 @@ export const DEFAULT_PARAMS: TransformParams = {
   density: 100,
 }
 
-export const BEATS_PER_BAR = 4
 /** The capture/loop unit spans two bars, so a tapped phrase has room to
-    develop instead of repeating every four beats. */
+    develop instead of repeating every bar. */
 export const BARS_PER_LOOP = 2
-export const BEATS_PER_LOOP = BEATS_PER_BAR * BARS_PER_LOOP // 8
-/** Seconds the loop takes at `bpm`. Tempo lives with the transport (the Sound
-    Source window types it), so the length is derived per render rather than
-    frozen into a constant — and a tap's `time`, which is in seconds, is
-    re-timed with it so the pattern keeps its shape when the tempo moves. */
-export const loopDurationFor = (bpm: number) => (BEATS_PER_LOOP * 60) / bpm
-export const GRID_DIVISIONS = 16 * BARS_PER_LOOP // 1/16-note grid across the loop
+/** Beats in the whole loop — the numerator, twice. */
+export const beatsPerLoopFor = (meter: Meter) => meter.beats * BARS_PER_LOOP
+/** Seconds the loop takes at `bpm` in `meter`. Tempo and meter live with the
+    transport, so the length is derived per render rather than frozen into a
+    constant — and a tap's `time`, which is in seconds, is re-timed with it so
+    the pattern keeps its shape when either moves. */
+export const loopDurationFor = (bpm: number, meter: Meter) =>
+  barSecondsFor(bpm, meter) * BARS_PER_LOOP
+/** The 1/16-note grid across the loop: 32 steps in 4/4, 12 in 3/8. */
+export const gridDivisionsFor = (meter: Meter) => sixteenthsPerBar(meter) * BARS_PER_LOOP
 
 /** MIDI note every tap/loop hit plays on. Adjustable via the PITCH pad so
     the mapping isn't nailed to one key. Constrained to the 16 notes of a
@@ -74,10 +77,14 @@ export function noteName(pitch: number): string {
 }
 
 /** One captured loop stored in the Collection. Holds the raw taps — the
-    current knob settings are applied whenever the entry is (re)loaded. */
+    current knob settings are applied whenever the entry is (re)loaded — and
+    the loop length those taps' seconds were measured against, so an entry
+    kept across a tempo or meter change (or a reload) is re-timed rather than
+    read at the wrong speed. */
 export type CollectionEntry = {
   id: string
   taps: readonly Tap[]
+  duration: number
 }
 
 /** A tap prepared for rendering, with every transform stage resolved. */

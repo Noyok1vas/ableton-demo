@@ -24,19 +24,26 @@
  * other one. They meet at the room, so FX describes both, and — the part that
  * matters musically — they count from one shared downbeat, `gridTop`.
  *
+ *   voice ─▶ voiceGain ─┐
+ *                       ▼
  *   main ──▶ mainGain ──┐
  *                       ├─▶ voices ─┬──────────────────┬─▶ sat ─▶ HP ─▶ out
  *   march ─▶ marchGain ─┘           └─▶ send ─▶ room ──┘
+ *
+ * Each of the eight identities has its own channel fader (`voiceGain`) in
+ * front of MAIN — the mixer's level, mute and solo, already resolved to one
+ * number by the session. A tap with no identity goes straight to MAIN.
  */
 
-import type {
-  EngineStatus,
-  LoopEvent,
-  MacroScope,
-  MarchEvent,
-  SoundEngine,
-  SoundVoiceId,
-  TrackId,
+import {
+  SOUND_VOICES,
+  type EngineStatus,
+  type LoopEvent,
+  type MacroScope,
+  type MarchEvent,
+  type SoundEngine,
+  type SoundVoiceId,
+  type TrackId,
 } from './engine.ts'
 import { KIT, KIT_BASE_PITCH, MARCH_KIT, playVoice, resolveSoundVoice } from './kit.ts'
 
@@ -225,6 +232,7 @@ export class WebAudioEngine implements SoundEngine {
   // never touched again, so it is a local there rather than a field.
   private mainGain: GainNode | null = null
   private marchGain: GainNode | null = null
+  private voiceGains: Partial<Record<SoundVoiceId, GainNode>> = {}
   private reverbSend: GainNode | null = null
   private saturator: WaveShaperNode | null = null
   private highpass: BiquadFilterNode | null = null
@@ -240,6 +248,8 @@ export class WebAudioEngine implements SoundEngine {
   /** Fader positions, held here as well as on the nodes so they survive being
       set before the context exists. */
   private gains: Record<TrackId, number> = { main: 1, march: 0.6 }
+  /** Channel levels, for the same reason. Absent means unity. */
+  private voiceLevels: Partial<Record<SoundVoiceId, number>> = {}
 
   // ── Loop state ────────────────────────────────────────────────────
   private readonly main = new LoopTrack<LoopEvent>()
@@ -335,6 +345,14 @@ export class WebAudioEngine implements SoundEngine {
     marchGain.gain.value = this.gains.march
     marchGain.connect(voiceBus)
     this.marchGain = marchGain
+
+    // One channel per identity, all feeding MAIN.
+    for (const voice of SOUND_VOICES) {
+      const channel = ctx.createGain()
+      channel.gain.value = this.voiceLevels[voice] ?? 1
+      channel.connect(mainGain)
+      this.voiceGains[voice] = channel
+    }
 
     const reverb = ctx.createConvolver()
     reverb.buffer = buildRoom(ctx)
@@ -482,6 +500,12 @@ export class WebAudioEngine implements SoundEngine {
     this.setRamp((track === 'march' ? this.marchGain : this.mainGain)?.gain, value)
   }
 
+  setVoiceGain(voice: SoundVoiceId, gain: number): void {
+    const value = clamp(gain, 0, 1)
+    this.voiceLevels[voice] = value
+    this.setRamp(this.voiceGains[voice]?.gain, value)
+  }
+
   /**
    * Put the shared downbeat at this instant.
    *
@@ -548,6 +572,7 @@ export class WebAudioEngine implements SoundEngine {
     this.ctx = null
     this.mainGain = null
     this.marchGain = null
+    this.voiceGains = {}
     this.reverbSend = null
     this.saturator = null
     this.highpass = null
@@ -595,7 +620,8 @@ export class WebAudioEngine implements SoundEngine {
     character?: number,
   ): AudioScheduledSourceNode[] {
     const ctx = this.ctx
-    const bus = this.mainGain
+    // An identity plays through its own mixer channel; a bare pad note has none.
+    const bus = (sound && this.voiceGains[sound]) || this.mainGain
     if (!ctx || !bus) return []
     const identity = sound ? resolveSoundVoice(sound, character) : undefined
     const voice = identity?.voice ?? KIT[this.pitch - KIT_BASE_PITCH]

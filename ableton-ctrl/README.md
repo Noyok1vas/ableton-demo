@@ -47,16 +47,30 @@ bridge 的详细协议、Live 侧接线(MIDI Track 开关、REVERB 挂载等)见
 [bridge/README.md](bridge/README.md)。
 
 **不开 bridge 也能出声**:Sound Source 窗口选 BUILT-IN,声音由浏览器内合成的
-16 个音色发出(`app/src/transport/kit.ts`)。默认的 AUTO 会自己判断 —— 探测到
-bridge 就走 Ableton,没探测到就用内置音源。
+8 个 sound identity 发出(`app/src/transport/kit.ts` 的 `SOUND_TYPE_KIT`)。默认的
+AUTO 会自己判断 —— 探测到 bridge 就走 Ableton,没探测到就用内置音源。
+
+### 软件 / 硬件分界(demo 分支)
+
+窗口外框区分功能最终落在哪一侧:**黑框 = 软件(屏幕)**,**灰框 = 硬件(控制面)**。
+定义在 `app/src/workspace/pages.ts` 的 `WINDOW_TIER`。
+
+- 软件:Sound Source(系统小屏:走带状态、BPM、拍号、音源菜单)、Sound Visual(主屏)
+- 硬件:Transport(PLAY/STOP、BPM、拍号)、Sound Selector(8 个 pad + VELOCITY / ACCENT)、
+  Mixer(每声部 M / S / level + MASTER)、FX、Collection
+
+键盘:Space = tap,Shift+Space = 重音 tap,Enter = PLAY/STOP。
+
+所有状态自动存在浏览器 localStorage(`app/src/persist.ts`,key 前缀 `drumsynth.v1.`),
+刷新后恢复;音源选择不保存,每次都从 AUTO 开始。
 
 ### 两条音轨
 
 March 是引擎里的第二条音轨(`transport/engine.ts` 的 `TrackId`):
 
 - **RHYTHM** —— 所有 tap:Rhythmic Intent 的循环 + Sound Intent 调的那个音色。
-- **MARCH** —— 生成出来的打击乐层,默认音量 60(Sound Source 窗口里两个 slider
-  分别控制;60 是"垫在下面"的起始配比,不是硬性规则)。
+- **MARCH** —— 生成出来的打击乐层,默认音量 60(60 是"垫在下面"的起始配比,
+  不是硬性规则)。RHYTHM 的推子现在是 Mixer 窗口里的 MASTER;demo 里没有 MARCH 推子。
 
 两条轨共用一个 downbeat:`webAudioEngine.ts` 里的 `gridTop`。tapped loop 先响就
 由它定这个格子,March 在下一个小节线上切进来(像 Ableton 的 launch quantization,

@@ -92,6 +92,57 @@
   color: var(--text);
 }
 
+/* ── Dynamics: accent latch + velocity ────────────────── */
+/* How hard, between which sound (the grid) and what it is like (the panel). */
+
+.sel-dynamics {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.sel-accent {
+  flex: 0 0 auto;
+  min-width: 96px;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.sel-accent:hover {
+  background: var(--surface-2);
+}
+
+.sel-accent--on,
+.sel-accent--on:hover {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.sel-velocity {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The latch is overriding it: still adjustable, visibly not in charge. */
+.sel-velocity--overridden {
+  opacity: 0.4;
+}
+
 /* ── The editing panel ────────────────────────────────── */
 /* One panel, always the selected sound's. It sits under a full-width rule
    rather than inside a box: it is the second half of this window, not a popover

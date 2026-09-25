@@ -3,22 +3,26 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { BridgeEngine, isBridgeAddressable, probeBridge } from './bridgeEngine.ts'
 import { WebAudioEngine } from './webAudioEngine.ts'
-import type {
-  EngineStatus,
-  LoopEvent,
-  MacroScope,
-  MarchEvent,
-  SoundEngine,
-  SoundSourceId,
-  SoundVoiceId,
-  TrackId,
+import {
+  SOUND_VOICES,
+  type EngineStatus,
+  type LoopEvent,
+  type MacroScope,
+  type MarchEvent,
+  type SoundEngine,
+  type SoundSourceId,
+  type SoundVoiceId,
+  type TrackId,
 } from './engine.ts'
+import { DEFAULT_METER, parseMeter, type Meter } from './meter.ts'
+import { finiteIn, isRecord, loadSaved, useSaved } from '../persist.ts'
 
 /** What the listener asked for. `'auto'` is not a source — it is the standing
     instruction "Ableton whenever its bridge is running, otherwise the built-in
@@ -41,6 +45,61 @@ export const BPM_MAX = 200
  * not a rule. */
 export const TRACK_LEVEL_MAX = 100
 export const DEFAULT_TRACK_LEVEL: Record<TrackId, number> = { main: 100, march: 60 }
+
+/** One mixer channel: a fader (0..100, like the track faders) and the two
+    switches. Mute and solo are kept as switches rather than folded into the
+    level, so un-muting brings back the level that was set. */
+export type VoiceChannel = { level: number; mute: boolean; solo: boolean }
+export type VoiceMix = Record<SoundVoiceId, VoiceChannel>
+
+export const VOICE_LEVEL_MAX = 100
+const DEFAULT_CHANNEL: VoiceChannel = { level: 80, mute: false, solo: false }
+
+/** What a channel actually passes, 0..1. Solo wins over everything that isn't
+    soloed; a soloed channel that is also muted stays muted, as in Live. */
+function channelGain(mix: VoiceMix, voice: SoundVoiceId): number {
+  const ch = mix[voice]
+  const anySolo = SOUND_VOICES.some((v) => mix[v].solo)
+  const audible = !ch.mute && (!anySolo || ch.solo)
+  return audible ? ch.level / VOICE_LEVEL_MAX : 0
+}
+
+/** What this session remembers between visits. The source choice is left out
+    on purpose: AUTO is the right answer on every fresh load. */
+type SavedTransport = {
+  bpm: number
+  meter: Meter
+  trackLevel: Record<TrackId, number>
+  voiceMix: VoiceMix
+}
+
+function restoreTransport(): SavedTransport {
+  const raw = loadSaved('transport')
+  const saved = isRecord(raw) ? raw : {}
+  const levels = isRecord(saved.trackLevel) ? saved.trackLevel : {}
+  const mix = isRecord(saved.voiceMix) ? saved.voiceMix : {}
+  return {
+    bpm: Math.round(finiteIn(saved.bpm, BPM_MIN, BPM_MAX) ?? DEFAULT_BPM),
+    meter: parseMeter(saved.meter) ?? DEFAULT_METER,
+    trackLevel: {
+      main: finiteIn(levels.main, 0, TRACK_LEVEL_MAX) ?? DEFAULT_TRACK_LEVEL.main,
+      march: finiteIn(levels.march, 0, TRACK_LEVEL_MAX) ?? DEFAULT_TRACK_LEVEL.march,
+    },
+    voiceMix: Object.fromEntries(
+      SOUND_VOICES.map((v) => {
+        const ch = isRecord(mix[v]) ? mix[v] : {}
+        return [
+          v,
+          {
+            level: finiteIn(ch.level, 0, VOICE_LEVEL_MAX) ?? DEFAULT_CHANNEL.level,
+            mute: ch.mute === true,
+            solo: ch.solo === true,
+          },
+        ]
+      }),
+    ) as VoiceMix,
+  }
+}
 
 /** How often `auto` re-checks for a bridge while playing the built-in kit, so
     starting the bridge after the app still "just works". */
@@ -102,6 +161,10 @@ export type SoundEngineSessionValue = {
       Typed into the Sound Source window; the loop re-times to follow. */
   bpm: number
   setBpm: (bpm: number) => void
+  /** The time signature the loop is counted in. Lives beside the tempo for the
+      same reason: how long a bar is belongs to the clock. */
+  meter: Meter
+  setMeter: (update: (meter: Meter) => Meter) => void
   /** Play one note now. `velocity` is 0..1; `voice` is the Selector identity
       the tap carried (or absent for the pad the PITCH mapping selects) and
       `character` that identity's axis at the moment of input. Also the
@@ -124,6 +187,11 @@ export type SoundEngineSessionValue = {
       it is a property of the mix, which is the transport's business. */
   trackLevel: Record<TrackId, number>
   setTrackLevel: (track: TrackId, level: number) => void
+  /** The mixer: one channel per sound identity. */
+  voiceMix: VoiceMix
+  setVoiceLevel: (voice: SoundVoiceId, level: number) => void
+  toggleMute: (voice: SoundVoiceId) => void
+  toggleSolo: (voice: SoundVoiceId) => void
   /** Move the mapping: every future note plays on this MIDI pitch. */
   setPitch: (pitch: number) => void
   /** Set the macro named `name` (e.g. "Energy") to `value` (0..127) — resolved
@@ -155,9 +223,21 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
   const [preference, setPreference] = useState<SourcePreference>('auto')
   const [bridgeReachable, setBridgeReachable] = useState(false)
   const [bridgeAddressable] = useState(isBridgeAddressable)
-  const [bpm, setBpmState] = useState(DEFAULT_BPM)
-  const [trackLevel, setTrackLevelState] =
-    useState<Record<TrackId, number>>(DEFAULT_TRACK_LEVEL)
+  // Read once: every piece below starts where the last visit left it.
+  const [restored] = useState(restoreTransport)
+  const [bpm, setBpmState] = useState(restored.bpm)
+  const [meter, setMeterState] = useState<Meter>(restored.meter)
+  // Always an update from the current meter: the numerator and the unit are
+  // separate buttons, and two presses in one frame must not undo each other.
+  const setMeter = useCallback((update: (meter: Meter) => Meter) => setMeterState(update), [])
+  const [trackLevel, setTrackLevelState] = useState<Record<TrackId, number>>(restored.trackLevel)
+  const [voiceMix, setVoiceMix] = useState<VoiceMix>(restored.voiceMix)
+
+  const saved = useMemo<SavedTransport>(
+    () => ({ bpm, meter, trackLevel, voiceMix }),
+    [bpm, meter, trackLevel, voiceMix],
+  )
+  useSaved('transport', saved)
 
   // Clamped here rather than at the input, so no caller can put the loop at a
   // tempo the engines will not honour anyway (both clamp the bar they are given).
@@ -277,6 +357,29 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engineId])
 
+  const setVoiceLevel = useCallback((voice: SoundVoiceId, level: number) => {
+    if (!Number.isFinite(level)) return
+    const clamped = Math.min(VOICE_LEVEL_MAX, Math.max(0, Math.round(level)))
+    setVoiceMix((prev) => ({ ...prev, [voice]: { ...prev[voice], level: clamped } }))
+  }, [])
+
+  const toggleMute = useCallback((voice: SoundVoiceId) => {
+    setVoiceMix((prev) => ({ ...prev, [voice]: { ...prev[voice], mute: !prev[voice].mute } }))
+  }, [])
+
+  const toggleSolo = useCallback((voice: SoundVoiceId) => {
+    setVoiceMix((prev) => ({ ...prev, [voice]: { ...prev[voice], solo: !prev[voice].solo } }))
+  }, [])
+
+  // Solo is a property of the whole mix — one channel's switch changes what
+  // every other channel passes — so the engine is handed all eight resolved
+  // gains whenever anything moves, and again whenever a new engine comes up.
+  useEffect(() => {
+    for (const voice of SOUND_VOICES) {
+      engineRef.current?.setVoiceGain(voice, channelGain(voiceMix, voice))
+    }
+  }, [voiceMix, engineId])
+
   const onExternalTap = useCallback((listener: (velocity: number) => void) => {
     // The engine outlives individual renders; guard in case it's mid-teardown.
     return engineRef.current?.onExternalTap(listener) ?? (() => {})
@@ -292,6 +395,8 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     bridgeAddressable,
     bpm,
     setBpm,
+    meter,
+    setMeter,
     noteOn,
     startLoop,
     stopLoop,
@@ -300,6 +405,10 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     marchPhase,
     trackLevel,
     setTrackLevel,
+    voiceMix,
+    setVoiceLevel,
+    toggleMute,
+    toggleSolo,
     setPitch,
     setMacro,
     onExternalTap,

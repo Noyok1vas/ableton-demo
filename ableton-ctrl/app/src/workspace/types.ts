@@ -14,6 +14,8 @@ export type View = { x: number; y: number; scale: number }
 /** Which content a window renders. */
 export type WindowKind =
   | 'sound-source'
+  | 'transport'
+  | 'mixer'
   | 'rhythmic-intent'
   | 'collection'
   | 'sound-intent'
@@ -23,6 +25,13 @@ export type WindowKind =
   | 'ripple'
   | 'march-intent'
   | 'march-family'
+
+/** Where a window's function ends up in the product. `software` stays on a
+    screen (the system display and the Sound Visual); `hardware` becomes a
+    physical control surface. The canvas draws the two differently — black
+    outline for software, grey for hardware — so the split is visible while
+    everything is still on screen. */
+export type WindowTier = 'software' | 'hardware'
 
 export type WindowState = {
   id: string

@@ -19,8 +19,9 @@ export type TapSessionValue = {
       Intent) and emits the sound event that blooms the visual (Sound Intent).
       `gesture` overrides the selected one for this tap — the Selector needs it
       because pressing a mark selects and fires in the same press, before React
-      has re-rendered with the new selection. */
-  fireTap: (gesture?: PatternId) => void
+      has re-rendered with the new selection. `accented` plays this one tap at
+      full velocity whatever the Selector's velocity says — Shift+Space. */
+  fireTap: (gesture?: PatternId, accented?: boolean) => void
   /** True while Rhythmic Intent is capturing a bar. */
   recording: boolean
 }
@@ -44,18 +45,33 @@ function isTextInput(el: Element | null): boolean {
   )
 }
 
+/** Controls that act on Enter themselves, so the global PLAY/STOP must not. */
+function isPressable(el: Element | null): boolean {
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'BUTTON' || tag === 'A' || el.getAttribute('role') === 'slider'
+}
+
 /**
  * The one tap trigger, shared by every surface that can fire it (the TAP window
- * and the Selector's four marks) so they all land on the same bar clock — two
+ * and the Selector's pads) so they all land on the same bar clock — two
  * independent trackers would disagree about where in the bar a tap fell.
- * Global Space taps too, registered once here rather than per surface.
+ * Global keys too, registered once here rather than per surface: Space taps
+ * (Shift+Space taps accented) and Enter is PLAY/STOP.
  */
 export function TapSession({ children }: { children: ReactNode }) {
-  const { handleTap, capture } = useSession()
+  const { handleTap, capture, togglePlay } = useSession()
   const { emitTap } = useSoundIntent()
   // What the tap *is* — read through refs so choosing a gesture or moving the
   // repeat slider never re-creates fireTap (and with it the Space listener).
-  const { gesture: selectedGesture, character, currentCharacter } = useSelector()
+  const {
+    gesture: selectedGesture,
+    character,
+    currentCharacter,
+    currentVelocity,
+  } = useSelector()
+  const currentVelocityRef = useRef(currentVelocity)
+  currentVelocityRef.current = currentVelocity
   const { count: repeats } = useRipple()
   const gestureRef = useRef(selectedGesture)
   gestureRef.current = selectedGesture
@@ -74,7 +90,7 @@ export function TapSession({ children }: { children: ReactNode }) {
   // event carries that id instead of a position: the Sound Visual looks the
   // position up in the transformed pattern, so a knob move or an edit moves the
   // mark it drew for that tap.
-  const fireTap = useCallback((gesture?: PatternId) => {
+  const fireTap = useCallback((gesture?: PatternId, accented = false) => {
     const sound = gesture ?? gestureRef.current
     // The character is read HERE, once, at the instant of the press — this is
     // the "capture" step of the model. Everything downstream receives a copy.
@@ -84,21 +100,28 @@ export function TapSession({ children }: { children: ReactNode }) {
     // The identity and character go to the capture as well as to the visual:
     // they are what the tap WAS, so the loop has to replay it as that sound and
     // not as whatever is selected by the time the loop comes round again.
-    const id = handleTap(sound, character ?? undefined)
+    // Velocity is read at the same instant, for the same reason.
+    const velocity = currentVelocityRef.current(accented)
+    const id = handleTap(sound, character ?? undefined, velocity)
     emitTap(id, sound, repeatsRef.current, character)
   }, [handleTap, emitTap])
 
-  // Global Space → combined tap, unless focus is in a text input.
+  // Global keys, unless focus is in a text input: Space taps (Shift accents
+  // it), Enter starts and stops the loop.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat) return
-      if (isTextInput(document.activeElement)) return
-      e.preventDefault()
-      fireTap()
+      if (e.repeat || isTextInput(document.activeElement)) return
+      if (e.code === 'Space') {
+        e.preventDefault()
+        fireTap(undefined, e.shiftKey)
+      } else if (e.key === 'Enter' && !isPressable(document.activeElement)) {
+        e.preventDefault()
+        togglePlay()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [fireTap])
+  }, [fireTap, togglePlay])
 
   const value = useMemo<TapSessionValue>(
     () => ({ fireTap, recording: capture.state === 'recording' }),

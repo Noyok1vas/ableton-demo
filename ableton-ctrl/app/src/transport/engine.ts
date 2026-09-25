@@ -12,19 +12,47 @@
  */
 
 /**
- * The four sound identities a tap can carry — the Selector's marks, named here
+ * The eight sound identities a tap can carry — the Selector's marks, named here
  * for the same reason MarchVoiceId is: the *engine* resolves an identity to a
- * sound. Everything above only says which of the four a tap was.
+ * sound. Everything above only says which of the eight a tap was.
  *
  *   hit     — the rhythmic weight: a kick
  *   tick    — the lighter rhythmic event: a hi-hat
  *   splash  — the accent: a clap
  *   scatter — the atmosphere: a soft noise texture, not a drum hit
+ *   snare   — the backbeat
+ *   tom     — a pitched drum
+ *   rim     — a short wooden click
+ *   cymbal  — the long metal wash
+ *
+ * The last four are the drum-synth expansion: they sound, but their graphics
+ * are still a placeholder (a diffuse dot) until each gets a mark of its own.
  *
  * A note with no identity plays the pad the PITCH mapping selects, which is
  * what a hardware pad's own taps do.
  */
-export type SoundVoiceId = 'hit' | 'tick' | 'splash' | 'scatter'
+export type SoundVoiceId =
+  | 'hit'
+  | 'tick'
+  | 'splash'
+  | 'scatter'
+  | 'snare'
+  | 'tom'
+  | 'rim'
+  | 'cymbal'
+
+/** Every identity, in pad order — the order the Selector and the mixer list
+    them in: the original four across the top row, the expansion under them. */
+export const SOUND_VOICES: readonly SoundVoiceId[] = [
+  'splash',
+  'hit',
+  'tick',
+  'scatter',
+  'snare',
+  'tom',
+  'rim',
+  'cymbal',
+]
 
 /**
  * One scheduled loop event: `pos` is 0..1 within the bar. `voice` is the sound
@@ -131,6 +159,12 @@ export interface SoundEngine {
   /** Level of one track, 0..1. Two tracks, two faders — the reason March can be
       the rhythm *behind* the rhythm rather than a second one competing with it. */
   setTrackGain(track: TrackId, gain: number): void
+
+  /** Level of one sound identity inside the main track, 0..1 — the mixer's
+      channel fader with mute and solo already folded in. Taps with no identity
+      (a hardware pad's) bypass it. Sources that cannot address a single voice
+      (Live, through the bridge) ignore it. */
+  setVoiceGain(voice: SoundVoiceId, gain: number): void
 
   /** Move the mapping: every future note plays on this MIDI pitch. */
   setPitch(pitch: number): void

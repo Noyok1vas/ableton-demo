@@ -1,19 +1,10 @@
-import { useEffect, useState } from 'react'
-import {
-  BPM_MAX,
-  BPM_MIN,
-  TRACK_LEVEL_MAX,
-  useSoundEngine,
-  type SourcePreference,
-} from './session.tsx'
-import { Slider } from '../sound-intent/Slider.tsx'
-// The faders are the Sound Intent atom, styling included — one control, one
-// look. sound-source.css only adds where they sit.
-import '../sound-intent/sound-intent.css'
+import { useState } from 'react'
+import { useSoundEngine, type SourcePreference } from './session.tsx'
+import { formatMeter } from './meter.ts'
+import { useSession } from '../rhythmic-intent/session.tsx'
+import { BARS_PER_LOOP } from '../rhythmic-intent/types.ts'
+import { storageAvailable } from '../persist.ts'
 import './sound-source.css'
-
-const DESCRIPTION =
-  'Sound Source decides where a tap is heard. Ableton plays the selected instrument through the local bridge; Built-in synthesizes the same 16 pads in this tab, so the prototype can be played with no Live set at all. Auto takes Ableton whenever its bridge is running and falls back to the built-in kit when it is not. Tempo is the clock all of it runs on: change it and both loops re-time, keeping the patterns they hold. The two faders are the mix between the tapped rhythm and the March layer underneath it.'
 
 const CHOICES: { id: SourcePreference; label: string }[] = [
   { id: 'auto', label: 'AUTO' },
@@ -29,10 +20,16 @@ function bridgeLine(addressable: boolean, reachable: boolean): string {
 }
 
 /**
- * Picks which source sounds, and explains what the one currently playing can
- * see. The Rhythmic Intent status bar names the source in one line; everything
- * behind that line — whether a bridge is up, which inputs it found — lives
- * here, so the status bar stays a label rather than a diagnostic.
+ * The system screen — one of the two displays that stay in software (the other
+ * is the Sound Visual). It shows the instrument's state and holds its main
+ * menu, and nothing here is a performance control: tempo, meter and PLAY are
+ * set on the Transport hardware and only READ here, the way a drum machine's
+ * small screen shows what its knobs are doing.
+ *
+ *   top      — transport state and where the loop is: PLAY/STOP, bar.beat
+ *   readouts — tempo and meter
+ *   menu     — which source sounds (AUTO / ABLETON / BUILT-IN)
+ *   facts    — what that source can see, and whether the set is being saved
  */
 export function SoundSourceScreen() {
   const {
@@ -43,27 +40,41 @@ export function SoundSourceScreen() {
     bridgeReachable,
     bridgeAddressable,
     bpm,
-    setBpm,
-    trackLevel,
-    setTrackLevel,
+    meter,
   } = useSoundEngine()
+  const { playing, playhead, beatsPerLoop, hasPattern } = useSession()
+  const [canSave] = useState(storageAvailable)
 
-  // The field is free text while it has focus — half-typed numbers and an empty
-  // box are states you have to be able to pass through — and only becomes a
-  // tempo on blur or Enter. Committed values flow back in from the session,
-  // which is what clamps them.
-  const [draft, setDraft] = useState(String(bpm))
-  useEffect(() => setDraft(String(bpm)), [bpm])
-
-  const commit = () => {
-    const next = Number.parseInt(draft, 10)
-    if (Number.isNaN(next)) setDraft(String(bpm))
-    else setBpm(next)
-  }
+  // Where the loop is, as a drum machine counts it: bar.beat, from 1.
+  const position =
+    playing && playhead !== null
+      ? `${Math.floor(playhead * BARS_PER_LOOP) + 1}.${
+          (Math.floor(playhead * beatsPerLoop) % meter.beats) + 1
+        }`
+      : '—'
 
   return (
     <div className="ss-screen">
       <div className="ss-body">
+        <div className="ss-display">
+          <div className={`ss-state${playing ? ' ss-state--on' : ''}`}>
+            <span aria-hidden>{playing ? '▶' : '■'}</span>
+            {playing ? 'PLAYING' : hasPattern ? 'STOPPED' : 'READY'}
+          </div>
+          <div className="ss-readout">
+            <span className="ss-readout-value num">{position}</span>
+            <span className="ss-readout-label">BAR.BEAT</span>
+          </div>
+          <div className="ss-readout">
+            <span className="ss-readout-value num">{bpm}</span>
+            <span className="ss-readout-label">BPM</span>
+          </div>
+          <div className="ss-readout">
+            <span className="ss-readout-value num">{formatMeter(meter)}</span>
+            <span className="ss-readout-label">METER</span>
+          </div>
+        </div>
+
         <div className="ss-choices" role="group" aria-label="Sound source">
           {CHOICES.map((choice) => {
             const selected = preference === choice.id
@@ -88,7 +99,7 @@ export function SoundSourceScreen() {
 
         <dl className="ss-facts">
           <div className="ss-fact">
-            <dt>Playing</dt>
+            <dt>Sound</dt>
             <dd>
               <span className={`ss-dot${status.ready ? ' ss-dot--on' : ''}`} aria-hidden />
               {status.label}
@@ -103,75 +114,28 @@ export function SoundSourceScreen() {
             <dt>Ableton bridge</dt>
             <dd>{bridgeLine(bridgeAddressable, bridgeReachable)}</dd>
           </div>
+          {status.tags.length > 0 && (
+            <div className="ss-fact">
+              <dt>Inputs</dt>
+              <dd>
+                {status.tags.map((tag) => (
+                  <span key={tag.label} className="ss-tag" title={tag.title}>
+                    {tag.label}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
           <div className="ss-fact">
-            <dt>
-              <label htmlFor="ss-bpm">Tempo</label>
-            </dt>
-            <dd>
-              <input
-                id="ss-bpm"
-                className="ss-bpm num"
-                type="number"
-                inputMode="numeric"
-                min={BPM_MIN}
-                max={BPM_MAX}
-                step={1}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur()
-                }}
-                // Space is the global tap trigger everywhere else; inside a text
-                // field it has to stay a space, and the global listener already
-                // steps aside for inputs. Stopping it here keeps it from also
-                // scrolling the canvas underneath.
-                onKeyUp={(e) => e.stopPropagation()}
-              />
-              <span className="ss-unit">BPM</span>
-            </dd>
-          </div>
-          <div className="ss-fact">
-            <dt>Inputs</dt>
-            <dd>
-              {status.tags.length === 0
-                ? '—'
-                : status.tags.map((tag) => (
-                    <span key={tag.label} className="ss-tag" title={tag.title}>
-                      {tag.label}
-                    </span>
-                  ))}
-            </dd>
+            <dt>Saved</dt>
+            <dd>{canSave ? 'Automatically, in this browser' : 'Not available in this browser'}</dd>
           </div>
         </dl>
 
-        {/* Two tracks, two faders. RHYTHM is every tap — the loop Rhythmic
-            Intent holds and the pad Sound Intent shapes; MARCH is the generated
-            layer, resting under it. */}
-        <div className="ss-mix">
-          <span className="ss-mix-title">Tracks</span>
-          <div className="si-sliders">
-            <Slider
-              label="RHYTHM"
-              value={trackLevel.main}
-              min={0}
-              max={TRACK_LEVEL_MAX}
-              onChange={(v) => setTrackLevel('main', v)}
-            />
-            <Slider
-              label="MARCH"
-              value={trackLevel.march}
-              min={0}
-              max={TRACK_LEVEL_MAX}
-              onChange={(v) => setTrackLevel('march', v)}
-            />
-          </div>
-        </div>
-
         {source === 'ableton' && (
           <p className="ss-note">
-            March always sounds in this tab — three voices at once is more than the bridge can send
-            to Live. Under Ableton, RHYTHM belongs to Live's own mixer.
+            Under Ableton the mixer's per-voice levels belong to Live's own mixer, and every pad
+            plays the instrument selected there.
           </p>
         )}
         {preference === 'ableton' && !bridgeAddressable && (
@@ -184,8 +148,6 @@ export function SoundSourceScreen() {
           <p className="ss-note">Tap once, or press Space, to let the browser start audio.</p>
         )}
       </div>
-
-      <footer className="ss-description">{DESCRIPTION}</footer>
     </div>
   )
 }

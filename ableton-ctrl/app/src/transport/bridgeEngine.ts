@@ -298,6 +298,10 @@ export class BridgeEngine implements SoundEngine {
     this.march?.stopMarchLoop()
   }
 
+  /** Live's own mixer owns the per-voice balance; the bridge addresses one
+      selected instrument and has no channel per identity to set. */
+  setVoiceGain(): void {}
+
   marchPhase(): number | null {
     return this.march?.marchPhase() ?? null
   }

@@ -9,7 +9,16 @@
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   background: var(--surface);
+}
+
+/* A section of the hardware now rather than a panel of its own, so the
+   sliders sit at the top at a working density instead of floating centred. */
+.fx-screen .si-sliders {
+  justify-content: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4);
 }

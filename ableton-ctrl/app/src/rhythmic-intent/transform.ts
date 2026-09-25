@@ -1,9 +1,4 @@
-import {
-  GRID_DIVISIONS,
-  type RenderedTap,
-  type Tap,
-  type TransformParams,
-} from './types.ts'
+import type { RenderedTap, Tap, TransformParams } from './types.ts'
 
 /** Wrap a normalized position into [0, 1). The captured unit is a loop, so
     every transform is circular. */
@@ -19,14 +14,15 @@ function circularDistance(a: number, b: number): number {
 
 /** Pull a position toward its nearest 1/16 grid line by `tightness` (0..1).
     The nearest line for a tap late in the loop can be the downbeat of the next
-    pass, hence the wrap. */
-export function applyTightness(pos: number, tightness: number): number {
-  const nearest = Math.round(pos * GRID_DIVISIONS) / GRID_DIVISIONS
+    pass, hence the wrap. `divisions` is how many grid steps the loop holds,
+    which the meter decides. */
+export function applyTightness(pos: number, tightness: number, divisions: number): number {
+  const nearest = Math.round(pos * divisions) / divisions
   return wrap(pos + tightness * (nearest - pos))
 }
 
-export function applyPhase(pos: number, phaseSteps: number): number {
-  return wrap(pos + phaseSteps / GRID_DIVISIONS)
+export function applyPhase(pos: number, phaseSteps: number, divisions: number): number {
+  return wrap(pos + phaseSteps / divisions)
 }
 
 /* Velocities within this range of each other count as "similar", which lets
@@ -90,14 +86,15 @@ export function transformPattern(
   taps: readonly Tap[],
   loopDuration: number,
   params: TransformParams,
+  divisions: number,
 ): RenderedTap[] {
   const keptIndices = selectByDensity(taps, loopDuration, params.density)
   const tightness = params.tightness / 100
 
   return taps.map((tap, index) => {
     const rawPos = wrap(tap.time / loopDuration)
-    const loosePos = applyPhase(rawPos, params.phase)
-    const finalPos = applyPhase(applyTightness(rawPos, tightness), params.phase)
+    const loosePos = applyPhase(rawPos, params.phase, divisions)
+    const finalPos = applyPhase(applyTightness(rawPos, tightness, divisions), params.phase, divisions)
     return {
       id: tap.id,
       index,

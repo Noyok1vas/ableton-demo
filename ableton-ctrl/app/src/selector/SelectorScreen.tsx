@@ -5,9 +5,11 @@ import { SoundPreview } from './SoundPreview.tsx'
 import { CharacterSlider } from './CharacterSlider.tsx'
 import { CHARACTER, CHARACTER_NOTE } from './character.ts'
 import { PATTERNS, type PatternId } from './patterns.ts'
-import { useSelector } from './session.tsx'
+import { VELOCITY_MAX, VELOCITY_MIN, useSelector } from './session.tsx'
 import { useTap } from '../tap/session.tsx'
 import { useSoundEngine } from '../transport/session.tsx'
+import { Slider } from '../sound-intent/Slider.tsx'
+import '../sound-intent/sound-intent.css'
 import './selector.css'
 
 const FLASH_MS = 90
@@ -15,9 +17,12 @@ const FLASH_MS = 90
 /**
  * Selector — the two levels of what a tap is, in one window.
  *
- * The GRID on top is identity: four fixed marks, one per sound, answering
+ * The GRID on top is identity: eight fixed pads, one per sound, answering
  * "which of these is it". Pressing one selects it and fires the shared tap, so
  * the sound and its mark arrive in the same press.
+ *
+ * Under the grid, how hard: VELOCITY sets every ordinary tap and ACCENT,
+ * latched, plays them all at full strength (Shift+Space accents a single one).
  *
  * The PANEL underneath is character: the selected sound's one axis, with a live
  * preview of what it currently sounds like. Only ever one panel — the selected
@@ -30,7 +35,17 @@ const FLASH_MS = 90
  */
 export function SelectorScreen() {
   const { fireTap, recording } = useTap()
-  const { gesture, setGesture, character, setCharacter } = useSelector()
+  const {
+    gesture,
+    setGesture,
+    character,
+    setCharacter,
+    velocity,
+    setVelocity,
+    accent,
+    setAccent,
+    currentVelocity,
+  } = useSelector()
   const { noteOn, status, source } = useSoundEngine()
   const [flashing, setFlashing] = useState<PatternId | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -72,7 +87,7 @@ export function SelectorScreen() {
    */
   const audition = (e: React.PointerEvent<HTMLElement>) => {
     e.preventDefault()
-    noteOn(1, selected.id, character[selected.id])
+    noteOn(currentVelocity(), selected.id, character[selected.id])
     flash(selected.id)
   }
 
@@ -80,7 +95,7 @@ export function SelectorScreen() {
     <div className="sel-screen">
       {needsUnlock && (
         <p className="sel-audio-unlock" role="status">
-          Tap HIT / SPLASH / TICK / SCATTER once to start sound
+          Tap any pad once to start sound
         </p>
       )}
       <div className="sel-grid">
@@ -110,6 +125,30 @@ export function SelectorScreen() {
             </button>
           )
         })}
+      </div>
+
+      <div className="sel-dynamics">
+        <button
+          type="button"
+          className={`sel-accent${accent ? ' sel-accent--on' : ''}`}
+          aria-pressed={accent}
+          onClick={() => setAccent(!accent)}
+          onKeyUp={(e) => {
+            if (e.key === ' ') e.preventDefault()
+          }}
+          title="Latch: every tap at full velocity. Shift+Space accents one tap."
+        >
+          ACCENT
+        </button>
+        <div className={`sel-velocity${accent ? ' sel-velocity--overridden' : ''}`}>
+          <Slider
+            label="VELOCITY"
+            value={velocity}
+            min={VELOCITY_MIN}
+            max={VELOCITY_MAX}
+            onChange={setVelocity}
+          />
+        </div>
       </div>
 
       <section className="sel-panel" aria-label={`${selected.label} sound`}>

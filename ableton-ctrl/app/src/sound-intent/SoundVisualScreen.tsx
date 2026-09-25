@@ -8,11 +8,10 @@ import {
 } from 'react'
 import { useSoundIntent } from './session.tsx'
 import { useSession as useRhythmicIntent } from '../rhythmic-intent/session.tsx'
-import { BEATS_PER_LOOP } from '../rhythmic-intent/types.ts'
 import { SOUND_MAX, SOUND_MIN } from './types.ts'
 import { useFx } from '../fx/session.tsx'
 import { FX_MAX, FX_MIN, type FxParams } from '../fx/types.ts'
-import type { PatternId } from '../selector/patterns.ts'
+import { PLACEHOLDER_SPREAD, type PatternId } from '../selector/patterns.ts'
 import './sound-intent.css'
 
 /** The direction a speck strays in when REVERB scatters the field: a fixed
@@ -52,6 +51,8 @@ type GrainSpeck = { x: number; y: number; alpha: number } & Stray
 type Tap = {
   id: string
   pos: number
+  /** How hard it was played, 0..1 — the tap's own, like its position. */
+  velocity: number
   energy: number
   length: number
   seed: number
@@ -124,6 +125,14 @@ const ENERGY_MIN_RADIUS = 0.55 // radius multiplier on CORE_RADIUS at energy 0
 const ENERGY_MAX_RADIUS = 1.4 // …and at energy 100
 const ENERGY_MIN_DENSITY = 0.12 // share of PARTICLES_PER_TAP at energy 0
 const ENERGY_MAX_DENSITY = 1 // …and at energy 100
+
+// ── Velocity → how much of the mark there is ──────────────────────────────
+// How hard a tap was played, from the Selector's VELOCITY or ACCENT. It scales
+// every mark the same two ways: a softer tap is a smaller mark with less ink in
+// it, so an accent reads as the heaviest thing on its stretch of the ring. The
+// floors keep a quiet tap a mark rather than a smudge.
+const VELOCITY_MIN_SIZE = 0.68 // size multiplier at velocity 0…
+const VELOCITY_MIN_INK = 0.35 // …and ink multiplier; both are 1 at velocity 1
 
 // ── Character → variation within a mark ───────────────────────────────────
 // The v0.3 addition, and the whole point of it: identity says WHICH mark, and
@@ -256,6 +265,14 @@ const SPLASH_CORE_SHARE = 0.18 // share of the ink held in the centre
 const SPLASH_RAY_BIAS = 1.15
 // Reach varies a little per stroke — a burst is energetic, not engineered.
 const SPLASH_REACH_JITTER = 0.22
+
+// ── Placeholder → a diffuse dot ───────────────────────────────────────────
+// SNARE, TOM, RIM and CYMBAL have no mark of their own yet. Each lands as a dot
+// diffusing into grain — a gaussian cloud, dense in the middle with no edge —
+// the same placeholder the Selector shows. PLACEHOLDER_SPREAD (shared with the
+// Selector) sizes the four differently so they can at least be told apart.
+const PLACEHOLDER_SIGMA = 0.02 // gaussian sigma, as a fraction of minDim
+const PLACEHOLDER_SPECKS = 2600
 
 // ── Scatter → a spattered patch on the ring ───────────────────────────────
 // SCATTER is an event like the other three: it lands at its own point of the
@@ -478,12 +495,21 @@ function seedFromId(id: string): number {
 export function SoundVisualScreen() {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
-  const { rendered, playhead, removeTap, moveTap, undoTap, canUndo, clearPattern } =
-    useRhythmicIntent()
+  const {
+    rendered,
+    playhead,
+    removeTap,
+    moveTap,
+    undoTap,
+    canUndo,
+    clearPattern,
+    beatsPerLoop,
+  } = useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Bridges from the sim (inside the effect) out to React.
   const setMarksRef = useRef<((marks: readonly Tap[]) => void) | null>(null)
   const setFxRef = useRef<((params: FxParams) => void) | null>(null)
+  const setBeatsRef = useRef<((beats: number) => void) | null>(null)
   const scheduleRef = useRef<(() => void) | null>(null)
 
   // ── What each tap sounded like ──────────────────────────────────────
@@ -535,7 +561,7 @@ export function SoundVisualScreen() {
             }
             snapshotsRef.current.set(t.id, snapshot)
           }
-          return { id: t.id, pos: t.finalPos, ...snapshot }
+          return { id: t.id, pos: t.finalPos, velocity: t.velocity, ...snapshot }
         }),
     [rendered],
   )
@@ -554,6 +580,8 @@ export function SoundVisualScreen() {
   // Read once when the sim starts; after that the effect below pushes changes.
   const fxRef = useRef(fx)
   fxRef.current = fx
+  const beatsRef = useRef(beatsPerLoop)
+  beatsRef.current = beatsPerLoop
 
   // The session's one playhead, mirrored into a ref rather than read at draw
   // time: it moves every frame, and the canvas — not React — is what redraws it.
@@ -604,6 +632,8 @@ export function SoundVisualScreen() {
     // sliders are at 0, and the post-process is skipped entirely.
     let scatter = 0
     let toneLut: Uint8Array | null = null
+    // Spokes of the beat grid — the meter's beats, twice (the loop is two bars).
+    let beats = beatsRef.current
 
     const minDim = () => Math.min(width, height)
     /** Ink correction for a canvas bigger than the reference; 1 at or below it.
@@ -648,6 +678,13 @@ export function SoundVisualScreen() {
         played, read from its snapshot. */
     const energyOf = (tap: Tap) => clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
 
+    /** How much of a mark a tap's velocity leaves: `size` scales its extent,
+        `ink` its speck count. Both are 1 for a tap played at full velocity. */
+    const velocityOf = (tap: Tap) => {
+      const v = clamp01(tap.velocity)
+      return { size: lerp(VELOCITY_MIN_SIZE, 1, v), ink: lerp(VELOCITY_MIN_INK, 1, v) }
+    }
+
     /** The tap's character as 0..1, or 0.5 for an identity that has no axis —
         SPLASH, which is drawn the same way every time by design. */
     const characterOf = (tap: Tap) => (tap.character === null ? 0.5 : clamp01(tap.character))
@@ -659,6 +696,7 @@ export function SoundVisualScreen() {
       TICK_RADIUS *
       lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, energyOf(tap)) *
       lerp(TICK_ROUND_SCALE, TICK_CRISP_SCALE, characterOf(tap)) *
+      velocityOf(tap).size *
       dim
 
     /**
@@ -680,7 +718,8 @@ export function SoundVisualScreen() {
       // quantity, one control. A hit with no character (a hardware pad's) still
       // reads the global dimension, exactly as before.
       const e = tap.character === null ? energyOf(tap) : clamp01(tap.character)
-      const coreR = CORE_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * dim
+      const vel = velocityOf(tap)
+      const coreR = CORE_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * vel.size * dim
       const cluster = lerp(HIT_SOFT_CLUSTER, HIT_HARD_CLUSTER, e)
       const edge = EDGE_SOFT * lerp(HIT_SOFT_EDGE, HIT_HARD_EDGE, e) * dim
       const inkScale = ink()
@@ -690,6 +729,7 @@ export function SoundVisualScreen() {
           PARTICLES_PER_TAP *
             CORE_FRACTION *
             lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) *
+            vel.ink *
             inkScale,
         ),
       )
@@ -745,7 +785,9 @@ export function SoundVisualScreen() {
       const inkScale = ink()
       const count = Math.max(
         1,
-        Math.round(TICK_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * inkScale),
+        Math.round(
+          TICK_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * velocityOf(tap).ink * inkScale,
+        ),
       )
       const { ox, oy } = markCentre(tap, dim)
       makeRoom(count, inkScale)
@@ -776,13 +818,16 @@ export function SoundVisualScreen() {
       const dim = minDim()
       const rand = makeRng(tap.seed)
       const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
-      const scale = lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e)
+      const vel = velocityOf(tap)
+      const scale = lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * vel.size
       const coreR = SPLASH_CORE_RADIUS * scale * dim
       const reach = SPLASH_REACH * scale * dim
       const inkScale = ink()
       const total = Math.max(
         1,
-        Math.round(SPLASH_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * inkScale),
+        Math.round(
+          SPLASH_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * vel.ink * inkScale,
+        ),
       )
       const coreCount = Math.round(total * SPLASH_CORE_SHARE)
       const { ox, oy } = markCentre(tap, dim)
@@ -844,12 +889,16 @@ export function SoundVisualScreen() {
       const dim = minDim()
       const rand = makeRng(tap.seed)
       const c = characterOf(tap)
+      const vel = velocityOf(tap)
       const inkScale = ink()
       // Character owns this patch's density outright; ENERGY is deliberately
-      // absent (see the constants above).
+      // absent (see the constants above). Velocity still applies — it is how
+      // hard the sound was played, not a second density control.
       const count = Math.max(
         1,
-        Math.round(SCATTER_GRAINS * lerp(SCATTER_AIRY_COUNT, SCATTER_DENSE_COUNT, c) * inkScale),
+        Math.round(
+          SCATTER_GRAINS * lerp(SCATTER_AIRY_COUNT, SCATTER_DENSE_COUNT, c) * vel.ink * inkScale,
+        ),
       )
       const strength = SCATTER_ALPHA * lerp(SCATTER_AIRY_INK, SCATTER_DENSE_INK, c)
       const loose = lerp(SCATTER_AIRY_LOOSE, SCATTER_DENSE_LOOSE, c)
@@ -857,7 +906,7 @@ export function SoundVisualScreen() {
       if (overflow > 0) grains.splice(0, overflow)
 
       const { ox, oy } = markCentre(tap, dim)
-      const patchR = SCATTER_PATCH_RADIUS * dim
+      const patchR = SCATTER_PATCH_RADIUS * vel.size * dim
 
       // The clumps the grain gathers into. Without them the patch is evenly
       // seeded and reads as a soft disc; with them it has thin and thick
@@ -902,10 +951,54 @@ export function SoundVisualScreen() {
       }
     }
 
-    /** One tap, one mark — which one is the sound identity's business. All four
-        land complete, so none of them needs the clock. */
+    /**
+     * The placeholder mark for a voice with none of its own yet: a dot
+     * diffusing into grain. Every speck is a 2D gaussian draw around the
+     * centre, so the middle is dense and the edge simply thins out — no outline
+     * anywhere, which is what keeps it from reading as a small HIT.
+     */
+    const spawnDiffuse = (tap: Tap) => {
+      const dim = minDim()
+      const rand = makeRng(tap.seed)
+      const e = energyOf(tap)
+      const vel = velocityOf(tap)
+      const spread = PLACEHOLDER_SPREAD[tap.gesture] ?? 1
+      const sigma =
+        PLACEHOLDER_SIGMA *
+        spread *
+        lerp(0.85, 1.2, characterOf(tap)) *
+        lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) *
+        vel.size *
+        dim
+      const inkScale = ink()
+      const count = Math.max(
+        1,
+        Math.round(
+          PLACEHOLDER_SPECKS * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * vel.ink * inkScale,
+        ),
+      )
+      const { ox, oy } = markCentre(tap, dim)
+      makeRoom(count, inkScale)
+      for (let i = 0; i < count; i++) {
+        cores.push({
+          x: ox + gaussianFrom(rand) * sigma,
+          y: oy + gaussianFrom(rand) * sigma,
+          jx: gaussianFrom(rand),
+          jy: gaussianFrom(rand),
+        })
+      }
+    }
+
+    /** One tap, one mark — which one is the sound identity's business. All of
+        them land complete, so none needs the clock. */
     const spawnMark = (tap: Tap) => {
       switch (tap.gesture) {
+        case 'snare':
+        case 'tom':
+        case 'rim':
+        case 'cymbal':
+          spawnDiffuse(tap)
+          break
         case 'tick':
           spawnTickRing(tap)
           break
@@ -947,7 +1040,11 @@ export function SoundVisualScreen() {
 
       const inkScale = ink()
       const count = Math.round(
-        TAIL_PER_TAP * lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) * body * inkScale,
+        TAIL_PER_TAP *
+          lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) *
+          body *
+          velocityOf(tap).ink *
+          inkScale,
       )
       if (count <= 0) return
 
@@ -1050,8 +1147,16 @@ export function SoundVisualScreen() {
       scheduleDraw()
     }
 
+    /** The meter changed: same marks, a different number of spokes under them. */
+    const setBeats = (next: number) => {
+      beats = next
+      fieldDirty = true
+      scheduleDraw()
+    }
+
     setMarksRef.current = setMarks
     setFxRef.current = setFx
+    setBeatsRef.current = setBeats
     scheduleRef.current = scheduleDraw
 
     // ── Drawing ─────────────────────────────────────────────────────────
@@ -1085,8 +1190,8 @@ export function SoundVisualScreen() {
         field.strokeStyle = `rgba(0, 0, 0, ${GRID_ALPHA})`
         field.lineWidth = Math.max(1, Math.round(dpr))
         field.beginPath()
-        for (let beat = 0; beat < BEATS_PER_LOOP; beat++) {
-          const theta = (beat / BEATS_PER_LOOP) * Math.PI * 2 - Math.PI / 2
+        for (let beat = 0; beat < beats; beat++) {
+          const theta = (beat / beats) * Math.PI * 2 - Math.PI / 2
           field.moveTo(cx, cy)
           field.lineTo(cx + Math.cos(theta) * reach, cy + Math.sin(theta) * reach)
         }
@@ -1202,6 +1307,7 @@ export function SoundVisualScreen() {
       if (rafId) cancelAnimationFrame(rafId)
       setMarksRef.current = null
       setFxRef.current = null
+      setBeatsRef.current = null
       scheduleRef.current = null
     }
     // The sim is built once and fed through the refs above; nothing it closes
@@ -1214,6 +1320,10 @@ export function SoundVisualScreen() {
   useEffect(() => {
     setFxRef.current?.(fx)
   }, [fx])
+
+  useEffect(() => {
+    setBeatsRef.current?.(beatsPerLoop)
+  }, [beatsPerLoop])
 
   // Wake the canvas when the playhead starts (it keeps itself running from
   // there) and once more when it stops, so the last light is wiped off.

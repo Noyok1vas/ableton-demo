@@ -1,4 +1,11 @@
-import type { Page, PageId, WindowKind, WindowLimits, WindowState } from './types.ts'
+import type {
+  Page,
+  PageId,
+  WindowKind,
+  WindowLimits,
+  WindowState,
+  WindowTier,
+} from './types.ts'
 
 export const PAGES: Page[] = [
   { id: 'rhythmic-intent', name: 'Rhythmic intent' },
@@ -10,19 +17,20 @@ export const PAGES: Page[] = [
 
 /** Each page owns its windows. Only the first page has content in this pass. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
-  // Demo build: the four visitor windows, plus Sound Source so an iPad
-  // visitor can see which kit is live, the mix, and whether the browser
-  // has actually unlocked audio. March / Rhythmic intent / Sound Intent /
-  // Ripple / March Family stay omitted — their sessions still mount.
-  //
-  // Left column is Sound Source over Collection; centre is the stage;
-  // the right column is 540 so the Selector's four identities stay one row.
+  // Demo build, laid out as the drum synth it is becoming. The two SOFTWARE
+  // windows are the screens — Sound Source (the small system display) and
+  // Sound Visual (the main one, centre). Everything else is HARDWARE: the
+  // Transport, FX and Collection down the left, the pads and the Mixer down
+  // the right. March / Rhythmic intent / Sound Intent / Ripple / March Family
+  // stay omitted — their sessions still mount.
   'rhythmic-intent': [
-    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 700, h: 340 },
-    { id: 'col-1', kind: 'collection', title: 'Collection', x: 64, y: 420, w: 700, h: 1084 },
+    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 700, h: 420 },
+    { id: 'tp-1', kind: 'transport', title: 'Transport', x: 64, y: 500, w: 700, h: 346 },
+    { id: 'fx-1', kind: 'fx', title: 'FX', x: 64, y: 862, w: 700, h: 420 },
+    { id: 'col-1', kind: 'collection', title: 'Collection', x: 64, y: 1298, w: 700, h: 206 },
     { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 800, y: 64, w: 1470, h: 1440 },
-    { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 2306, y: 64, w: 540, h: 702 },
-    { id: 'fx-1', kind: 'fx', title: 'FX', x: 2306, y: 802, w: 540, h: 702 },
+    { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 2306, y: 64, w: 540, h: 900 },
+    { id: 'mx-1', kind: 'mixer', title: 'Mixer', x: 2306, y: 980, w: 540, h: 524 },
   ],
   'untitled-2': [],
   'untitled-3': [],
@@ -30,8 +38,26 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
   'untitled-5': [],
 }
 
+/** See WindowTier. Only the two displays stay software. */
+export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
+  'sound-source': 'software',
+  'sound-visual': 'software',
+  transport: 'hardware',
+  mixer: 'hardware',
+  'rhythmic-intent': 'hardware',
+  collection: 'hardware',
+  'sound-intent': 'hardware',
+  fx: 'hardware',
+  selector: 'hardware',
+  ripple: 'hardware',
+  'march-intent': 'hardware',
+  'march-family': 'hardware',
+}
+
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   'sound-source': { minW: 420, minH: 260, maxW: 1200, maxH: 720 },
+  transport: { minW: 420, minH: 280, maxW: 1200, maxH: 720 },
+  mixer: { minW: 420, minH: 440, maxW: 1200, maxH: 1200 },
   'rhythmic-intent': { minW: 720, minH: 600, maxW: 1600, maxH: 1040 },
   collection: { minW: 300, minH: 280, maxW: 720, maxH: 1600 },
   'sound-intent': { minW: 360, minH: 420, maxW: 900, maxH: 1040 },

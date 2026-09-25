@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { useSession } from './session.tsx'
-import { BEATS_PER_LOOP, type Tap } from './types.ts'
+import type { Tap } from './types.ts'
 import './rhythmic-intent.css'
 
 // Mini two-bar strip: a thin line threading through the tap dots, with beat
@@ -14,9 +14,11 @@ const TRACK_W = W - PAD * 2
 const MiniPattern = memo(function MiniPattern({
   taps,
   loopDuration,
+  beats,
 }: {
   taps: readonly Tap[]
   loopDuration: number
+  beats: number
 }) {
   return (
     <svg className="collection-mini" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
@@ -28,10 +30,10 @@ const MiniPattern = memo(function MiniPattern({
         stroke="var(--line-strong)"
         strokeWidth="0.75"
       />
-      {Array.from({ length: BEATS_PER_LOOP }, (_, beat) => (
+      {Array.from({ length: beats }, (_, beat) => (
         <text
           key={beat}
-          x={PAD + (beat / BEATS_PER_LOOP) * TRACK_W}
+          x={PAD + (beat / beats) * TRACK_W}
           y={H - 6}
           className="collection-beat num"
           textAnchor="middle"
@@ -44,7 +46,8 @@ const MiniPattern = memo(function MiniPattern({
           key={i}
           cx={PAD + (tap.time / loopDuration) * TRACK_W}
           cy={LINE_Y}
-          r="4"
+          // Velocity reads as size here too: an accent is the biggest dot.
+          r={2.5 + 2 * Math.min(1, Math.max(0, tap.velocity))}
           fill="var(--text)"
         />
       ))}
@@ -55,7 +58,7 @@ const MiniPattern = memo(function MiniPattern({
 /** History of every captured loop. Clicking a row loads it as the current
     pattern; the main window's RESET clears the whole list. */
 export function CollectionPanel() {
-  const { collection, selectedId, loadEntry, loopDuration } = useSession()
+  const { collection, selectedId, loadEntry, beatsPerLoop } = useSession()
 
   if (collection.length === 0) {
     return <div className="collection collection--empty">Tapped patterns appear here</div>
@@ -77,7 +80,7 @@ export function CollectionPanel() {
                 if (e.key === ' ') e.preventDefault()
               }}
             >
-              <MiniPattern taps={entry.taps} loopDuration={loopDuration} />
+              <MiniPattern taps={entry.taps} loopDuration={entry.duration} beats={beatsPerLoop} />
             </button>
           </li>
         ))}

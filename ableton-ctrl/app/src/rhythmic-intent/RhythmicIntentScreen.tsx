@@ -2,7 +2,6 @@ import { Knob } from './Knob.tsx'
 import { PitchPad } from './PitchPad.tsx'
 import { RhythmVisualization } from './RhythmVisualization.tsx'
 import { useSession } from './session.tsx'
-import { GRID_DIVISIONS } from './types.ts'
 import './rhythmic-intent.css'
 
 const PROJECT_DESCRIPTION =
@@ -22,6 +21,8 @@ export function RhythmicIntentScreen() {
     playing,
     playhead,
     togglePlay,
+    gridDivisions,
+    beatsPerLoop,
   } = useSession()
 
   const statusLabel = playing
@@ -64,7 +65,13 @@ export function RhythmicIntentScreen() {
       </header>
 
       <section className="ri-vis" aria-label="Two-bar tap visualization">
-        <RhythmVisualization taps={rendered} state={capture.state} playhead={playhead} />
+        <RhythmVisualization
+          taps={rendered}
+          state={capture.state}
+          playhead={playhead}
+          gridDivisions={gridDivisions}
+          beatsPerLoop={beatsPerLoop}
+        />
       </section>
 
       <section className="ri-controls">
@@ -100,7 +107,7 @@ export function RhythmicIntentScreen() {
             label="PHASE"
             value={params.phase}
             min={0}
-            max={GRID_DIVISIONS - 1}
+            max={gridDivisions - 1}
             step={1}
             formatValue={(v) => (v === 0 ? '0' : `+${v}`)}
             onChange={(v) => setParam('phase', v)}

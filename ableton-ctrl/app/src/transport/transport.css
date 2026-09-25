@@ -1,0 +1,232 @@
+/* Transport + Mixer — the hardware's clock and channel sections. Same
+   vocabulary as everywhere else: radius 0, 1px lines, selection by fill. */
+
+.tp-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+}
+
+/* Shared button base for everything pressable in these two windows. */
+.tp-play,
+.tp-step,
+.tp-unit-choice,
+.mx-switch {
+  background: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.tp-play:hover:not(:disabled),
+.tp-step:hover:not(:disabled),
+.tp-unit-choice:hover,
+.mx-switch:hover {
+  background: var(--surface-2);
+}
+
+.tp-play:disabled,
+.tp-step:disabled {
+  border-color: var(--line-fine);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.tp-play {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 64px;
+  font-size: 18px;
+}
+
+.tp-play-glyph {
+  font-size: 16px;
+}
+
+.tp-play--on,
+.tp-play--on:hover:not(:disabled),
+.tp-unit-choice--on,
+.tp-unit-choice--on:hover {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.tp-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-fine);
+}
+
+.tp-label {
+  flex: 0 0 72px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.tp-stepper {
+  display: flex;
+  align-items: stretch;
+}
+
+.tp-step {
+  width: 48px;
+  min-height: 48px;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.tp-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  margin: 0 -1px;
+  border: 1px solid var(--line-strong);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.tp-bpm {
+  padding: 0;
+  border-radius: 0;
+  font-family: var(--font-ui);
+  text-align: center;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.tp-bpm::-webkit-outer-spin-button,
+.tp-bpm::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.tp-unit {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.tp-units {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.tp-unit-choice {
+  min-width: 48px;
+  min-height: 48px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tp-keys {
+  margin: auto 0 0;
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--text-muted);
+}
+
+/* ── Mixer ──────────────────────────────────────────── */
+
+.mx-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+}
+
+.mx-row {
+  display: grid;
+  grid-template-columns: 76px 40px 40px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.mx-row--master {
+  margin-top: auto;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 0;
+}
+
+.mx-name {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A channel you cannot hear: muted, or silenced by someone else's solo. */
+.mx-row--silent .mx-name,
+.mx-row--silent .mx-level {
+  color: var(--text-muted);
+}
+
+.mx-row--silent .si-slider-fill,
+.mx-row--silent .si-slider-handle {
+  background: var(--text-muted);
+  border-color: var(--text-muted);
+}
+
+.mx-switch {
+  width: 40px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.mx-switch--on,
+.mx-switch--on:hover {
+  background: var(--text);
+  color: var(--surface);
+}
+
+/* The fader atom is Sound Intent's; the row already names it and shows its
+   value, so its own head comes off. */
+.mx-row .si-slider-head {
+  display: none;
+}
+
+.mx-level {
+  font-size: 14px;
+  font-weight: 300;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.mx-master-label {
+  grid-column: 1 / span 3;
+}

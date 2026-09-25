@@ -76,6 +76,41 @@
   color: var(--surface);
 }
 
+/* Where the function ends up: which side of the product line it is on. */
+.cwindow-tier {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Tier: software (screen) vs hardware (control surface) ── */
+/* Software keeps the full black frame and title bar. Hardware goes grey —
+   outline and title bar both — with dark text, so the two read apart at a
+   glance even zoomed out on an iPad. */
+
+.cwindow--software {
+  border: 2px solid var(--ink-pure);
+}
+
+.cwindow--hardware {
+  border: 2px solid var(--hw-line);
+}
+
+.cwindow--hardware .cwindow-titlebar {
+  background: var(--hw-title);
+  border-bottom: 1px solid var(--hw-line);
+}
+
+.cwindow--hardware .cwindow-title {
+  color: var(--text);
+}
+
+.cwindow--hardware .cwindow-tier {
+  color: var(--text-muted);
+}
+
 .cwindow-body {
   flex: 1 1 auto;
   min-height: 0;

@@ -25,9 +25,9 @@ export type TapCapture = {
       add order, not loop order: it takes back the last thing you played, which
       may sit anywhere in the loop. */
   undo: () => void
-  /** Put the loop clock's zero at this instant, leaving the taps alone. The
-      session calls it when playback starts so that taps added into a running
-      loop land where they were heard. */
+  /** Put the loop clock's zero at this instant, leaving the taps alone, and
+      make sure the clock is turning. The session calls it when playback starts
+      so that taps added into a running loop land where they were heard. */
   anchor: () => void
   reset: () => void
   /** Replace the current pattern with an already-captured one (state → complete). */
@@ -35,7 +35,18 @@ export type TapCapture = {
 }
 
 let sequence = 0
-const nextId = () => `tap-${++sequence}`
+// Taps outlive the page now (they are saved and restored), so an id has to be
+// unique across visits too — a bare counter would restart at 1 on reload and
+// hand a new tap the id of a restored one.
+const session = Date.now().toString(36)
+const nextId = () => `tap-${session}-${++sequence}`
+
+/** A tap this close after the clock was anchored IS the downbeat. Restarting a
+    stopped loop anchors the clock and files the tap in the same press; without
+    this the tap would land a few microseconds past zero, and the engine — which
+    skips an event exactly at the top because the tap has already sounded it —
+    would play it a second time. */
+const TOP_SNAP_S = 0.003
 
 /**
  * A loop you keep playing into. The first tap opens it and defines t=0 (not
@@ -49,17 +60,23 @@ const nextId = () => `tap-${++sequence}`
  * `onComplete` fires exactly once per loop, when the first pass closes — not
  * for the additions afterwards, and not when a pattern is merely re-loaded via
  * `load()`.
+ *
+ * `initial` is a pattern to open with — the one saved on the last visit. It
+ * arrives already complete and with its clock stopped; the clock starts the
+ * first time the loop is anchored (PLAY, or a tap).
  */
 export function useTapCapture(
   loopDuration: number,
   onComplete?: (taps: readonly Tap[]) => void,
+  initial?: readonly Tap[],
 ): TapCapture {
-  const [state, setState] = useState<CaptureState>('ready')
-  const [taps, setTaps] = useState<Tap[]>([])
+  const initialState: CaptureState = initial && initial.length > 0 ? 'complete' : 'ready'
+  const [state, setState] = useState<CaptureState>(initialState)
+  const [taps, setTaps] = useState<Tap[]>(() => [...(initial ?? [])])
   const [progress, setProgress] = useState(0)
 
-  const stateRef = useRef<CaptureState>('ready')
-  const tapsRef = useRef<Tap[]>([])
+  const stateRef = useRef<CaptureState>(initialState)
+  const tapsRef = useRef<Tap[]>(taps)
   const startRef = useRef(0)
   const rafRef = useRef(0)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -149,7 +166,7 @@ export function useTapCapture(
       // The loop is circular, so one formula covers both passes: inside the
       // first one the wrap is a no-op, after it the tap folds back into the
       // same loop rather than opening a new one.
-      const time = ((elapsed % duration) + duration) % duration
+      const time = elapsed < TOP_SNAP_S ? 0 : ((elapsed % duration) + duration) % duration
       // Timer race: the first pass has run out but its timeout has not fired
       // yet. Close it here so the tap is an addition, not part of the take.
       if (stateRef.current === 'recording' && elapsed >= duration) finalize()
@@ -194,7 +211,9 @@ export function useTapCapture(
 
   const anchor = useCallback(() => {
     startRef.current = performance.now()
-  }, [])
+    // A restored pattern arrives with its clock stopped; this is where it starts.
+    if (stateRef.current !== 'ready') startClock()
+  }, [startClock])
 
   const reset = useCallback(() => {
     stopTimers()

@@ -17,6 +17,10 @@
   --ink-pure: #000000;
   /* "accent" is state, not colour: black instead of the reference red. */
   --accent: #171a1d;
+  /* Hardware-tier windows (see WindowTier): a grey frame and title bar, so
+     what becomes a physical control reads apart from what stays a screen. */
+  --hw-line: #aeb3b7;
+  --hw-title: #e3e5e7;
 
   /* Typography */
   --font-ui: Inter, 'Helvetica Neue', -apple-system, system-ui, sans-serif;

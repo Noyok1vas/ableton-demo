@@ -17,6 +17,7 @@ import {
   type FxParams,
 } from './types.ts'
 import { useSoundEngine } from '../transport/session.tsx'
+import { loadSaved, mergeNumbers, useSaved } from '../persist.ts'
 
 /** Controls that drive a sound parameter, id → that parameter's exact name. */
 const MACRO_BY_ID = new Map<FxControlId, string>(
@@ -49,7 +50,10 @@ export function useFx(): FxSessionValue {
  */
 export function FxSession({ children }: { children: ReactNode }) {
   const { setMacro, status, engineId } = useSoundEngine()
-  const [params, setParams] = useState<FxParams>(DEFAULT_FX_PARAMS)
+  const [params, setParams] = useState<FxParams>(() =>
+    mergeNumbers(DEFAULT_FX_PARAMS, loadSaved('fx'), FX_MIN, FX_MAX),
+  )
+  useSaved('fx', params)
 
   const paramsRef = useRef(params)
   paramsRef.current = params
