@@ -1,0 +1,90 @@
+/* Rack preview — covers the sequencer while a mod strip is in use. Sized in
+   container units so the rack and the large sound scale with the screen. */
+
+.rp {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  background: var(--surface);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 220ms;
+}
+
+.rp--on {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 220ms ease;
+}
+
+/* The whole rack at half strength: a hint, not a control. */
+.rp-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(4, min(13cqw, 20cqh));
+  align-content: center;
+  justify-content: center;
+  gap: min(1.6cqw, 2.4cqh);
+  opacity: 0.5;
+  transition: opacity 280ms ease;
+}
+
+/* A sound brought up large: the rack gives way to it. */
+.rp--focus .rp-grid {
+  opacity: 0;
+}
+
+.rp-cell {
+  display: flex;
+  padding: var(--space-2);
+  border: 1px solid var(--line-fine);
+}
+
+/* The sound the character strip is editing. */
+.rp-cell--selected {
+  border: 1.5px solid var(--ink-pure);
+}
+
+.rp-art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.sound-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.rp-focus-wrap {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.rp-focus {
+  position: relative;
+  width: min(52cqw, 62cqh);
+  aspect-ratio: 1 / 1;
+  transform-origin: 50% 50%;
+}
+
+.rp-focus-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: var(--space-2);
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-align: center;
+  color: var(--text);
+}

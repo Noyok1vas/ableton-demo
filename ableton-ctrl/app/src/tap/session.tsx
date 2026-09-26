@@ -12,6 +12,7 @@ import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useSelector } from '../selector/session.tsx'
 import { characterOf } from '../selector/character.ts'
 import { useRipple } from '../ripple/session.tsx'
+import { useMod } from '../mod/session.tsx'
 import type { PatternId } from '../selector/patterns.ts'
 
 export type TapSessionValue = {
@@ -20,7 +21,9 @@ export type TapSessionValue = {
       `gesture` overrides the selected one for this tap — the Selector needs it
       because pressing a mark selects and fires in the same press, before React
       has re-rendered with the new selection. `accented` plays this one tap at
-      full velocity whatever the Selector's velocity says — Shift+Space. */
+      full velocity whatever the Selector's velocity says — Shift+Space.
+      While a mod strip is in use (see mod/session) the press auditions
+      instead: heard and shown, never recorded. */
   fireTap: (gesture?: PatternId, accented?: boolean) => void
   /** True while Rhythmic Intent is capturing a bar. */
   recording: boolean
@@ -72,6 +75,11 @@ export function TapSession({ children }: { children: ReactNode }) {
   } = useSelector()
   const currentVelocityRef = useRef(currentVelocity)
   currentVelocityRef.current = currentVelocity
+  // While a mod strip is in use a press auditions instead of recording — read
+  // through a ref so the Space listener sees the mode at the moment of the key.
+  const mod = useMod()
+  const modRef = useRef(mod)
+  modRef.current = mod
   const { count: repeats } = useRipple()
   const gestureRef = useRef(selectedGesture)
   gestureRef.current = selectedGesture
@@ -92,6 +100,10 @@ export function TapSession({ children }: { children: ReactNode }) {
   // mark it drew for that tap.
   const fireTap = useCallback((gesture?: PatternId, accented = false) => {
     const sound = gesture ?? gestureRef.current
+    if (modRef.current.isActive()) {
+      modRef.current.audition(sound, accented)
+      return
+    }
     // The character is read HERE, once, at the instant of the press — this is
     // the "capture" step of the model. Everything downstream receives a copy.
     // `gesture` overriding means the Selector's own press has to look the

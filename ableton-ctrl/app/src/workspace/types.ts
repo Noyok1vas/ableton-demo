@@ -16,6 +16,7 @@ export type WindowKind =
   | 'sound-source'
   | 'main-screen'
   | 'master'
+  | 'mod-strips'
   | 'mixer'
   | 'rhythmic-intent'
   | 'collection'

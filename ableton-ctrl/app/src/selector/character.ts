@@ -67,11 +67,6 @@ export function characterOf(id: SoundVoiceId, state: CharacterState): number | n
   return CHARACTER[id] === null ? null : state[id]
 }
 
-/** What the Selector icons are drawn at. Fixed on purpose: the icon answers
-    "which sound is this", and an icon that moved with the slider would be
-    answering the panel's question instead. */
-export const IDENTITY_CHARACTER = 0.5
-
 /** One line under each panel, saying what the axis actually does to the sound.
     Written per identity rather than generically, because "what moves when you
     move this" is different in kind for each of the four. */

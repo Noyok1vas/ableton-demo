@@ -1,27 +1,41 @@
 import { useEffect, useRef } from 'react'
 import { renderPatternTile, type Pattern } from './patterns.ts'
 
+// Velocity reads as size alone: a softer hit is a smaller mark, the same ink.
+// Same floor as the Sound Visual's ring, so the two agree on scale.
+const VELOCITY_MIN_SIZE = 0.68
+const lerp = (a: number, b: number, u: number) => a + (b - a) * u
+
 /**
- * The panel's preview — the STATE level, the counterpart to SelectorIcon.
+ * A sound's mark at its current STATE. Used everywhere a sound is shown: the
+ * pads, the Main Screen's rack preview, and the one sound brought up large.
  *
  * Same field, same rasterizer, same printed look; the difference is that this
- * one is redrawn whenever the character moves, so it always shows what the next
- * event will sound like rather than what kind of sound it is.
+ * one is redrawn whenever the character moves, and drawn smaller as the
+ * velocity drops.
  *
- * Rasterizing is tens of milliseconds of per-pixel work, and a dragged slider
+ * Rasterizing is tens of milliseconds of per-pixel work, and a dragged strip
  * asks for it far faster than the screen can show it — so a move only records
- * the wanted value and the work happens once, in the next animation frame. That
- * is the same bargain the Sound Visual makes with its own re-placement, for the
- * same reason.
+ * the wanted value and the work happens once, in the next animation frame.
  */
-export function SoundPreview({ pattern, character }: { pattern: Pattern; character: number }) {
+export function SoundPreview({
+  pattern,
+  character,
+  velocity = 1,
+}: {
+  pattern: Pattern
+  character: number
+  velocity?: number
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  // The latest requested character, read at paint time rather than closed over,
+  // The latest requested values, read at paint time rather than closed over,
   // so several moves inside one frame collapse into the last one.
   const wantedRef = useRef(character)
   wantedRef.current = character
+  const velocityRef = useRef(velocity)
+  velocityRef.current = velocity
   // The painter's own "ask for a frame", published out of the effect so a
-  // character change can wake it without tearing it down and re-rolling grain.
+  // change can wake it without tearing it down and re-rolling grain.
   const scheduleRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -31,8 +45,9 @@ export function SoundPreview({ pattern, character }: { pattern: Pattern; charact
     if (!ctx) return
 
     let rafId = 0
-    // What is currently rasterized, so a resize repaints without re-rolling the
-    // grain and an unchanged value skips the expensive part entirely.
+    // What is currently rasterized, so a resize or a velocity move repaints
+    // without re-rolling the grain, and an unchanged character skips the
+    // expensive part entirely.
     let tile: HTMLCanvasElement | null = null
     let tileAt = Number.NaN
 
@@ -50,10 +65,14 @@ export function SoundPreview({ pattern, character }: { pattern: Pattern; charact
         canvas.width = w
         canvas.height = h
       }
+      const v = Math.min(1, Math.max(0, velocityRef.current))
+      const size = lerp(VELOCITY_MIN_SIZE, 1, v)
+      const dw = w * size
+      const dh = h * size
+      ctx.clearRect(0, 0, w, h)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
-      ctx.clearRect(0, 0, w, h)
-      ctx.drawImage(tile, 0, 0, w, h)
+      ctx.drawImage(tile, (w - dw) / 2, (h - dh) / 2, dw, dh)
     }
 
     const schedule = () => {
@@ -69,14 +88,14 @@ export function SoundPreview({ pattern, character }: { pattern: Pattern; charact
       if (rafId) cancelAnimationFrame(rafId)
       scheduleRef.current = null
     }
-    // `character` is fed through wantedRef; only a change of identity rebuilds
-    // the painter, which is what keeps a drag from re-creating it every frame.
+    // `character` and `velocity` are fed through refs; only a change of
+    // identity rebuilds the painter, which keeps a drag from re-creating it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pattern])
 
   useEffect(() => {
     scheduleRef.current?.()
-  }, [character])
+  }, [character, velocity])
 
-  return <canvas ref={canvasRef} className="sel-preview-canvas" />
+  return <canvas ref={canvasRef} className="sound-preview" />
 }

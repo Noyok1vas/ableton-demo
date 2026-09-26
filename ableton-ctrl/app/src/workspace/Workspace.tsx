@@ -9,6 +9,7 @@ import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { MixerScreen } from '../transport/MixerScreen.tsx'
 import { MainScreen } from '../main-screen/MainScreen.tsx'
 import { MasterKnobScreen } from '../master/MasterKnobScreen.tsx'
+import { ModStripsScreen } from '../mod/ModStripsScreen.tsx'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundIntentScreen } from '../sound-intent/SoundIntentScreen.tsx'
@@ -37,6 +38,8 @@ function windowContent(kind: WindowKind) {
       return <MainScreen />
     case 'master':
       return <MasterKnobScreen />
+    case 'mod-strips':
+      return <ModStripsScreen />
     case 'mixer':
       return <MixerScreen />
     case 'rhythmic-intent':

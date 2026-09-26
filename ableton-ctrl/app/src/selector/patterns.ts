@@ -32,11 +32,9 @@ export type Pattern = {
   label: string
   /** Ink density 0..1 at normalized coords, canvas centre at (0,0), edges ±1.
    *
-   * `c` is the sound's character, 0..1 — the panel's slider. One field per
-   * identity serves both levels of the Selector: the grid draws it at the
-   * fixed IDENTITY_CHARACTER and never redraws, the panel draws it at the live
-   * value and redraws on every move. Same shape, asked two different
-   * questions. Identities with no axis (SPLASH) ignore `c` entirely. */
+   * `c` is the sound's character, 0..1 — the character mod strip. Every view
+   * of a sound draws it at its live value and redraws on every move.
+   * Identities with no axis (SPLASH, RIM) ignore `c` entirely. */
   field: (x: number, y: number, c: number) => number
   /** Darkest tone the field maps to (1 = pure black). Keeps the placeholders
       grey while the live HIT mark goes near-black. */
@@ -277,9 +275,8 @@ export const TILE_SIZE = 180
  * TILE_SIZE². The grain is a per-pixel jitter weighted by ink*(1-ink), so flat
  * white and the solid core stay clean and the transitions break up.
  *
- * Called once per identity for the grid (at IDENTITY_CHARACTER, then cached)
- * and once per slider frame for the panel — the same function either way, so
- * the two levels of the Selector can never drift into different-looking marks.
+ * Called by SoundPreview whenever a sound's character changes — one function
+ * for the pads, the rack and the large view, so they never drift apart.
  */
 export function renderPatternTile(pattern: Pattern, c: number): HTMLCanvasElement {
   const size = TILE_SIZE
@@ -299,12 +296,14 @@ export function renderPatternTile(pattern: Pattern, c: number): HTMLCanvasElemen
       const v = pattern.field(nx, ny, c)
       const noise = (Math.random() - 0.5) * pattern.grain * (v * (1 - v) * 4)
       const ink = clamp01(v + noise) * pattern.maxInk
-      const tone = Math.round(255 * (1 - ink))
+      // Black ink at `ink` opacity rather than an opaque grey: identical on a
+      // white ground, and on any other ground (a grey pad) it shows the mark
+      // and nothing of the tile around it.
       const i = (py * size + px) * 4
-      data[i] = tone
-      data[i + 1] = tone
-      data[i + 2] = tone
-      data[i + 3] = 255
+      data[i] = 0
+      data[i + 1] = 0
+      data[i + 2] = 0
+      data[i + 3] = Math.round(255 * ink)
     }
   }
   ctx.putImageData(image, 0, 0)

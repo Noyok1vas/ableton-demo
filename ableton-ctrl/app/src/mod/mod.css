@@ -1,0 +1,77 @@
+/* Mod strips — two tall touch strips, filled from the bottom. Rounded like the
+   physical strips they stand in for; black fill, hairline frame. */
+
+.mod-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-evenly;
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  background: var(--surface);
+  touch-action: none;
+}
+
+.mod-strip {
+  flex: 0 0 auto;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.mod-track {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1.5px solid var(--ink-pure);
+  border-radius: 28px;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.mod-track:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.mod-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ink-pure);
+  transition: height 60ms linear;
+}
+
+/* The finger's line: a white rule across the top of the fill. */
+.mod-level {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  height: 3px;
+  margin-bottom: -1.5px;
+  background: var(--surface);
+  mix-blend-mode: difference;
+  transition: bottom 60ms linear;
+}
+
+/* A sound with no character axis: the strip still switches the pads into
+   audition, but has nothing to set. */
+.mod-strip--disabled .mod-track {
+  border-color: var(--hw-line);
+  cursor: pointer;
+}
+
+.mod-strip--disabled .mod-fill,
+.mod-strip--disabled .mod-level {
+  display: none;
+}
+

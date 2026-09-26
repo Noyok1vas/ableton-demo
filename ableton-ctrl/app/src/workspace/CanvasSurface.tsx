@@ -46,9 +46,16 @@ function touchMidpoint(a: Touch, b: Touch, rect: DOMRect) {
   }
 }
 
-function pairFrom(touches: TouchList): [Touch, Touch] | null {
+function pairFrom(touches: readonly Touch[]): [Touch, Touch] | null {
   if (touches.length < 2) return null
   return [touches[0], touches[1]]
+}
+
+/** A touch that lands on an instrument control marked `data-no-pinch` (the
+    pads, the mod strips) is playing, not navigating: holding a strip with one
+    finger and a pad with the other must never zoom the canvas. */
+function startsOnInstrument(touch: Touch): boolean {
+  return touch.target instanceof Element && touch.target.closest('[data-no-pinch]') !== null
 }
 
 /**
@@ -70,6 +77,8 @@ export function CanvasSurface({ view, onViewChange, children }: CanvasSurfacePro
   /** 'gesture' = Safari owns this pinch; ignore parallel touchmove math. */
   const pinchMode = useRef<'none' | 'gesture' | 'touch'>('none')
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null)
+  /** Touches, by identifier, that began on an instrument control. */
+  const playing = useRef(new Set<number>())
 
   // Wheel is attached natively (not via React) so it can be non-passive and
   // call preventDefault — required to stop the page/trackpad from scrolling.
@@ -114,7 +123,11 @@ export function CanvasSurface({ view, onViewChange, children }: CanvasSurfacePro
       })
     }
 
-    const beginTouchPinch = (touches: TouchList) => {
+    /** Only the touches that may take part in a pinch. */
+    const pinchable = (touches: TouchList) =>
+      Array.from(touches).filter((t) => !playing.current.has(t.identifier))
+
+    const beginTouchPinch = (touches: readonly Touch[]) => {
       const pair = pairFrom(touches)
       if (!pair) return false
       announcePinch()
@@ -131,23 +144,28 @@ export function CanvasSurface({ view, onViewChange, children }: CanvasSurfacePro
     }
 
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length < 2) return
+      for (const t of Array.from(e.changedTouches)) {
+        if (startsOnInstrument(t)) playing.current.add(t.identifier)
+      }
+      const touches = pinchable(e.touches)
+      if (touches.length < 2) return
       // Safari will also fire gesture*; prefer that path once it starts.
       if (pinchMode.current === 'gesture') {
         e.preventDefault()
         return
       }
-      if (beginTouchPinch(e.touches)) e.preventDefault()
+      if (beginTouchPinch(touches)) e.preventDefault()
     }
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length < 2) return
+      const touches = pinchable(e.touches)
+      if (touches.length < 2) return
       e.preventDefault()
       if (pinchMode.current === 'gesture') return
-      if (!pinch.current || pinchMode.current !== 'touch') beginTouchPinch(e.touches)
+      if (!pinch.current || pinchMode.current !== 'touch') beginTouchPinch(touches)
       const state = pinch.current
       if (!state || pinchMode.current !== 'touch') return
-      const pair = pairFrom(e.touches)
+      const pair = pairFrom(touches)
       if (!pair) return
       const rect = el.getBoundingClientRect()
       const mid = touchMidpoint(pair[0], pair[1], rect)
@@ -155,7 +173,8 @@ export function CanvasSurface({ view, onViewChange, children }: CanvasSurfacePro
     }
 
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length >= 2) return
+      for (const t of Array.from(e.changedTouches)) playing.current.delete(t.identifier)
+      if (pinchable(e.touches).length >= 2) return
       if (pinchMode.current === 'touch') {
         pinch.current = null
         pinchMode.current = 'none'
@@ -165,6 +184,9 @@ export function CanvasSurface({ view, onViewChange, children }: CanvasSurfacePro
     const onGestureStart = (e: Event) => {
       const ge = e as GestureEventLike
       ge.preventDefault()
+      // Safari's gesture events can't say which fingers they are made of; if
+      // any of them is playing an instrument control, this is not a pinch.
+      if (playing.current.size > 0) return
       announcePinch()
       const rect = el.getBoundingClientRect()
       pinch.current = {

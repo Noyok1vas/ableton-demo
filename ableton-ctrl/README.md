@@ -64,8 +64,16 @@ AUTO 会自己判断 —— 探测到 bridge 就走 Ableton,没探测到就用�
   - Guiding mode 打开时,鼠标悬停(触屏是按下)任何带 `data-hint` 的控件都会弹出说明;
     实现在 `app/src/guide/`
 - 硬件:Master Control(大号离散 knob,12 档,暂未 map)、FX(REVERB / HIGH PASS FILTER /
-  SATURATE / ECHO 四个 knob,ECHO 是 placeholder)、Sound Selector(8 个 pad + VELOCITY /
-  ACCENT)、Mixer(每声部 M / S / level + MASTER)
+  SATURATE / ECHO 四个 knob,ECHO 是 placeholder)、Mod Strip(两条竖向 strip:左 velocity,
+  右是当前选中音色的 character)、Sound Selector(8 个 pad,4×2,在 Main Screen 正下方、
+  等宽)。Mixer 不在新手版布局里(`MixerScreen` 还在,声部电平不再保存,每次都是默认混音)。
+
+**Mod strip + pad = 试听**:按住(或刚松开 2 秒内)任一条 mod strip 时,pad 只试听不录入,
+Main Screen 的 circular sequencer 被 50% 透明度的整套 drum rack 预览盖住;再按某个 pad,
+那个音色的 visual 从它的格子放大到屏幕中间并变实,随 strip 的 velocity / character 实时变化。
+单独按 pad(没碰 strip)才是录入。实现在 `app/src/mod/` 和 `app/src/main-screen/RackPreview.tsx`。
+画布的双指缩放会忽略从 `data-no-pinch` 控件(pad、mod strip)开始的手指,所以一手按 strip
+一手按 pad 不会误缩放。
 
 键盘:Space = tap,Shift+Space = 重音 tap,Enter = PLAY/STOP。
 

@@ -9,6 +9,7 @@ import { TapSession } from './tap/session.tsx'
 import { MarchSession } from './march/session.tsx'
 import { GuideSession } from './guide/session.tsx'
 import { HintLayer } from './guide/HintLayer.tsx'
+import { ModSession } from './mod/session.tsx'
 
 export default function App() {
   return (
@@ -23,6 +24,9 @@ export default function App() {
             {/* Which gesture a tap fires, and how many repeats it carries: both
                 are stamped onto the tap, so they sit above the trigger. */}
             <SelectorSession>
+              {/* The mod strips decide whether a pad records or auditions, so
+                  they sit between what a tap is and the trigger that fires it. */}
+              <ModSession>
               <RippleSession>
                 {/* The shared tap trigger — needs every session above it. */}
                 <TapSession>
@@ -40,6 +44,7 @@ export default function App() {
                   </MarchSession>
                 </TapSession>
               </RippleSession>
+              </ModSession>
             </SelectorSession>
           </FxSession>
         </SoundIntentSession>

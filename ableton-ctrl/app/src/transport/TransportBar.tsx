@@ -89,7 +89,9 @@ export function TransportBar() {
         </button>
         <button
           type="button"
-          className={`tp-btn tp-metronome${freeRunning ? ' tp-metronome--free' : ''}`}
+          className={`tp-btn tp-metronome${metronome ? ' tp-btn--on' : ''}${
+            freeRunning ? ' tp-metronome--free' : ''
+          }`}
           style={{ '--beat': `${beatSeconds}s` } as CSSProperties}
           aria-label="Metronome"
           aria-pressed={metronome}

@@ -303,7 +303,7 @@ export class BridgeEngine implements SoundEngine {
   setVoiceGain(): void {}
 
   /** Not over the bridge yet: Live has its own metronome, and the loop's
-      clock is Live's there, not this tab's. */
+      clock is Live's there, not this tab's. (Arguments ignored.) */
   setMetronome(): void {}
 
   marchPhase(): number | null {

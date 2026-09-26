@@ -166,10 +166,11 @@ export interface SoundEngine {
       (Live, through the bridge) ignore it. */
   setVoiceGain(voice: SoundVoiceId, gain: number): void
 
-  /** The metronome: while `on` and the tapped loop is playing, a click on
-      every beat of the loop, the first beat of each bar accented. Follows the
-      loop's own grid, so it starts and stops with it. */
-  setMetronome(on: boolean, beatsPerLoop: number, beatsPerBar: number): void
+  /** The metronome: while `on`, a click on every beat, the first beat of each
+      bar accented. With the tapped loop playing it follows the loop's grid;
+      with nothing playing it keeps time on its own, one loop (`loopSeconds`)
+      at a time, so there is a pulse to start playing against. */
+  setMetronome(on: boolean, beatsPerLoop: number, beatsPerBar: number, loopSeconds: number): void
 
   /** Move the mapping: every future note plays on this MIDI pitch. */
   setPitch(pitch: number): void

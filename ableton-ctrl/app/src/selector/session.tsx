@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -27,6 +28,11 @@ export type SelectorSessionValue = {
       one has no business moving the other. */
   character: CharacterState
   setCharacter: (id: PatternId, value: number) => void
+  /** Set the character of whichever sound is selected at this instant — the
+      mod strip's write. Resolved at call time rather than at render, so a
+      pad pressed with one finger and the strip moved with the other in the
+      same instant still lands on the pad just pressed. */
+  setSelectedCharacter: (value: number) => void
   /** The character an event fired right now would carry — null for an identity
       with no axis (SPLASH, RIM). This is the value that gets snapshotted onto a
       tap; after that the tap owns it and this can move freely. */
@@ -82,7 +88,12 @@ function restoreSelector(): SavedSelector {
  */
 export function SelectorSession({ children }: { children: ReactNode }) {
   const [restored] = useState(restoreSelector)
-  const [gesture, setGesture] = useState<PatternId>(restored.gesture)
+  const [gesture, setGestureState] = useState<PatternId>(restored.gesture)
+  const gestureRef = useRef(gesture)
+  const setGesture = useCallback((id: PatternId) => {
+    gestureRef.current = id
+    setGestureState(id)
+  }, [])
   const [character, setCharacterState] = useState<CharacterState>(restored.character)
   const [velocity, setVelocityState] = useState(restored.velocity)
   const [accent, setAccent] = useState(false)
@@ -91,6 +102,11 @@ export function SelectorSession({ children }: { children: ReactNode }) {
     const clamped = Math.min(1, Math.max(0, value))
     setCharacterState((prev) => (prev[id] === clamped ? prev : { ...prev, [id]: clamped }))
   }, [])
+
+  const setSelectedCharacter = useCallback(
+    (value: number) => setCharacter(gestureRef.current, value),
+    [setCharacter],
+  )
 
   const setVelocity = useCallback((value: number) => {
     if (!Number.isFinite(value)) return
@@ -121,6 +137,7 @@ export function SelectorSession({ children }: { children: ReactNode }) {
       setGesture,
       character,
       setCharacter,
+      setSelectedCharacter,
       currentCharacter,
       velocity,
       setVelocity,
@@ -128,7 +145,18 @@ export function SelectorSession({ children }: { children: ReactNode }) {
       setAccent,
       currentVelocity,
     }),
-    [gesture, character, setCharacter, currentCharacter, velocity, setVelocity, accent, currentVelocity],
+    [
+      gesture,
+      setGesture,
+      character,
+      setCharacter,
+      setSelectedCharacter,
+      currentCharacter,
+      velocity,
+      setVelocity,
+      accent,
+      currentVelocity,
+    ],
   )
   return <SelectorContext.Provider value={value}>{children}</SelectorContext.Provider>
 }

@@ -1,27 +1,23 @@
-/* Selector window — two levels, same geometry as the rest of the GUI: radius 0,
-   1px hairlines, 8px grid.
-
-   Above the rule: four identity marks in a row, wrapping to fewer columns in a
-   narrow window. Below it: the selected sound's editing panel. The rule between
-   them is the whole idea made visible — a fixed set of things to choose from,
-   and the current state of the one chosen. */
+/* Sound Selector — the pads, 4×2, as large as the section is tall. Same
+   geometry as the rest of the GUI: radius 0, 1px hairlines, selection by a
+   solid frame. */
 
 .sel-screen {
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
-  overflow: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  container-type: inline-size;
+  /* Two fingers on the pads (one on a strip) are playing, not a page pinch. */
+  touch-action: none;
 }
 
 .sel-audio-unlock {
   flex: 0 0 auto;
   margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--line-strong);
+  padding: var(--space-2) var(--space-4);
   background: var(--ink-pure);
   color: var(--surface);
   font-size: 14px;
@@ -29,29 +25,34 @@
   line-height: 1.35;
 }
 
+/* Four square pads across the full width, two rows. No names: the mark is
+   the name (guiding mode says it in words). */
 .sel-grid {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
+  align-content: start;
+  gap: var(--space-4);
   padding: var(--space-4);
 }
 
 .sel-button {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
+  aspect-ratio: 1 / 1;
   min-width: 0;
-  padding: var(--space-2);
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
   background: var(--surface);
-  /* Unselected marks sit in a hairline frame; selection turns it solid black. */
+  /* Unselected pads sit in a hairline frame; selection turns it solid black. */
   border: 1px solid var(--line-fine);
   border-radius: 0;
   cursor: pointer;
   user-select: none;
-  touch-action: manipulation;
-  transition: border-color var(--motion-fast), background-color var(--motion-fast);
+  touch-action: none;
+  transition:
+    border-color var(--motion-fast),
+    background-color var(--motion-fast);
 }
 
 .sel-button:hover {
@@ -60,6 +61,12 @@
 
 .sel-button--selected {
   border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+/* Audition mode (a strip held): the pads go grey underneath, the way the
+   Main Screen does — nothing pressed now will be recorded. */
+.sel-screen--audition .sel-button {
   background: var(--surface-2);
 }
 
@@ -73,241 +80,16 @@
   border-color: var(--ink-pure);
 }
 
+/* Always square: the mark is sampled on a square field, and stretching it
+   would turn a circle into an ellipse. */
 .sel-icon {
   display: block;
   width: 100%;
-  aspect-ratio: 1 / 1;
-  min-height: 0;
-}
-
-.sel-label {
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: -0.2px;
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.sel-button--selected .sel-label {
-  color: var(--text);
-}
-
-/* ── Dynamics: accent latch + velocity ────────────────── */
-/* How hard, between which sound (the grid) and what it is like (the panel). */
-
-.sel-dynamics {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: 0 var(--space-4) var(--space-4);
-}
-
-.sel-accent {
-  flex: 0 0 auto;
-  min-width: 96px;
-  min-height: 44px;
-  padding: 0 var(--space-3);
-  background: none;
-  border: 1px solid var(--line-strong);
-  border-radius: 0;
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition:
-    background-color var(--motion-fast),
-    color var(--motion-fast);
-}
-
-.sel-accent:hover {
-  background: var(--surface-2);
-}
-
-.sel-accent--on,
-.sel-accent--on:hover {
-  background: var(--text);
-  color: var(--surface);
-}
-
-.sel-velocity {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* The latch is overriding it: still adjustable, visibly not in charge. */
-.sel-velocity--overridden {
-  opacity: 0.4;
-}
-
-/* ── The editing panel ────────────────────────────────── */
-/* One panel, always the selected sound's. It sits under a full-width rule
-   rather than inside a box: it is the second half of this window, not a popover
-   over the first. */
-
-.sel-panel {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: var(--space-4);
-  border-top: 1px solid var(--line-strong);
-  background: var(--surface-2);
-}
-
-.sel-panel-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.sel-panel-title {
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: -0.2px;
-  color: var(--text);
-}
-
-.sel-panel-hint {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
-/* The preview stays SQUARE whatever the window does. The mark is a field
-   sampled on a square domain, so stretching it would shear the grain and make a
-   circle read as an ellipse — the one distortion this visual language cannot
-   survive. The box takes the free space; the preview takes the largest square
-   inside it. */
-.sel-preview-box {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* The preview is a button because it auditions the sound — but it must read as
-   an image, so the frame is a hairline and the press feedback is the same sharp
-   inversion the grid marks use. */
-.sel-preview {
-  display: block;
   height: 100%;
-  max-width: 100%;
-  aspect-ratio: 1 / 1;
-  min-height: 120px;
-  padding: 0;
-  background: var(--surface);
-  border: 1px solid var(--line-fine);
-  border-radius: 0;
-  cursor: pointer;
-  touch-action: manipulation;
 }
 
-.sel-preview:hover {
-  border-color: var(--text-muted);
-}
-
-.sel-preview-canvas {
+.sel-icon .sound-preview {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-/* ── The character axis ───────────────────────────────── */
-/* Labelled at both ends and nowhere else: this control has no units and no
-   correct value, so a numeric readout would only invite reading it as one. */
-
-.sel-character {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-top: var(--space-4);
-}
-
-.sel-character-ends {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.sel-character-end {
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: -0.2px;
-  color: var(--text);
-}
-
-.sel-character-track {
-  position: relative;
-  height: 24px;
-  cursor: pointer;
-  touch-action: none;
-}
-
-.sel-character-track::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
-  background: var(--line-strong);
-}
-
-.sel-character-fill {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  height: 3px;
-  transform: translateY(-50%);
-  background: var(--ink-pure);
-}
-
-.sel-character-handle {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 24px;
-  transform: translate(-50%, -50%);
-  background: var(--ink-pure);
-  border: 1px solid var(--ink-pure);
-}
-
-.sel-character-track:focus-visible {
-  outline: none;
-}
-
-.sel-character-track:focus-visible .sel-character-handle {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.sel-panel-note {
-  flex: 0 0 auto;
-  margin: var(--space-4) 0 0;
-  font-size: 14px;
-  font-weight: 300;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
-
-/* ── Narrow window: two columns, then one ─────────────── */
-
-@container (max-width: 460px) {
-  .sel-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@container (max-width: 220px) {
-  .sel-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }

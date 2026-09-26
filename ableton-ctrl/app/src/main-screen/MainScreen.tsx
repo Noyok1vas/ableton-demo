@@ -8,6 +8,7 @@ import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useGuide } from '../guide/session.tsx'
 import { loadSaved, useSaved } from '../persist.ts'
 import { IconList, IconPlus, IconSparkle, IconUndo } from './icons.tsx'
+import { RackPreview } from './RackPreview.tsx'
 import './main-screen.css'
 
 /** Space is the tap key everywhere; a focused button must not also be
@@ -31,6 +32,9 @@ const QUIET_MS = 2200
  * The Collection opens as a window floating over the left of the canvas,
  * between the + and the ≡. Guiding mode is the words the icons leave out:
  * while it is on, pointing at any control explains it.
+ *
+ * While a mod strip is in use the sequencer gives way to the rack preview
+ * (see RackPreview); the two rows stay on top of it.
  */
 export function MainScreen() {
   const { clearPattern, undoTap, canUndo, hasPattern } = useSession()
@@ -77,6 +81,7 @@ export function MainScreen() {
   return (
     <div className="ms-screen" onPointerDownCapture={onCanvasPress} onPointerUpCapture={onCanvasPress}>
       <SoundVisualScreen controls={false} />
+      <RackPreview />
 
       <div className={`ms-overlay${quiet ? ' ms-overlay--quiet' : ''}`}>
         <div className="ms-row ms-row--top">

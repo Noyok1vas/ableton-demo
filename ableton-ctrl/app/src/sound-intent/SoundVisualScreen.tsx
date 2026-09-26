@@ -636,11 +636,8 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     // Was the last frame one of those? Kept so the frame *after* an animation
     // ends still repaints the field once, at its finished state.
     let wasAnimating = false
-    // The buffered field is stale and must be re-painted before the next blit —
-    // and `fieldGrid` remembers whether it was painted with the beat grid, which
-    // comes and goes with the loop.
+    // The buffered field is stale and must be re-painted before the next blit.
     let fieldDirty = true
-    let fieldGrid = false
     // A pattern waiting to be placed, applied at the top of the next frame.
     let pendingMarks: readonly Tap[] | null = null
     // The room, read live rather than snapshotted (see the FX block above).
@@ -1205,7 +1202,9 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       // direction by this much. 0 draws each speck exactly where it was struck.
       const stray = scatter * REVERB_MAX_SCATTER * minDim()
 
-      if (playheadRef.current !== null) {
+      // The beat grid is always there, playing or not — an empty canvas shows
+      // the meter it will be played in, and redraws when the meter changes.
+      {
         // Spokes run past the corners rather than stopping at the ring: the
         // beat is a direction from the centre, not a segment of the circle.
         const reach = Math.hypot(width, height) / 2
@@ -1277,14 +1276,13 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
         applyMarks(pendingMarks, now)
         pendingMarks = null
       }
-      const gridOn = playheadRef.current !== null
+      const running = playheadRef.current !== null
       const animating = now < revealUntil
       // `wasAnimating` earns the one extra paint after an animation ends —
       // without it the last specks of a tail would never be swept in.
-      if (fieldDirty || animating || wasAnimating || gridOn !== fieldGrid) {
+      if (fieldDirty || animating || wasAnimating) {
         paintField(now)
         fieldDirty = false
-        fieldGrid = gridOn
       }
       wasAnimating = animating
 
@@ -1316,7 +1314,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       // Keep animating while a tail is still sweeping out or the playhead is
       // running; once both have stopped the last frame stays on screen
       // untouched — that frame is the pattern.
-      rafId = animating || gridOn ? requestAnimationFrame(frame) : 0
+      rafId = animating || running ? requestAnimationFrame(frame) : 0
     }
 
     setFx(fxRef.current) // the room the sim starts in

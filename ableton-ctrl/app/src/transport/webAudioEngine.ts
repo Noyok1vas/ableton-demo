@@ -260,6 +260,8 @@ export class WebAudioEngine implements SoundEngine {
   /** The metronome — a third track that shadows MAIN's period and downbeat. */
   private readonly click = new LoopTrack<ClickEvent>()
   private metronomeOn = false
+  /** One loop's length, for keeping time with nothing playing. */
+  private clickPeriod = 2
   private clickOut: GainNode | null = null
   /** Context time of the downbeat both tracks count from. Preserved across
       pattern swaps so a knob turned mid-loop doesn't restart the bar. */
@@ -301,6 +303,8 @@ export class WebAudioEngine implements SoundEngine {
     this.buildGraph(ctx)
     this.primeContext(ctx)
     this.resumeContext(ctx)
+    // A metronome switched on before there was any audio starts now.
+    this.syncClick()
     document.addEventListener('visibilitychange', this.onVisibility)
     return ctx
   }
@@ -463,8 +467,14 @@ export class WebAudioEngine implements SoundEngine {
     this.stopTickerIfIdle()
   }
 
-  setMetronome(on: boolean, beatsPerLoop: number, beatsPerBar: number): void {
+  setMetronome(on: boolean, beatsPerLoop: number, beatsPerBar: number, loopSeconds: number): void {
     this.metronomeOn = on
+    this.clickPeriod = clamp(loopSeconds, 0.25, 30)
+    // Turned on from the button itself: that press may start audio. Anywhere
+    // else (a page load remembering it was on) the context waits for the
+    // first gesture, as it always does — see start().
+    const activation = (navigator as { userActivation?: { isActive: boolean } }).userActivation
+    if (on && !this.ctx && activation?.isActive) this.ensureContext()
     const beats = Math.max(1, Math.round(beatsPerLoop))
     const bar = Math.max(1, Math.round(beatsPerBar))
     this.click.events = Array.from({ length: beats }, (_, i) => ({
@@ -474,18 +484,28 @@ export class WebAudioEngine implements SoundEngine {
     this.syncClick()
   }
 
-  /** Put the metronome on MAIN's grid — or stop it — and re-queue from now. */
+  /** Put the metronome on MAIN's grid — or, with nothing playing, on its own
+      grid starting now — or stop it; then re-queue from now. */
   private syncClick(): void {
     const ctx = this.ctx
     const now = ctx?.currentTime ?? 0
     this.click.cancel(now)
-    this.click.running = this.metronomeOn && this.main.running
-    if (!this.click.running || !ctx) return
-    this.click.period = this.main.period
-    this.click.top = this.main.top
+    this.click.running = this.metronomeOn && ctx !== null
+    if (!this.click.running || !ctx) {
+      this.stopTickerIfIdle()
+      return
+    }
+    if (this.main.running) {
+      this.click.period = this.main.period
+      this.click.top = this.main.top
+    } else {
+      this.click.period = this.clickPeriod
+      this.click.top = now + LAUNCH_LEAD
+    }
     this.click.seek(now)
     // A click due exactly at the downbeat just laid down is still ahead of us.
-    if (this.main.top >= now) this.click.seek(this.main.top - 1e-6)
+    if (this.click.top >= now) this.click.seek(this.click.top - 1e-6)
+    this.ensureTicker()
   }
 
   private fireClick(event: ClickEvent, when: number): AudioScheduledSourceNode[] {
@@ -622,6 +642,9 @@ export class WebAudioEngine implements SoundEngine {
 
   dispose(): void {
     this.disposed = true
+    // Off first, so stopping the loop doesn't hand the metronome a free grid
+    // of its own that would keep the ticker alive.
+    this.metronomeOn = false
     this.stopLoop()
     this.stopMarchLoop()
     this.detachGesture?.()
@@ -714,7 +737,7 @@ export class WebAudioEngine implements SoundEngine {
   }
 
   private stopTickerIfIdle(): void {
-    if (this.ticker === null || this.main.running || this.march.running) return
+    if (this.ticker === null || this.main.running || this.march.running || this.click.running) return
     clearInterval(this.ticker)
     this.ticker = null
   }
