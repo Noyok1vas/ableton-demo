@@ -282,21 +282,3 @@
     font-size: 15px;
   }
 }
-
-/* Shown from JS when the viewport is portrait — landscape is the only layout. */
-.workspace-rotate {
-  display: grid;
-  place-items: center;
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  padding: var(--space-5);
-  padding-top: max(var(--space-5), env(safe-area-inset-top));
-  padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
-  background: var(--canvas);
-  color: var(--text);
-  font-size: 28px;
-  font-weight: 600;
-  text-align: center;
-  line-height: 1.4;
-}

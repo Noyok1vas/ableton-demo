@@ -111,33 +111,9 @@ function surfaceSize() {
   return { width, height }
 }
 
-function subscribeMedia(mq: MediaQueryList, sync: () => void) {
-  sync()
-  if (typeof mq.addEventListener === 'function') {
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }
-  // Safari < 14
-  mq.addListener(sync)
-  return () => mq.removeListener(sync)
-}
-
-function usePortrait() {
-  const [portrait, setPortrait] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(orientation: portrait)').matches,
-  )
-  useEffect(() => {
-    return subscribeMedia(window.matchMedia('(orientation: portrait)'), () => {
-      setPortrait(window.matchMedia('(orientation: portrait)').matches)
-    })
-  }, [])
-  return portrait
-}
-
 export function Workspace() {
   // No page menu in the demo, so the page never changes.
   const pageId: PageId = 'rhythmic-intent'
-  const portrait = usePortrait()
   const [view, setView] = useState<View>(INITIAL_VIEW)
   const [windowsByPage, setWindowsByPage] =
     useState<Record<PageId, WindowState[]>>(INITIAL_WINDOWS)
@@ -146,8 +122,10 @@ export function Workspace() {
   const windowsRef = useRef(windows)
   windowsRef.current = windows
   // Once the visitor pinches, pans, or uses the zoom control, the view is
-  // theirs. Resize still re-fits until that happens so split-view / rotate
-  // back to landscape does not leave the canvas stranded.
+  // theirs, and a resize (split view, a toolbar settling) leaves it alone.
+  // Turning the iPad is different: portrait and landscape are both layouts
+  // now, and a view framed for one is wrong for the other, so a rotation
+  // always re-fits.
   const userAdjusted = useRef(false)
 
   const applyFit = useCallback(() => {
@@ -177,20 +155,25 @@ export function Workspace() {
     const onResize = () => {
       if (!userAdjusted.current) applyFit()
     }
+    const onRotate = () => {
+      userAdjusted.current = false
+      // The new viewport size lands a moment after the event.
+      window.setTimeout(applyFit, 250)
+    }
     // Safari often settles the toolbar / visualViewport a tick after first paint.
     const raf = window.requestAnimationFrame(() => {
       if (!userAdjusted.current) applyFit()
     })
     const delayed = window.setTimeout(onResize, 250)
     window.addEventListener('resize', onResize)
-    window.addEventListener('orientationchange', onResize)
+    window.addEventListener('orientationchange', onRotate)
     window.addEventListener('pageshow', onResize)
     window.visualViewport?.addEventListener('resize', onResize)
     return () => {
       window.cancelAnimationFrame(raf)
       window.clearTimeout(delayed)
       window.removeEventListener('resize', onResize)
-      window.removeEventListener('orientationchange', onResize)
+      window.removeEventListener('orientationchange', onRotate)
       window.removeEventListener('pageshow', onResize)
       window.visualViewport?.removeEventListener('resize', onResize)
     }
@@ -224,12 +207,6 @@ export function Workspace() {
       <ZoomControl view={view} onViewChange={onViewChange} onReset={onReset} />
 
       {windows.length === 0 && <div className="workspace-empty">This page is empty</div>}
-
-      {portrait && (
-        <div className="workspace-rotate" role="status">
-          请将 iPad 横过来
-        </div>
-      )}
     </div>
   )
 }
