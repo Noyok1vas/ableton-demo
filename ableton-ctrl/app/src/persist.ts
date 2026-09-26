@@ -3,11 +3,15 @@ import { useEffect } from 'react'
 /**
  * Saving the instrument between visits.
  *
- * Everything is kept in this browser's localStorage, one key per session, and
- * read back once when that session mounts. Storage can be missing or throw (a
- * private window, blocked site data), so every access is guarded and the app
- * simply starts fresh when it can't remember — nothing here is allowed to stop
- * the instrument from loading.
+ * Everything is kept in this browser's localStorage by default, one key per
+ * session, and read back once when that session mounts; sessionStorage is
+ * there for anything that should last only as long as the tab. (The
+ * Collection's temporary half is deliberately in neither — it is cleared on
+ * every reload.)
+ *
+ * Storage can be missing or throw (a private window, blocked site data), so
+ * every access is guarded and the app simply starts fresh when it can't
+ * remember — nothing here is allowed to stop the instrument from loading.
  *
  * The version in the prefix is the escape hatch: change the stored shape in a
  * way the parsers below can't absorb, bump it, and old saves are ignored.
@@ -18,29 +22,35 @@ const PREFIX = 'drumsynth.v1.'
     state every frame; the save only needs to land once it settles. */
 const SAVE_DELAY_MS = 300
 
-export function loadSaved(key: string): unknown {
+/** `local` outlives the tab; `session` lasts only as long as the tab does. */
+export type StorageArea = 'local' | 'session'
+
+const storageFor = (area: StorageArea) =>
+  area === 'session' ? window.sessionStorage : window.localStorage
+
+export function loadSaved(key: string, area: StorageArea = 'local'): unknown {
   try {
-    const raw = window.localStorage.getItem(PREFIX + key)
+    const raw = storageFor(area).getItem(PREFIX + key)
     return raw == null ? null : JSON.parse(raw)
   } catch {
     return null
   }
 }
 
-function writeSaved(key: string, value: unknown): void {
+function writeSaved(key: string, value: unknown, area: StorageArea): void {
   try {
-    window.localStorage.setItem(PREFIX + key, JSON.stringify(value))
+    storageFor(area).setItem(PREFIX + key, JSON.stringify(value))
   } catch {
     // Full or unavailable — this visit simply won't be remembered.
   }
 }
 
 /** Keep `value` saved under `key`, written a moment after it stops changing. */
-export function useSaved(key: string, value: unknown): void {
+export function useSaved(key: string, value: unknown, area: StorageArea = 'local'): void {
   useEffect(() => {
-    const timer = window.setTimeout(() => writeSaved(key, value), SAVE_DELAY_MS)
+    const timer = window.setTimeout(() => writeSaved(key, value, area), SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [key, value])
+  }, [key, value, area])
 }
 
 /** Whether this browser will keep anything at all — the Sound Source screen

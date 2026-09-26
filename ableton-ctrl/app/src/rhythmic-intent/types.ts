@@ -76,16 +76,30 @@ export function noteName(pitch: number): string {
   return `${NOTE_NAMES[pitch % 12]}${octave}`
 }
 
-/** One captured loop stored in the Collection. Holds the raw taps — the
-    current knob settings are applied whenever the entry is (re)loaded — and
-    the loop length those taps' seconds were measured against, so an entry
-    kept across a tempo or meter change (or a reload) is re-timed rather than
-    read at the wrong speed. */
+/** One captured loop in the Collection. Holds the raw taps — the current
+    knob settings are applied whenever the entry is (re)loaded — and the loop
+    length those taps' seconds were measured against, so an entry kept across
+    a tempo or meter change (or a reload) is re-timed rather than read at the
+    wrong speed. `meter` is what it was played in, which is what its preview
+    counts beats in; `createdAt` is when it was first recorded (epoch ms). */
 export type CollectionEntry = {
   id: string
   taps: readonly Tap[]
   duration: number
+  meter: Meter
+  createdAt: number
 }
+
+/** A pattern kept on purpose. Every tapped loop lands in the Collection as a
+    TEMPORARY entry on its own; only SAVE makes one of these, naming it with
+    the date and time it was saved. */
+export type SavedPattern = CollectionEntry & { name: string; savedAt: number }
+
+/** Which half of the Collection an entry lives in. */
+export type CollectionKind = 'temporary' | 'saved'
+
+/** The entry the working pattern belongs to — the one highlighted. */
+export type CollectionSelection = { kind: CollectionKind; id: string }
 
 /** A tap prepared for rendering, with every transform stage resolved. */
 export type RenderedTap = {

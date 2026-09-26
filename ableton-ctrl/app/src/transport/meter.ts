@@ -21,6 +21,19 @@ export const METER_BEATS_MAX = 16
 
 export const DEFAULT_METER: Meter = { beats: 4, unit: 4 }
 
+/** The signatures the transport offers — the common ones, and only those. */
+export const METER_PRESETS: readonly Meter[] = [
+  { beats: 2, unit: 4 },
+  { beats: 3, unit: 4 },
+  { beats: 4, unit: 4 },
+  { beats: 5, unit: 4 },
+  { beats: 3, unit: 8 },
+  { beats: 6, unit: 8 },
+  { beats: 7, unit: 8 },
+]
+
+export const sameMeter = (a: Meter, b: Meter) => a.beats === b.beats && a.unit === b.unit
+
 /** A bar's length in quarter notes: 4/4 → 4, 3/8 → 1.5, 6/8 → 3. */
 export const quartersPerBar = (m: Meter) => (m.beats * 4) / m.unit
 

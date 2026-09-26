@@ -129,17 +129,6 @@
   cursor: grabbing;
 }
 
-.sv-hint {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-  color: var(--text-muted);
-  font-size: 16px;
-  font-weight: 400;
-}
-
 /* Clears the dried ring — mirrors the Rhythmic Intent reset button. */
 .sv-reset,
 .sv-undo {

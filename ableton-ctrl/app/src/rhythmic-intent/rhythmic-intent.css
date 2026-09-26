@@ -313,52 +313,111 @@
   }
 }
 
-/* ── Collection window ──────────────────────────────── */
+/* ── Collection ─────────────────────────────────────── */
+/* Two halves, colour-coded: SAVED is black (the record), TEMPORARY is grey
+   (provisional). Each half scrolls on its own, so a long history never pushes
+   the saved patterns out of reach. */
 
 .collection {
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) 0;
   background: var(--surface);
+  /* One tone per half, set here and read by every part of it below. */
+  --col-ink: var(--ink-pure);
+  --col-badge: var(--ink-pure);
 }
 
-.collection--empty {
-  display: grid;
-  place-items: center;
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 300;
+.collection-half {
+  flex: 1 1 50%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.collection-half--temporary {
+  --col-ink: var(--text-muted);
+  --col-badge: var(--text-muted);
+  margin: 0 var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-fine);
+}
+
+.collection-half--temporary .collection-list {
+  margin: 0 calc(-1 * var(--space-3));
+}
+
+/* The half's name, as a pill: black for saved, grey for temporary. */
+.collection-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-bottom: var(--space-2);
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--col-badge);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
 }
 
 .collection-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.collection-row {
-  display: block;
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  background: none;
-  border: 0;
+.collection-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-2);
   border-bottom: 1px solid var(--line-fine);
-  /* Selection is carried by this edge turning solid black. */
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  cursor: pointer;
-  text-align: left;
+  /* Selection: this edge turns the half's own tone, solid. */
+  border-left: 4px solid transparent;
   transition: background-color var(--motion-fast);
 }
 
-.collection-row:hover {
+.collection-item:hover {
   background: var(--surface-2);
 }
 
-.collection-row--selected {
-  border-left-color: var(--ink-pure);
+.collection-item--selected {
+  border-left-color: var(--col-ink);
   background: var(--surface-2);
+}
+
+.collection-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  touch-action: manipulation;
+}
+
+.collection-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--col-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .collection-mini {
@@ -367,9 +426,44 @@
   height: auto;
 }
 
-.collection-beat {
-  fill: var(--text-muted);
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 900;
+.collection-line {
+  stroke: var(--col-ink);
+  stroke-width: 1;
+}
+
+.collection-dot {
+  fill: var(--col-ink);
+}
+
+/* Icon actions: the glyph is small, the press target is not. */
+.collection-action {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink-pure);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform var(--motion-fast);
+}
+
+.collection-action:hover {
+  transform: scale(1.12);
+}
+
+/* Armed for deletion: the disc grows and pulses until pressed again. */
+.collection-action--armed svg {
+  transform: scale(1.3);
+  animation: collection-armed 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes collection-armed {
+  to {
+    opacity: 0.45;
+  }
 }

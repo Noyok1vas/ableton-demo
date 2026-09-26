@@ -18,17 +18,17 @@ export const PAGES: Page[] = [
 /** Each page owns its windows. Only the first page has content in this pass. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
   // Demo build, laid out as the drum synth it is becoming. The two SOFTWARE
-  // windows are the screens — Sound Source (the small system display) and
-  // Sound Visual (the main one, centre). Everything else is HARDWARE: the
-  // Transport, FX and Collection down the left, the pads and the Mixer down
-  // the right. March / Rhythmic intent / Sound Intent / Ripple / March Family
-  // stay omitted — their sessions still mount.
+  // windows are the screens — Sound Source (the small system display) and the
+  // Main Screen (centre), which carries the transport bar and the Collection
+  // drawer along with the Sound Visual. Everything else is HARDWARE: the
+  // Master Control knob and FX down the left, the pads and the Mixer down the
+  // right. March / Rhythmic intent / Sound Intent / Ripple / March Family stay
+  // omitted — their sessions still mount.
   'rhythmic-intent': [
     { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 700, h: 420 },
-    { id: 'tp-1', kind: 'transport', title: 'Transport', x: 64, y: 500, w: 700, h: 346 },
-    { id: 'fx-1', kind: 'fx', title: 'FX', x: 64, y: 862, w: 700, h: 420 },
-    { id: 'col-1', kind: 'collection', title: 'Collection', x: 64, y: 1298, w: 700, h: 206 },
-    { id: 'sv-1', kind: 'sound-visual', title: 'Sound Visual', x: 800, y: 64, w: 1470, h: 1440 },
+    { id: 'mk-1', kind: 'master', title: 'Master Control', x: 64, y: 500, w: 700, h: 508 },
+    { id: 'fx-1', kind: 'fx', title: 'FX', x: 64, y: 1024, w: 700, h: 480 },
+    { id: 'ms-1', kind: 'main-screen', title: 'Main Screen', x: 800, y: 64, w: 1470, h: 1440 },
     { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 2306, y: 64, w: 540, h: 900 },
     { id: 'mx-1', kind: 'mixer', title: 'Mixer', x: 2306, y: 980, w: 540, h: 524 },
   ],
@@ -41,8 +41,9 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
 /** See WindowTier. Only the two displays stay software. */
 export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
   'sound-source': 'software',
+  'main-screen': 'software',
   'sound-visual': 'software',
-  transport: 'hardware',
+  master: 'hardware',
   mixer: 'hardware',
   'rhythmic-intent': 'hardware',
   collection: 'hardware',
@@ -56,7 +57,8 @@ export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
 
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   'sound-source': { minW: 420, minH: 260, maxW: 1200, maxH: 720 },
-  transport: { minW: 420, minH: 280, maxW: 1200, maxH: 720 },
+  'main-screen': { minW: 720, minH: 480, maxW: 2400, maxH: 2400 },
+  master: { minW: 320, minH: 320, maxW: 1200, maxH: 1200 },
   mixer: { minW: 420, minH: 440, maxW: 1200, maxH: 1200 },
   'rhythmic-intent': { minW: 720, minH: 600, maxW: 1600, maxH: 1040 },
   collection: { minW: 300, minH: 280, maxW: 720, maxH: 1600 },

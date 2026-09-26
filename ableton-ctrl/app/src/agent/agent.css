@@ -1,0 +1,55 @@
+/* Agent bar — the pill across the bottom of the Main Screen, the same shape as
+   the transport pill above it. The placeholder is centred, sparkle beside it. */
+
+.ag-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 88px;
+  padding: 0 56px;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-pure);
+  border-radius: 44px;
+}
+
+.ag-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 40px;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.ag-input::placeholder {
+  color: var(--text-muted);
+}
+
+.ag-input:read-only {
+  color: var(--text-muted);
+}
+
+/* Sits just after the centred placeholder, and steps aside once typing. */
+.ag-icon {
+  position: absolute;
+  left: calc(50% + 150px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.ag-bar:focus-within .ag-icon,
+.ag-bar--typed .ag-icon {
+  left: auto;
+  right: 32px;
+}

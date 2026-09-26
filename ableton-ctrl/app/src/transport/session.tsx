@@ -22,6 +22,7 @@ import {
   type TrackId,
 } from './engine.ts'
 import { DEFAULT_METER, parseMeter, type Meter } from './meter.ts'
+import { BARS_PER_LOOP } from '../rhythmic-intent/types.ts'
 import { finiteIn, isRecord, loadSaved, useSaved } from '../persist.ts'
 
 /** What the listener asked for. `'auto'` is not a source — it is the standing
@@ -69,6 +70,7 @@ function channelGain(mix: VoiceMix, voice: SoundVoiceId): number {
 type SavedTransport = {
   bpm: number
   meter: Meter
+  metronome: boolean
   trackLevel: Record<TrackId, number>
   voiceMix: VoiceMix
 }
@@ -78,9 +80,11 @@ function restoreTransport(): SavedTransport {
   const saved = isRecord(raw) ? raw : {}
   const levels = isRecord(saved.trackLevel) ? saved.trackLevel : {}
   const mix = isRecord(saved.voiceMix) ? saved.voiceMix : {}
+  const storedMeter = parseMeter(saved.meter)
   return {
     bpm: Math.round(finiteIn(saved.bpm, BPM_MIN, BPM_MAX) ?? DEFAULT_BPM),
-    meter: parseMeter(saved.meter) ?? DEFAULT_METER,
+    meter: storedMeter ?? DEFAULT_METER,
+    metronome: saved.metronome === true,
     trackLevel: {
       main: finiteIn(levels.main, 0, TRACK_LEVEL_MAX) ?? DEFAULT_TRACK_LEVEL.main,
       march: finiteIn(levels.march, 0, TRACK_LEVEL_MAX) ?? DEFAULT_TRACK_LEVEL.march,
@@ -165,6 +169,9 @@ export type SoundEngineSessionValue = {
       same reason: how long a bar is belongs to the clock. */
   meter: Meter
   setMeter: (update: (meter: Meter) => Meter) => void
+  /** Click on every beat while the loop plays. */
+  metronome: boolean
+  setMetronome: (on: boolean) => void
   /** Play one note now. `velocity` is 0..1; `voice` is the Selector identity
       the tap carried (or absent for the pad the PITCH mapping selects) and
       `character` that identity's axis at the moment of input. Also the
@@ -230,12 +237,13 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
   // Always an update from the current meter: the numerator and the unit are
   // separate buttons, and two presses in one frame must not undo each other.
   const setMeter = useCallback((update: (meter: Meter) => Meter) => setMeterState(update), [])
+  const [metronome, setMetronome] = useState(restored.metronome)
   const [trackLevel, setTrackLevelState] = useState<Record<TrackId, number>>(restored.trackLevel)
   const [voiceMix, setVoiceMix] = useState<VoiceMix>(restored.voiceMix)
 
   const saved = useMemo<SavedTransport>(
-    () => ({ bpm, meter, trackLevel, voiceMix }),
-    [bpm, meter, trackLevel, voiceMix],
+    () => ({ bpm, meter, metronome, trackLevel, voiceMix }),
+    [bpm, meter, metronome, trackLevel, voiceMix],
   )
   useSaved('transport', saved)
 
@@ -380,6 +388,12 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     }
   }, [voiceMix, engineId])
 
+  // The metronome counts the meter's beats across the whole loop; re-sent on a
+  // meter change and to every new engine.
+  useEffect(() => {
+    engineRef.current?.setMetronome(metronome, meter.beats * BARS_PER_LOOP, meter.beats)
+  }, [metronome, meter, engineId])
+
   const onExternalTap = useCallback((listener: (velocity: number) => void) => {
     // The engine outlives individual renders; guard in case it's mid-teardown.
     return engineRef.current?.onExternalTap(listener) ?? (() => {})
@@ -397,6 +411,8 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     setBpm,
     meter,
     setMeter,
+    metronome,
+    setMetronome,
     noteOn,
     startLoop,
     stopLoop,

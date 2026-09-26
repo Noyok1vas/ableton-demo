@@ -86,7 +86,21 @@ const BASE_ALPHA = 0.7
 // R = 0.35 up. 0.36 is also the ceiling: any further and that same mark, at 12
 // or 6 o'clock, would cross the edge of a square canvas (0.36 + 0.14 = 0.5).
 // Speck size is deliberately untouched — a bigger ring, the same grain.
-const CIRCLE_RADIUS = 0.36
+//
+// Brought in to 0.29 once the Main Screen put its controls over the canvas:
+// at 0.36 the marks at 12 and 6 o'clock ran under the top and bottom bars.
+// Neighbouring sixteenths now touch at full Energy; eighths still separate.
+const CIRCLE_RADIUS = 0.29
+
+// ── Mark size and grain ───────────────────────────────────────────────────
+// Every mark's extent — blot, ring, burst, patch, placeholder dot, tail width
+// — is multiplied by MARK_SCALE; the ring the marks sit on is not. SPECK_SCALE
+// shrinks each speck the same way. The two are set together: marks at 0.62 of
+// their old size hold the same number of specks in 0.38 of the area, and
+// specks at 0.6 of their old size cover 0.36 of theirs, so a mark keeps its
+// darkness while its grain gets finer.
+const MARK_SCALE = 0.62
+const SPECK_SCALE = 0.6
 // Beyond this many taps the oldest is forgotten — bounds the cost of the
 // full-field rebuild every pattern change triggers.
 const MAX_TAPS = 64
@@ -492,7 +506,9 @@ function seedFromId(id: string): number {
   return h >>> 0
 }
 
-export function SoundVisualScreen() {
+/** `controls` draws the canvas's own RESET and UNDO. The Main Screen turns
+    them off and puts its + and undo buttons around the canvas instead. */
+export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
   const {
@@ -697,7 +713,8 @@ export function SoundVisualScreen() {
       lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, energyOf(tap)) *
       lerp(TICK_ROUND_SCALE, TICK_CRISP_SCALE, characterOf(tap)) *
       velocityOf(tap).size *
-      dim
+      dim *
+      MARK_SCALE
 
     /**
      * The HIT blot, SOFT ←→ HARD.
@@ -719,9 +736,10 @@ export function SoundVisualScreen() {
       // reads the global dimension, exactly as before.
       const e = tap.character === null ? energyOf(tap) : clamp01(tap.character)
       const vel = velocityOf(tap)
-      const coreR = CORE_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * vel.size * dim
+      const coreR =
+        CORE_RADIUS * lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * vel.size * dim * MARK_SCALE
       const cluster = lerp(HIT_SOFT_CLUSTER, HIT_HARD_CLUSTER, e)
-      const edge = EDGE_SOFT * lerp(HIT_SOFT_EDGE, HIT_HARD_EDGE, e) * dim
+      const edge = EDGE_SOFT * lerp(HIT_SOFT_EDGE, HIT_HARD_EDGE, e) * dim * MARK_SCALE
       const inkScale = ink()
       const count = Math.max(
         1,
@@ -775,7 +793,7 @@ export function SoundVisualScreen() {
       const e = energyOf(tap)
       const c = characterOf(tap)
       const ringR = tickRingRadius(tap, dim)
-      const band = TICK_BAND * dim
+      const band = TICK_BAND * dim * MARK_SCALE
       // How broken the contour is. Solid until TICK_BREAK_FROM: a hat that is
       // only slightly crisp should not already be a dotted line.
       const b = clamp01((c - TICK_BREAK_FROM) / (1 - TICK_BREAK_FROM))
@@ -820,8 +838,8 @@ export function SoundVisualScreen() {
       const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
       const vel = velocityOf(tap)
       const scale = lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) * vel.size
-      const coreR = SPLASH_CORE_RADIUS * scale * dim
-      const reach = SPLASH_REACH * scale * dim
+      const coreR = SPLASH_CORE_RADIUS * scale * dim * MARK_SCALE
+      const reach = SPLASH_REACH * scale * dim * MARK_SCALE
       const inkScale = ink()
       const total = Math.max(
         1,
@@ -856,7 +874,7 @@ export function SoundVisualScreen() {
         const angle = (ray / SPLASH_RAYS) * Math.PI * 2 - Math.PI / 2
         const t = Math.pow(rand(), SPLASH_RAY_BIAS)
         const along = t * reach * (1 + (rand() - 0.5) * SPLASH_REACH_JITTER)
-        const width = SPLASH_RAY_WIDTH * dim * (1 - SPLASH_RAY_TAPER * t) * scale
+        const width = SPLASH_RAY_WIDTH * dim * MARK_SCALE * (1 - SPLASH_RAY_TAPER * t) * scale
         const lateral = gaussianFrom(rand) * width
         const cos = Math.cos(angle)
         const sin = Math.sin(angle)
@@ -906,7 +924,7 @@ export function SoundVisualScreen() {
       if (overflow > 0) grains.splice(0, overflow)
 
       const { ox, oy } = markCentre(tap, dim)
-      const patchR = SCATTER_PATCH_RADIUS * vel.size * dim
+      const patchR = SCATTER_PATCH_RADIUS * vel.size * dim * MARK_SCALE
 
       // The clumps the grain gathers into. Without them the patch is evenly
       // seeded and reads as a soft disc; with them it has thin and thick
@@ -921,7 +939,7 @@ export function SoundVisualScreen() {
         blobs[k] = {
           cx: ox + Math.cos(angle) * radius,
           cy: oy + Math.sin(angle) * radius,
-          sigma: (0.45 + rand()) * SCATTER_BLOB_SPREAD * dim,
+          sigma: (0.45 + rand()) * SCATTER_BLOB_SPREAD * dim * MARK_SCALE,
         }
       }
 
@@ -969,7 +987,8 @@ export function SoundVisualScreen() {
         lerp(0.85, 1.2, characterOf(tap)) *
         lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, e) *
         vel.size *
-        dim
+        dim *
+        MARK_SCALE
       const inkScale = ink()
       const count = Math.max(
         1,
@@ -1068,7 +1087,11 @@ export function SoundVisualScreen() {
         // Lateral scatter opens out as the tail decays; it is measured off the
         // ring, so the smear stays wrapped around the circle.
         const lateral =
-          gaussianFrom(rand) * spread * (TAIL_HEAD_WIDTH + (1 - TAIL_HEAD_WIDTH) * s) * dim
+          gaussianFrom(rand) *
+          spread *
+          (TAIL_HEAD_WIDTH + (1 - TAIL_HEAD_WIDTH) * s) *
+          dim *
+          MARK_SCALE
         const radius = ringR + lateral
         const x = Math.cos(theta) * radius
         const y = Math.sin(theta) * radius
@@ -1177,7 +1200,7 @@ export function SoundVisualScreen() {
       // carries the other half), and stays fractional on purpose: rounding it
       // would step the whole field's density 4× at the crossover while a window
       // is being dragged.
-      const dot = Math.max(1, Math.round(dpr)) * Math.sqrt(ink())
+      const dot = Math.max(1, Math.max(1, Math.round(dpr)) * Math.sqrt(ink()) * SPECK_SCALE)
       // REVERB, in device px: every speck is offset along its own fixed stray
       // direction by this much. 0 draws each speck exactly where it was struck.
       const stray = scatter * REVERB_MAX_SCATTER * minDim()
@@ -1352,7 +1375,9 @@ export function SoundVisualScreen() {
       tap originally fell — so what you grab is what you see. */
   const markAt = ({ x, y, dim }: { x: number; y: number; dim: number }) => {
     let hit: string | null = null
-    let best = HIT_RADIUS * dim
+    // Forgiving, but shrunk with the marks so a click in open space between
+    // two of them no longer reaches either.
+    let best = HIT_RADIUS * Math.max(MARK_SCALE, 0.75) * dim
     for (const mark of marksRef.current) {
       const theta = mark.pos * Math.PI * 2 - Math.PI / 2
       const dx = x - Math.cos(theta) * CIRCLE_RADIUS * dim
@@ -1435,6 +1460,13 @@ export function SoundVisualScreen() {
     snapshotsRef.current.clear()
   }
 
+  // An empty loop has nothing left to remember, whoever emptied it — RESET
+  // here, the Main Screen's +, or undoing the last tap.
+  const empty = rendered.length === 0
+  useEffect(() => {
+    if (empty) snapshotsRef.current.clear()
+  }, [empty])
+
   return (
     <div className="sv-screen">
       <canvas
@@ -1447,13 +1479,16 @@ export function SoundVisualScreen() {
         onPointerLeave={() => setHovering(false)}
         onDoubleClick={handleDoubleClick}
       />
-      {marks.length === 0 && <div className="sv-hint">Tap to sound</div>}
-      <button type="button" className="sv-reset" onClick={handleReset}>
-        RESET
-      </button>
-      <button type="button" className="sv-undo" onClick={undoTap} disabled={!canUndo}>
-        UNDO
-      </button>
+      {controls && (
+        <>
+          <button type="button" className="sv-reset" onClick={handleReset}>
+            RESET
+          </button>
+          <button type="button" className="sv-undo" onClick={undoTap} disabled={!canUndo}>
+            UNDO
+          </button>
+        </>
+      )}
     </div>
   )
 }

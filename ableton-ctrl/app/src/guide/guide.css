@@ -1,0 +1,55 @@
+/* Guiding-mode hints: a small black note pointing at the control. Lives in
+   screen space (fixed), above every window. */
+
+.hint {
+  position: fixed;
+  z-index: 100;
+  max-width: 260px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink-pure);
+  color: var(--surface);
+  border-radius: 10px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  animation: hint-in 120ms ease-out;
+}
+
+.hint--below {
+  transform: translate(-50%, 0);
+}
+
+.hint--above {
+  transform: translate(-50%, -100%);
+}
+
+/* The pointer: a small square turned 45°, peeking out towards the control. */
+.hint::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  transform: translate(-50%, 0) rotate(45deg);
+}
+
+.hint--below::before {
+  top: -4px;
+}
+
+.hint--above::before {
+  bottom: -4px;
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

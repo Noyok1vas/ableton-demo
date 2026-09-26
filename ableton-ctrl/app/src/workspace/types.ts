@@ -14,7 +14,8 @@ export type View = { x: number; y: number; scale: number }
 /** Which content a window renders. */
 export type WindowKind =
   | 'sound-source'
-  | 'transport'
+  | 'main-screen'
+  | 'master'
   | 'mixer'
   | 'rhythmic-intent'
   | 'collection'

@@ -6,8 +6,9 @@ import { INITIAL_WINDOWS } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
 import { MAX_SCALE } from './types.ts'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
-import { TransportScreen } from '../transport/TransportScreen.tsx'
 import { MixerScreen } from '../transport/MixerScreen.tsx'
+import { MainScreen } from '../main-screen/MainScreen.tsx'
+import { MasterKnobScreen } from '../master/MasterKnobScreen.tsx'
 import { RhythmicIntentScreen } from '../rhythmic-intent/RhythmicIntentScreen.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundIntentScreen } from '../sound-intent/SoundIntentScreen.tsx'
@@ -32,8 +33,10 @@ function windowContent(kind: WindowKind) {
   switch (kind) {
     case 'sound-source':
       return <SoundSourceScreen />
-    case 'transport':
-      return <TransportScreen />
+    case 'main-screen':
+      return <MainScreen />
+    case 'master':
+      return <MasterKnobScreen />
     case 'mixer':
       return <MixerScreen />
     case 'rhythmic-intent':

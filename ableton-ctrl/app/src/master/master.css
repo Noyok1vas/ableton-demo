@@ -1,0 +1,114 @@
+/* Master Control — one big detented knob. Black is the position it is on;
+   everything it could be on is grey. */
+
+.mk-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+  background: var(--surface);
+}
+
+.mk-dial {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.mk-dial:active {
+  cursor: grabbing;
+}
+
+/* The whole window is the dial, so a focus ring round it would frame the
+   window; keyboard focus shows on the knob's own rim instead. */
+.mk-dial:focus,
+.mk-dial:focus-visible {
+  outline: none;
+}
+
+.mk-dial:focus-visible .mk-cap {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.mk-tick {
+  stroke: var(--text-muted);
+  stroke-width: 2;
+}
+
+.mk-number {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.mk-detent--on .mk-tick {
+  stroke: var(--ink-pure);
+  stroke-width: 4;
+}
+
+.mk-detent--on .mk-number {
+  fill: var(--ink-pure);
+  font-weight: 900;
+}
+
+.mk-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+/* Turned from the dial's centre; the short ease is the detent settling. */
+.mk-body {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  transition: transform 90ms ease-out;
+}
+
+.mk-cap {
+  fill: var(--surface-2);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.mk-cap-inner {
+  fill: none;
+  stroke: var(--line-fine);
+  stroke-width: 1;
+}
+
+.mk-pointer {
+  stroke: var(--ink-pure);
+  stroke-width: 8;
+}
+
+.mk-readout {
+  fill: var(--text);
+  font-family: var(--font-ui);
+  font-size: 64px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.mk-caption {
+  fill: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-body {
+    transition: none;
+  }
+}

@@ -1,0 +1,134 @@
+/* Main Screen — the canvas full-bleed, the controls floating over it.
+
+   The side columns sit 10% in from each edge; the pills fill the width
+   between them. The Collection window floats on the left, centred under the
+   left column's buttons, between the top row and the bottom row. */
+
+.ms-screen {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  background: var(--surface);
+  --ms-side: 10%;
+  --ms-circle: 68px;
+  --ms-row-gap: 44px;
+  --ms-edge: 40px;
+}
+
+/* Only the controls take the pointer; the canvas gets everything between. */
+.ms-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ms-overlay > * > *,
+.ms-library {
+  pointer-events: auto;
+}
+
+.ms-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ms-row-gap);
+  padding: 0 var(--ms-side);
+  pointer-events: none;
+}
+
+/* Playing into the ring: the bars fade back and stay usable; pointing at one
+   brings it straight back. */
+.ms-row {
+  transition: opacity 400ms ease;
+}
+
+.ms-overlay--quiet .ms-row {
+  opacity: 0.2;
+}
+
+/* Hover only where there is a real pointer: a touch leaves :hover stuck on
+   the last button pressed, which would pin that bar at full strength. */
+@media (hover: hover) {
+  .ms-overlay--quiet .ms-row:hover {
+    opacity: 1;
+    transition-duration: 150ms;
+  }
+}
+
+.ms-row--top {
+  top: var(--ms-edge);
+}
+
+.ms-row--bottom {
+  bottom: var(--ms-edge);
+}
+
+/* The round buttons at either end of each row. */
+.ms-circle {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: var(--ms-circle);
+  height: var(--ms-circle);
+  padding: 0;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-pure);
+  border-radius: 50%;
+  color: var(--ink-pure);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.ms-circle:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.ms-circle:disabled {
+  border-color: var(--hw-line);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.ms-circle--on,
+.ms-circle--on:hover:not(:disabled) {
+  background: var(--ink-pure);
+  color: var(--surface);
+}
+
+/* ── The Collection, floating ───────────────────────── */
+
+.ms-library {
+  position: absolute;
+  /* Centred on the left column's buttons, a little wider than the gap. */
+  left: max(16px, calc(var(--ms-side) + var(--ms-circle) / 2 - 190px));
+  width: 380px;
+  top: calc(var(--ms-edge) + 88px + 32px);
+  bottom: calc(var(--ms-edge) + 88px + 32px);
+  z-index: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1.5px solid var(--ink-pure);
+  border-radius: 40px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+  animation: ms-library-in 140ms ease-out;
+}
+
+@keyframes ms-library-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

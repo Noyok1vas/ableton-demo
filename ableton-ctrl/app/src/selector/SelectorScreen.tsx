@@ -115,6 +115,7 @@ export function SelectorScreen() {
                 .join(' ')}
               aria-pressed={isSelected}
               onPointerDown={handlePointerDown(pattern.id)}
+              data-hint={`${pattern.label.toUpperCase()} — tap to play it into the loop. Space plays the selected one`}
               // Space is the global tap key and Enter would double-report it.
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') e.preventDefault()
@@ -136,11 +137,14 @@ export function SelectorScreen() {
           onKeyUp={(e) => {
             if (e.key === ' ') e.preventDefault()
           }}
-          title="Latch: every tap at full velocity. Shift+Space accents one tap."
+          data-hint="Accent — while on, every tap plays at full velocity. Shift+Space accents a single tap"
         >
           ACCENT
         </button>
-        <div className={`sel-velocity${accent ? ' sel-velocity--overridden' : ''}`}>
+        <div
+          className={`sel-velocity${accent ? ' sel-velocity--overridden' : ''}`}
+          data-hint="Velocity — how hard an ordinary tap plays"
+        >
           <Slider
             label="VELOCITY"
             value={velocity}
@@ -164,6 +168,7 @@ export function SelectorScreen() {
             type="button"
             className="sel-preview"
             aria-label={`Hear ${selected.label}`}
+            data-hint="Hear this sound as it is now — nothing is recorded"
             onPointerDown={audition}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') e.preventDefault()
@@ -174,12 +179,14 @@ export function SelectorScreen() {
         </div>
 
         {axis && (
+          <div data-hint="Character — what this sound is like. Each tap keeps the value it was played with">
           <CharacterSlider
             ends={axis.ends}
             value={character[selected.id]}
             name={selected.label.toUpperCase()}
             onChange={(v) => setCharacter(selected.id, v)}
           />
+          </div>
         )}
 
         <p className="sel-panel-note">{CHARACTER_NOTE[selected.id]}</p>

@@ -19,7 +19,10 @@ import {
   PAD_BASE_PITCH,
   PAD_GRID_SIZE,
   type CollectionEntry,
+  type CollectionKind,
+  type CollectionSelection,
   type RenderedTap,
+  type SavedPattern,
   type Tap,
   type TransformParams,
 } from './types.ts'
@@ -30,20 +33,25 @@ import {
   type LoopEvent,
   type SoundVoiceId,
 } from '../transport/engine.ts'
-import type { Meter } from '../transport/meter.ts'
+import { DEFAULT_METER, parseMeter, type Meter } from '../transport/meter.ts'
 import { finiteIn, isRecord, loadSaved, mergeNumbers, useSaved } from '../persist.ts'
 
 // ── What is remembered between visits ─────────────────────────────────────
-// The pattern and every Collection entry are saved in seconds together with
-// the loop length they were measured against, and re-timed on the way back in
-// — the tempo or meter may have moved since.
+// The working pattern and every Collection entry are saved in seconds together
+// with the loop length they were measured against, and re-timed on the way
+// back in — the tempo or meter may have moved since.
+//
+// Saved patterns, the working pattern and the knobs go to localStorage and
+// outlive the page. The temporary half of the Collection is not stored at all:
+// it lasts until the page is reloaded, which is what makes it temporary and
+// what SAVE is for.
 
 type SavedRhythm = {
   params: TransformParams
   pitch: number
   pattern: { taps: readonly Tap[]; duration: number }
-  collection: CollectionEntry[]
-  selectedId: string | null
+  saved: SavedPattern[]
+  selection: CollectionSelection | null
 }
 
 function parseTap(raw: unknown): Tap | null {
@@ -70,32 +78,83 @@ function parseTaps(raw: unknown, from: unknown, duration: number): Tap[] {
     .map((t) => ({ ...t, time: Math.min(t.time * factor, duration * 0.999999) }))
 }
 
-function restoreRhythm(duration: number): SavedRhythm {
-  const raw = loadSaved('rhythm')
-  const saved = isRecord(raw) ? raw : {}
-  const pattern = isRecord(saved.pattern) ? saved.pattern : {}
-  const taps = parseTaps(pattern.taps, pattern.duration, duration)
-  const collection: CollectionEntry[] = Array.isArray(saved.collection)
-    ? saved.collection.flatMap((e): CollectionEntry[] => {
-        if (!isRecord(e) || typeof e.id !== 'string') return []
-        const entryDuration = finiteIn(e.duration, 0.01, 600)
-        if (entryDuration === null) return []
-        const entryTaps = parseTaps(e.taps, entryDuration, entryDuration)
-        return entryTaps.length > 0 ? [{ id: e.id, taps: entryTaps, duration: entryDuration }] : []
-      })
-    : []
-  const selectedId =
-    typeof saved.selectedId === 'string' && taps.length > 0 && collection.some((e) => e.id === saved.selectedId)
-      ? saved.selectedId
-      : null
-  const pitch = finiteIn(saved.pitch, PAD_BASE_PITCH, PAD_BASE_PITCH + PAD_GRID_SIZE ** 2 - 1)
+/** One stored Collection entry, kept at its own loop length. */
+function parseEntry(raw: unknown): CollectionEntry | null {
+  if (!isRecord(raw) || typeof raw.id !== 'string') return null
+  const duration = finiteIn(raw.duration, 0.01, 600)
+  if (duration === null) return null
+  const taps = parseTaps(raw.taps, duration, duration)
+  if (taps.length === 0) return null
   return {
-    params: mergeNumbers(DEFAULT_PARAMS, saved.params, 0, 100),
+    id: raw.id,
+    taps,
+    duration,
+    meter: parseMeter(raw.meter) ?? DEFAULT_METER,
+    createdAt: finiteIn(raw.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? Date.now(),
+  }
+}
+
+function parseSaved(raw: unknown): SavedPattern | null {
+  const entry = parseEntry(raw)
+  if (!entry || !isRecord(raw) || typeof raw.name !== 'string') return null
+  return {
+    ...entry,
+    name: raw.name,
+    savedAt: finiteIn(raw.savedAt, 0, Number.MAX_SAFE_INTEGER) ?? entry.createdAt,
+  }
+}
+
+const parseList = <T,>(raw: unknown, parse: (e: unknown) => T | null): T[] =>
+  Array.isArray(raw) ? raw.map(parse).filter((e): e is T => e !== null) : []
+
+type Restored = SavedRhythm & { temporary: CollectionEntry[] }
+
+function restoreRhythm(duration: number): Restored {
+  const raw = loadSaved('rhythm')
+  const stored = isRecord(raw) ? raw : {}
+  const pattern = isRecord(stored.pattern) ? stored.pattern : {}
+  const taps = parseTaps(pattern.taps, pattern.duration, duration)
+  const saved = parseList(stored.saved, parseSaved)
+  // Every visit starts with an empty temporary half.
+  const temporary: CollectionEntry[] = []
+  // Only kept if it still names an entry — a temporary one never survives a
+  // reload. An orphaned working pattern is given a temporary entry of its own
+  // by the session, so it can still be saved.
+  const sel = isRecord(stored.selection) ? stored.selection : {}
+  const selection: CollectionSelection | null =
+    taps.length > 0 &&
+    typeof sel.id === 'string' &&
+    ((sel.kind === 'saved' && saved.some((e) => e.id === sel.id)) ||
+      (sel.kind === 'temporary' && temporary.some((e) => e.id === sel.id)))
+      ? { kind: sel.kind, id: sel.id }
+      : null
+  const pitch = finiteIn(stored.pitch, PAD_BASE_PITCH, PAD_BASE_PITCH + PAD_GRID_SIZE ** 2 - 1)
+  return {
+    params: mergeNumbers(DEFAULT_PARAMS, stored.params, 0, 100),
     pitch: pitch === null ? DEFAULT_PITCH : Math.round(pitch),
     pattern: { taps, duration },
-    collection,
-    selectedId,
+    saved,
+    temporary,
+    selection,
   }
+}
+
+const newId = (prefix: string) =>
+  `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** A saved pattern's name: the date and time it was saved, "2026-09-25 14:32".
+    A second save inside the same minute gets a counter rather than a twin. */
+function nameFor(date: Date, taken: readonly SavedPattern[]): string {
+  const base = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(
+    date.getHours(),
+  )}:${pad2(date.getMinutes())}`
+  const names = new Set(taken.map((e) => e.name))
+  if (!names.has(base)) return base
+  let n = 2
+  while (names.has(`${base} (${n})`)) n++
+  return `${base} (${n})`
 }
 
 /** The pattern as the engine plays it: kept taps only, at their final place. */
@@ -154,9 +213,22 @@ export type Session = {
   /** The transport's PLAY/STOP. Stopping keeps the pattern; PLAY starts it
       again from the top. Does nothing while there is nothing to play. */
   togglePlay: () => void
-  collection: CollectionEntry[]
-  selectedId: string | null
-  loadEntry: (id: string) => void
+  /** The Collection's two halves, newest first. TEMPORARY is every tapped
+      loop, recorded on its own; SAVED is what was kept on purpose. */
+  temporary: CollectionEntry[]
+  saved: SavedPattern[]
+  /** The entry the working pattern belongs to, or null while a first pass is
+      still being recorded. */
+  selection: CollectionSelection | null
+  /** Make an entry the working pattern. A running loop keeps running with it. */
+  loadEntry: (kind: CollectionKind, id: string) => void
+  /** Promote a temporary entry to a saved pattern, named with the date and
+      time. It moves rather than copies, so nothing is listed twice. */
+  savePattern: (temporaryId: string) => void
+  /** Take a pattern out of the saved half. It goes back to the top of the
+      temporary half rather than vanishing, so it is only really gone once the
+      page is reloaded. */
+  deleteSaved: (id: string) => void
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -190,11 +262,39 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const loopDurationRef = useRef(loopDuration)
   loopDurationRef.current = loopDuration
 
+  const meterRef = useRef(meter)
+  meterRef.current = meter
+
   // Read once, against the loop length this visit opens with.
   const [restored] = useState(() => restoreRhythm(loopDuration))
   const [params, setParams] = useState<TransformParams>(restored.params)
-  const [collection, setCollection] = useState<CollectionEntry[]>(restored.collection)
-  const [selectedId, setSelectedId] = useState<string | null>(restored.selectedId)
+  const [temporary, setTemporary] = useState<CollectionEntry[]>(restored.temporary)
+  const [saved, setSaved] = useState<SavedPattern[]>(restored.saved)
+  const [selection, setSelectionState] = useState<CollectionSelection | null>(restored.selection)
+  // Mirrored so an edit can tell, within the same press, whether it has
+  // already forked a saved pattern (a drag edits many times per frame).
+  const selectionRef = useRef(selection)
+  const setSelection = useCallback((next: CollectionSelection | null) => {
+    selectionRef.current = next
+    setSelectionState(next)
+  }, [])
+
+  /** A new temporary entry at the top of the list, selected — the Collection
+      recording what is being played. Its taps are filled in by the sync below. */
+  const recordTemporary = useCallback(
+    (taps: readonly Tap[]) => {
+      const entry: CollectionEntry = {
+        id: newId('temp'),
+        taps: [...taps],
+        duration: loopDurationRef.current,
+        meter: meterRef.current,
+        createdAt: Date.now(),
+      }
+      setTemporary((prev) => [entry, ...prev])
+      setSelection({ kind: 'temporary', id: entry.id })
+    },
+    [setSelection],
+  )
 
   // ── Note pitch (the mapping) ─────────────────────────────────────
   // Lives here rather than in TransformParams: it's a routing setting, not
@@ -221,30 +321,53 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     if (engineReady) engineSetPitch(pitchRef.current)
   }, [engineId, engineReady, engineSetPitch])
 
-  // The loop enters the collection when its first pass closes, newest first.
-  const onLoopComplete = useCallback((taps: readonly Tap[]) => {
-    const entry: CollectionEntry = {
-      id: `loop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      taps: [...taps],
-      duration: loopDurationRef.current,
-    }
-    setCollection((prev) => [entry, ...prev])
-    setSelectedId(entry.id)
-  }, [])
-
-  const capture = useTapCapture(loopDuration, onLoopComplete, restored.pattern.taps)
+  // The loop enters the Collection — as a temporary entry — when its first
+  // pass closes, newest first.
+  const capture = useTapCapture(loopDuration, recordTemporary, restored.pattern.taps)
 
   // …and keeps up with it afterwards: the loop stays open, so every addition,
   // undo and deletion belongs to the same entry rather than spawning a new one.
+  // Only a TEMPORARY entry follows the pattern like this. A saved one never
+  // changes on its own: editing it forks a new temporary entry (see `fork`).
+  // An entry emptied by undo has nothing left to keep, so it is dropped.
   const captureTaps = capture.taps
   useEffect(() => {
-    if (!selectedId) return
-    setCollection((prev) =>
+    if (selection?.kind !== 'temporary') return
+    if (captureTaps.length === 0) {
+      setTemporary((prev) => prev.filter((e) => e.id !== selection.id))
+      setSelection(null)
+      return
+    }
+    setTemporary((prev) =>
       prev.map((e) =>
-        e.id === selectedId ? { ...e, taps: [...captureTaps], duration: loopDuration } : e,
+        e.id === selection.id
+          ? { ...e, taps: [...captureTaps], duration: loopDuration, meter }
+          : e,
       ),
     )
-  }, [captureTaps, selectedId, loopDuration])
+  }, [captureTaps, selection, loopDuration, meter, setSelection])
+
+  // A finished pattern always belongs to an entry, so it can always be saved:
+  // one restored in a new tab (its temporary entry closed with the old one) or
+  // left behind by deleting the saved pattern it was, is recorded afresh.
+  const captureState = capture.state
+  useEffect(() => {
+    // Checked through the ref, which recordTemporary updates synchronously: an
+    // effect that runs twice before the re-render (React's dev double-invoke)
+    // must not record the same pattern twice.
+    if (selectionRef.current === null && captureState === 'complete' && captureTaps.length > 0) {
+      recordTemporary(captureTaps)
+    }
+  }, [selection, captureState, captureTaps, recordTemporary])
+
+  /** Called before any edit. Editing a SAVED pattern must not change it — it
+      was kept on purpose — so the working pattern moves to a fresh temporary
+      entry first, and the edit lands there. */
+  const fork = useCallback(() => {
+    if (selectionRef.current?.kind === 'saved') recordTemporary(capture.taps)
+  }, [capture.taps, recordTemporary])
+  const forkRef = useRef(fork)
+  forkRef.current = fork
 
   const rendered = useMemo(
     () => transformPattern(capture.taps, loopDuration, params, gridDivisions),
@@ -306,7 +429,20 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   // ── Actions ───────────────────────────────────────────────────────
   const { tap: captureTap, reset: captureReset, load: captureLoad } = capture
-  const { remove: removeTap, move: captureMove, undo: undoTap } = capture
+  const { remove: captureRemove, move: captureMove, undo: captureUndo } = capture
+
+  const removeTap = useCallback(
+    (id: string) => {
+      forkRef.current()
+      captureRemove(id)
+    },
+    [captureRemove],
+  )
+
+  const undoTap = useCallback(() => {
+    forkRef.current()
+    captureUndo()
+  }, [captureUndo])
 
   // Core tap path. `sound` is false for physical-pad taps — the source has
   // already played the note (with real velocity), so echoing it would double.
@@ -325,6 +461,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   // at the top rather than wherever the stopped clock happened to be.
   const applyTap = useCallback(
     (velocity: number, sound: boolean, voice?: SoundVoiceId, character?: number) => {
+      forkRef.current()
       const restart = !playingRef.current && renderedRef.current.length > 0
       if (restart) startLoop()
       const id = captureTap(velocity, voice, character)
@@ -361,32 +498,80 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const clearPattern = useCallback(() => {
     stopLoop()
     captureReset()
-    setSelectedId(null)
-  }, [captureReset, stopLoop])
+    setSelection(null)
+  }, [captureReset, stopLoop, setSelection])
 
+  /** Everything but the saved patterns — those were kept on purpose. */
   const handleReset = useCallback(() => {
     clearPattern()
     setParams(DEFAULT_PARAMS)
-    setCollection([])
+    setTemporary([])
   }, [clearPattern])
 
   const loadEntry = useCallback(
-    (id: string) => {
-      const entry = collection.find((e) => e.id === id)
+    (kind: CollectionKind, id: string) => {
+      const entry = (kind === 'saved' ? saved : temporary).find((e) => e.id === id)
       if (!entry) return
       // Re-timed from the loop it was played in to the one running now.
       const factor = loopDuration / entry.duration
       captureLoad(
         entry.taps.map((t) => ({ ...t, time: Math.min(t.time * factor, loopDuration * 0.999999) })),
       )
-      setSelectedId(id)
+      setSelection({ kind, id })
       // If the loop is running it keeps running — with the loaded pattern.
     },
-    [collection, captureLoad, loopDuration],
+    [saved, temporary, captureLoad, loopDuration, setSelection],
+  )
+
+  const savePattern = useCallback(
+    (temporaryId: string) => {
+      const entry = temporary.find((e) => e.id === temporaryId)
+      if (!entry || entry.taps.length === 0) return
+      const now = new Date()
+      const kept: SavedPattern = {
+        ...entry,
+        id: newId('saved'),
+        name: nameFor(now, saved),
+        savedAt: now.getTime(),
+      }
+      setSaved((prev) => [kept, ...prev])
+      setTemporary((prev) => prev.filter((e) => e.id !== temporaryId))
+      // The working pattern goes with it: what is playing IS that saved
+      // pattern now, and the next edit forks a new temporary entry.
+      if (selectionRef.current?.kind === 'temporary' && selectionRef.current.id === temporaryId) {
+        setSelection({ kind: 'saved', id: kept.id })
+      }
+    },
+    [temporary, saved, setSelection],
+  )
+
+  const deleteSaved = useCallback(
+    (id: string) => {
+      const kept = saved.find((e) => e.id === id)
+      if (!kept) return
+      // Back to temporary, without its name — the name belonged to the save.
+      const entry: CollectionEntry = {
+        id: newId('temp'),
+        taps: kept.taps,
+        duration: kept.duration,
+        meter: kept.meter,
+        createdAt: kept.createdAt,
+      }
+      setSaved((prev) => prev.filter((e) => e.id !== id))
+      setTemporary((prev) => [entry, ...prev])
+      // If it was the one playing, the working pattern moves down with it.
+      if (selectionRef.current?.kind === 'saved' && selectionRef.current.id === id) {
+        setSelection({ kind: 'temporary', id: entry.id })
+      }
+    },
+    [saved, setSelection],
   )
 
   const moveTap = useCallback(
-    (id: string, pos: number) => captureMove(id, pos * loopDuration),
+    (id: string, pos: number) => {
+      forkRef.current()
+      captureMove(id, pos * loopDuration)
+    },
     [captureMove, loopDuration],
   )
 
@@ -397,17 +582,17 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     [],
   )
 
-  const saved = useMemo<SavedRhythm>(
+  const stored = useMemo<SavedRhythm>(
     () => ({
       params,
       pitch,
       pattern: { taps: capture.taps, duration: loopDuration },
-      collection,
-      selectedId,
+      saved,
+      selection,
     }),
-    [params, pitch, capture.taps, loopDuration, collection, selectedId],
+    [params, pitch, capture.taps, loopDuration, saved, selection],
   )
-  useSaved('rhythm', saved)
+  useSaved('rhythm', stored)
 
   const session: Session = {
     capture,
@@ -432,9 +617,12 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     playing,
     playhead: playing && capture.state !== 'ready' ? capture.progress : null,
     togglePlay,
-    collection,
-    selectedId,
+    temporary,
+    saved,
+    selection,
     loadEntry,
+    savePattern,
+    deleteSaved,
   }
 
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>

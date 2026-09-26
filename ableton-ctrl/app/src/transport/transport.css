@@ -1,24 +1,38 @@
-/* Transport + Mixer — the hardware's clock and channel sections. Same
-   vocabulary as everywhere else: radius 0, 1px lines, selection by fill. */
+/* Transport pill + Mixer. The pill is the Main Screen's top bar: rounded
+   outside (it floats over the canvas), square inside — every control in it is
+   the same hairline square the rest of the instrument uses. */
 
-.tp-screen {
+.tp-bar {
   flex: 1 1 auto;
-  width: 100%;
-  height: 100%;
-  overflow: auto;
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: 88px;
+  padding: 0 56px;
   background: var(--surface);
+  border: 1.5px solid var(--ink-pure);
+  border-radius: 44px;
 }
 
-/* Shared button base for everything pressable in these two windows. */
-.tp-play,
-.tp-step,
-.tp-unit-choice,
+.tp-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.tp-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 40px;
+  background: var(--line-fine);
+}
+
+/* Shared button base for everything pressable in the pill and the Mixer. */
+.tp-btn,
 .mx-switch {
-  background: none;
+  background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 0;
   color: var(--text);
@@ -33,88 +47,59 @@
     color var(--motion-fast);
 }
 
-.tp-play:hover:not(:disabled),
-.tp-step:hover:not(:disabled),
-.tp-unit-choice:hover,
+.tp-btn {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+}
+
+.tp-btn:hover:not(:disabled),
 .mx-switch:hover {
   background: var(--surface-2);
 }
 
-.tp-play:disabled,
-.tp-step:disabled {
+.tp-btn:disabled {
   border-color: var(--line-fine);
   color: var(--text-muted);
   cursor: default;
 }
 
-.tp-play {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  min-height: 64px;
-  font-size: 18px;
-}
-
-.tp-play-glyph {
-  font-size: 16px;
-}
-
-.tp-play--on,
-.tp-play--on:hover:not(:disabled),
-.tp-unit-choice--on,
-.tp-unit-choice--on:hover {
-  background: var(--text);
+.tp-btn--on,
+.tp-btn--on:hover:not(:disabled) {
+  background: var(--ink-pure);
   color: var(--surface);
 }
 
-.tp-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line-fine);
-}
-
-.tp-label {
-  flex: 0 0 72px;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  color: var(--text-muted);
-}
-
+/* Joined controls — − value + and ‹ meter › — share their borders. */
 .tp-stepper {
   display: flex;
   align-items: stretch;
 }
 
-.tp-step {
-  width: 48px;
-  min-height: 48px;
-  font-size: 20px;
-  font-weight: 400;
+.tp-stepper > * + * {
+  margin-left: -1px;
 }
 
 .tp-value {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 88px;
-  margin: 0 -1px;
+  width: 92px;
+  height: 52px;
   border: 1px solid var(--line-strong);
-  font-size: 22px;
-  font-weight: 500;
-  color: var(--text);
   background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 24px;
+  font-weight: 500;
 }
 
 .tp-bpm {
   padding: 0;
   border-radius: 0;
-  font-family: var(--font-ui);
   text-align: center;
   appearance: textfield;
   -moz-appearance: textfield;
@@ -126,30 +111,45 @@
   margin: 0;
 }
 
-.tp-unit {
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.4px;
-  color: var(--text-muted);
-}
-
-.tp-units {
+.tp-divisions {
   display: flex;
   gap: var(--space-1);
 }
 
-.tp-unit-choice {
-  min-width: 48px;
-  min-height: 48px;
+.tp-division {
   font-size: 14px;
   font-weight: 700;
 }
 
-.tp-keys {
-  margin: auto 0 0;
-  font-size: 13px;
-  font-weight: 300;
-  color: var(--text-muted);
+/* ── Metronome: the dots trade places on every beat while it is on ── */
+
+/* Armed but stopped, the dots keep time by themselves; the fill in the
+   keyframes overrides the attribute the icon draws with. Two beats per cycle,
+   one per dot. */
+.tp-metronome--free .icon-metronome-dot--a {
+  animation: tp-metro-a calc(var(--beat) * 2) step-end infinite;
+}
+
+.tp-metronome--free .icon-metronome-dot--b {
+  animation: tp-metro-b calc(var(--beat) * 2) step-end infinite;
+}
+
+@keyframes tp-metro-a {
+  0% {
+    fill: currentColor;
+  }
+  50% {
+    fill: transparent;
+  }
+}
+
+@keyframes tp-metro-b {
+  0% {
+    fill: transparent;
+  }
+  50% {
+    fill: currentColor;
+  }
 }
 
 /* ── Mixer ──────────────────────────────────────────── */

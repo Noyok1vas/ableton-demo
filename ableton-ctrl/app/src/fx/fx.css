@@ -1,9 +1,6 @@
-/* FX — reuses the Sound Intent slider atom (si-slider*); this file only frames
-   the panel.
-
-   The greyed-out ".fx-control-unmapped" treatment is gone: it marked controls
-   that drove nothing, and all three now re-render the Sound Visual. Whether a
-   control also reaches Live is in the panel's description, not in its colour. */
+/* FX — four knobs, 2×2. The knob atom and its styling are Rhythmic
+   Intent's (.knob*); this file only lays them out and scales the type up to
+   go with the larger dial. */
 
 .fx-screen {
   flex: 1 1 auto;
@@ -11,14 +8,27 @@
   height: 100%;
   overflow: auto;
   display: flex;
-  flex-direction: column;
   background: var(--surface);
 }
 
-/* A section of the hardware now rather than a panel of its own, so the
-   sliders sit at the top at a working density instead of floating centred. */
-.fx-screen .si-sliders {
-  justify-content: flex-start;
-  gap: var(--space-4);
+.fx-knobs {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  place-items: center;
+  gap: var(--space-3);
   padding: var(--space-4);
+}
+
+.fx-knobs .knob {
+  gap: var(--space-2);
+}
+
+.fx-knobs .knob-label {
+  font-size: 14px;
+}
+
+.fx-knobs .knob-value {
+  font-size: 16px;
 }

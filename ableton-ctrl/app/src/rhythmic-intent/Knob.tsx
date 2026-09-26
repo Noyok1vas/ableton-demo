@@ -11,6 +11,11 @@ type KnobProps = {
   onChange: (value: number) => void
   /** True when there is no pattern yet — knob stays interactive but looks idle. */
   idle: boolean
+  /** Rendered diameter of the dial in px. The drawing scales; 64 is the size
+      it was designed at. */
+  size?: number
+  /** Guiding-mode text for this knob (see guide/HintLayer). */
+  hint?: string
 }
 
 const SWEEP_DEG = 270 // -135° .. +135°
@@ -28,6 +33,8 @@ export function Knob({
   formatValue,
   onChange,
   idle,
+  size = 64,
+  hint,
 }: KnobProps) {
   const dragStart = useRef<{ y: number; value: number } | null>(null)
 
@@ -75,7 +82,7 @@ export function Knob({
   const arcLen = (norm * SWEEP_DEG * rim) / 360
 
   return (
-    <div className={`knob${idle ? ' knob--idle' : ''}`}>
+    <div className={`knob${idle ? ' knob--idle' : ''}`} data-hint={hint}>
       <div
         className="knob-dial"
         role="slider"
@@ -88,9 +95,10 @@ export function Knob({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onKeyDown={onKeyDown}
       >
-        <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
           <circle
             cx="32"
             cy="32"

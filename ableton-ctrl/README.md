@@ -55,14 +55,29 @@ AUTO 会自己判断 —— 探测到 bridge 就走 Ableton,没探测到就用�
 窗口外框区分功能最终落在哪一侧:**黑框 = 软件(屏幕)**,**灰框 = 硬件(控制面)**。
 定义在 `app/src/workspace/pages.ts` 的 `WINDOW_TIER`。
 
-- 软件:Sound Source(系统小屏:走带状态、BPM、拍号、音源菜单)、Sound Visual(主屏)
-- 硬件:Transport(PLAY/STOP、BPM、拍号)、Sound Selector(8 个 pad + VELOCITY / ACCENT)、
-  Mixer(每声部 M / S / level + MASTER)、FX、Collection
+- 软件:Sound Source(系统小屏:走带状态、BPM、拍号、音源菜单)、Main Screen(主屏)。
+  Main Screen 整块是 Sound Visual 画布,控件全部是 icon、浮在画布上:
+  - 上排:`+` 新 pattern · transport 胶囊(▶/■、●○ 节拍器、− BPM +、‹ 拍号 ›、/2 /4 /8 /16
+    division)· `↶` undo
+  - 下排:`≡` Collection(打开后是浮在左侧的窗口)· agent 输入框(placeholder,
+    `app/src/agent/agent.ts` 是之后接 API 的地方)· `✦` guiding mode
+  - Guiding mode 打开时,鼠标悬停(触屏是按下)任何带 `data-hint` 的控件都会弹出说明;
+    实现在 `app/src/guide/`
+- 硬件:Master Control(大号离散 knob,12 档,暂未 map)、FX(REVERB / HIGH PASS FILTER /
+  SATURATE / ECHO 四个 knob,ECHO 是 placeholder)、Sound Selector(8 个 pad + VELOCITY /
+  ACCENT)、Mixer(每声部 M / S / level + MASTER)
 
 键盘:Space = tap,Shift+Space = 重音 tap,Enter = PLAY/STOP。
 
-所有状态自动存在浏览器 localStorage(`app/src/persist.ts`,key 前缀 `drumsynth.v1.`),
-刷新后恢复;音源选择不保存,每次都从 AUTO 开始。
+**Collection** 分上下两半:上面黑色是 SAVED(永久),下面灰色是 TEMPORARY。每个打下的 loop
+第一遍结束时自动进 TEMPORARY,按 SAVE 才会移到 SAVED,名字自动取保存时的日期和时间。
+编辑一个 SAVED pattern 不会改动它 —— 编辑会自动开一条新的 TEMPORARY。SAVED 里 DELETE
+(按两下确认)会把它移回 TEMPORARY。
+
+保存位置(`app/src/persist.ts`,key 前缀 `drumsynth.v1.`):SAVED pattern、当前 pattern 和
+所有参数在 localStorage,长期保留;TEMPORARY 不存储,页面一刷新就清空(当前正在用的
+pattern 会被恢复,并重新记成一条 TEMPORARY)。
+音源选择不保存,每次都从 AUTO 开始。
 
 ### 两条音轨
 

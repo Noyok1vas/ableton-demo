@@ -72,6 +72,9 @@ const MAX_LOOP_EVENTS = 128
 /** A five-bar March at a 1/16 grid across three voices. */
 const MAX_MARCH_EVENTS = 5 * 16 * 3
 
+/** A metronome click: `accent` on the first beat of each bar. */
+type ClickEvent = { pos: number; accent: boolean }
+
 /** A hair of head start when a track defines the grid itself, so its own first
     note isn't scheduled at exactly `currentTime` — which is to say, dropped. */
 const LAUNCH_LEAD = 0.05
@@ -254,6 +257,10 @@ export class WebAudioEngine implements SoundEngine {
   // ── Loop state ────────────────────────────────────────────────────
   private readonly main = new LoopTrack<LoopEvent>()
   private readonly march = new LoopTrack<MarchEvent>()
+  /** The metronome — a third track that shadows MAIN's period and downbeat. */
+  private readonly click = new LoopTrack<ClickEvent>()
+  private metronomeOn = false
+  private clickOut: GainNode | null = null
   /** Context time of the downbeat both tracks count from. Preserved across
       pattern swaps so a knob turned mid-loop doesn't restart the bar. */
   private gridTop = 0
@@ -305,6 +312,13 @@ export class WebAudioEngine implements SoundEngine {
     // limiter's attack: at 0.85 a dense bar still crossed full scale.
     master.gain.value = 0.8
     master.connect(ctx.destination)
+
+    // The metronome skips the room, the tone and the mixer: it is a guide for
+    // the player, not part of the sound.
+    const clickOut = ctx.createGain()
+    clickOut.gain.value = 0.35
+    clickOut.connect(master)
+    this.clickOut = clickOut
 
     // A safety limiter, not an effect. Hits overlap freely — a dense bar with
     // LENGTH and REVERB up measures around 1.7 at the output without this, and
@@ -434,6 +448,7 @@ export class WebAudioEngine implements SoundEngine {
     // pattern is heard at once rather than after the lookahead drains.
     this.main.cancel(ctx.currentTime)
     this.main.seek(ctx.currentTime)
+    this.syncClick()
     this.ensureTicker()
   }
 
@@ -444,7 +459,51 @@ export class WebAudioEngine implements SoundEngine {
     this.main.cancel(this.ctx?.currentTime ?? 0)
     this.main.events = []
     this.main.running = false
+    this.syncClick()
     this.stopTickerIfIdle()
+  }
+
+  setMetronome(on: boolean, beatsPerLoop: number, beatsPerBar: number): void {
+    this.metronomeOn = on
+    const beats = Math.max(1, Math.round(beatsPerLoop))
+    const bar = Math.max(1, Math.round(beatsPerBar))
+    this.click.events = Array.from({ length: beats }, (_, i) => ({
+      pos: i / beats,
+      accent: i % bar === 0,
+    }))
+    this.syncClick()
+  }
+
+  /** Put the metronome on MAIN's grid — or stop it — and re-queue from now. */
+  private syncClick(): void {
+    const ctx = this.ctx
+    const now = ctx?.currentTime ?? 0
+    this.click.cancel(now)
+    this.click.running = this.metronomeOn && this.main.running
+    if (!this.click.running || !ctx) return
+    this.click.period = this.main.period
+    this.click.top = this.main.top
+    this.click.seek(now)
+    // A click due exactly at the downbeat just laid down is still ahead of us.
+    if (this.main.top >= now) this.click.seek(this.main.top - 1e-6)
+  }
+
+  private fireClick(event: ClickEvent, when: number): AudioScheduledSourceNode[] {
+    const ctx = this.ctx
+    const out = this.clickOut
+    if (!ctx || !out) return []
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.value = event.accent ? 1760 : 1175
+    const gain = ctx.createGain()
+    const peak = event.accent ? 1 : 0.6
+    gain.gain.setValueAtTime(0.0001, when)
+    gain.gain.exponentialRampToValueAtTime(peak, when + 0.001)
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.045)
+    osc.connect(gain).connect(out)
+    osc.start(when)
+    osc.stop(when + 0.06)
+    return [osc]
   }
 
   startMarchLoop(
@@ -572,6 +631,7 @@ export class WebAudioEngine implements SoundEngine {
     this.ctx = null
     this.mainGain = null
     this.marchGain = null
+    this.clickOut = null
     this.voiceGains = {}
     this.reverbSend = null
     this.saturator = null
@@ -584,6 +644,7 @@ export class WebAudioEngine implements SoundEngine {
   private setGrid(at: number): void {
     this.gridTop = at
     this.main.top = at
+    this.syncClick()
     if (this.march.running && this.ctx) {
       this.march.top = this.nextBar(at)
       this.march.cancel(this.ctx.currentTime)
@@ -667,6 +728,7 @@ export class WebAudioEngine implements SoundEngine {
       this.fire(at, event.velocity, event.voice, event.character),
     )
     this.march.pump(now, horizon, (event, at) => this.fireMarch(event, at))
+    if (this.click.running) this.click.pump(now, horizon, (event, at) => this.fireClick(event, at))
   }
 
   /** Move a parameter over a few milliseconds rather than in one step: an

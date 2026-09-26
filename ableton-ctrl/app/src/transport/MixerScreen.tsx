@@ -42,6 +42,7 @@ export function MixerScreen() {
               className={`mx-switch${ch.mute ? ' mx-switch--on' : ''}`}
               aria-pressed={ch.mute}
               aria-label={`Mute ${name}`}
+              data-hint={`Mute ${name}`}
               onClick={() => toggleMute(voice)}
               onKeyUp={swallowSpace}
             >
@@ -52,18 +53,21 @@ export function MixerScreen() {
               className={`mx-switch${ch.solo ? ' mx-switch--on' : ''}`}
               aria-pressed={ch.solo}
               aria-label={`Solo ${name}`}
+              data-hint={`Solo ${name} — only soloed channels are heard`}
               onClick={() => toggleSolo(voice)}
               onKeyUp={swallowSpace}
             >
               S
             </button>
-            <Slider
-              label={`${name} level`}
-              value={ch.level}
-              min={0}
-              max={VOICE_LEVEL_MAX}
-              onChange={(v) => setVoiceLevel(voice, v)}
-            />
+            <div data-hint={`${name} level`}>
+              <Slider
+                label={`${name} level`}
+                value={ch.level}
+                min={0}
+                max={VOICE_LEVEL_MAX}
+                onChange={(v) => setVoiceLevel(voice, v)}
+              />
+            </div>
             <span className="mx-level num">{ch.level}</span>
           </div>
         )
@@ -71,13 +75,15 @@ export function MixerScreen() {
 
       <div className="mx-row mx-row--master">
         <span className="mx-name mx-master-label">MASTER</span>
-        <Slider
-          label="MASTER level"
-          value={trackLevel.main}
-          min={0}
-          max={TRACK_LEVEL_MAX}
-          onChange={(v) => setTrackLevel('main', v)}
-        />
+        <div data-hint="Master level — everything the pads play">
+          <Slider
+            label="MASTER level"
+            value={trackLevel.main}
+            min={0}
+            max={TRACK_LEVEL_MAX}
+            onChange={(v) => setTrackLevel('main', v)}
+          />
+        </div>
         <span className="mx-level num">{trackLevel.main}</span>
       </div>
     </div>

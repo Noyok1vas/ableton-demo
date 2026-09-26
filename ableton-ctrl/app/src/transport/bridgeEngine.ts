@@ -302,6 +302,10 @@ export class BridgeEngine implements SoundEngine {
       selected instrument and has no channel per identity to set. */
   setVoiceGain(): void {}
 
+  /** Not over the bridge yet: Live has its own metronome, and the loop's
+      clock is Live's there, not this tab's. */
+  setMetronome(): void {}
+
   marchPhase(): number | null {
     return this.march?.marchPhase() ?? null
   }

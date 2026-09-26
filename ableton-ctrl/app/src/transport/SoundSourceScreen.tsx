@@ -12,6 +12,12 @@ const CHOICES: { id: SourcePreference; label: string }[] = [
   { id: 'builtin', label: 'BUILT-IN' },
 ]
 
+const SOURCE_HINT: Record<SourcePreference, string> = {
+  auto: 'Auto — Ableton when its bridge is running, the built-in kit otherwise',
+  ableton: 'Ableton — play the instrument selected in Live, through the local bridge',
+  builtin: 'Built-in — the kit synthesized in this page, no Live needed',
+}
+
 /** The bridge line: three separate facts, so say which one is true rather
     than collapsing them into "offline". */
 function bridgeLine(addressable: boolean, reachable: boolean): string {
@@ -85,6 +91,7 @@ export function SoundSourceScreen() {
                 className={`ss-choice${selected ? ' ss-choice--on' : ''}`}
                 aria-pressed={selected}
                 onClick={() => setPreference(choice.id)}
+                data-hint={SOURCE_HINT[choice.id]}
                 // Space is the global tap trigger, so it must not also press
                 // whichever of these buttons happens to hold focus.
                 onKeyUp={(e) => {
