@@ -34,11 +34,13 @@ export const CHARACTER: Record<SoundVoiceId, CharacterAxis | null> = {
   // edge firms up as it hardens. See `resolveSoundVoice` in kit.ts.
   kick: { ends: ['SOFT', 'HARD'], initial: 0.55 },
   // Tuned up, a drum is a smaller, tighter shell: struck solid wall to struck
-  // hollow wall. The disc empties from the centre as the pitch rises.
-  tom: { ends: ['LOW', 'HIGH'], initial: 0.4 },
-  // The 909's SNAPPY knob: how much rattle rides on the head. At BODY the
-  // snares are off and the drum is all shell — it closes in on the tom; at
-  // SNAPPY the grains around the head swell and the noise takes over.
+  // hollow wall. The disc empties from the centre as the pitch rises; tuned
+  // all the way down it is solid, and a kick.
+  tom: { ends: ['LOW', 'HIGH'], initial: 0.6 },
+  // The 909's SNAPPY knob: how much rattle rides on the head — see
+  // `snareModes` below. At BODY the snares are off and the slack head thuds
+  // like a kick, solid and bare; toward SNAPPY the head tightens into a ring
+  // and the grains around it swell as the noise takes over.
   snare: { ends: ['BODY', 'SNAPPY'], initial: 0.6 },
   // Fixed: a click is a click.
   rim: null,
@@ -78,6 +80,21 @@ const smoothstep = (a: number, b: number, x: number) => {
 }
 
 /**
+ * SNARE's two parts, each 0..1, at character `c`.
+ *
+ * `snares` is how much rattle there is: none at all at BODY, rising from the
+ * first move. `head` is how tight the head is: slack (0) through the bottom of
+ * the axis, where the drum is a kick-like thud, and taut (1) from halfway up,
+ * where it is a 909 snare. The mark draws them as the grains' size and as the
+ * head opening from a solid disc into a ring; the sound plays them as the
+ * noise level and as the thud handing over to the tuned shell.
+ */
+export function snareModes(c: number): { head: number; snares: number } {
+  const x = Math.min(1, Math.max(0, c))
+  return { head: smoothstep(0, 0.5, x), snares: Math.pow(x, 0.8) }
+}
+
+/**
  * FX's two vibration modes, each 0..1, at character `c`.
  *
  * FX is a resonator acquiring vibration modes, so its axis is two of them
@@ -101,12 +118,12 @@ export function fxModes(c: number): { ripple: number; lobes: number } {
     move this" is different in kind for each of the eight. */
 export const CHARACTER_NOTE: Record<SoundVoiceId, string> = {
   kick: 'Soft to hard is how hard the kick is struck — quieter and duller at one end, louder and brighter with a deeper pitch drop at the other. The mass gathers and its edge firms up as it hardens.',
-  tom: 'Low to high is the tom\'s tune, from floor tom to rack tom, and a higher drum is a shorter one. The drum empties from the centre as it rises: a struck solid wall becomes a struck hollow one.',
+  tom: 'Low to high is the tom\'s tune, and a higher drum is a shorter one. The drum empties from the centre as it rises: a struck solid wall becomes a struck hollow one. All the way down it is solid, and sounds like a kick.',
   snare:
-    'Body to snappy is how much rattle rides on the head. At body the snares are off and it closes in on the tom; toward snappy the grains around the head swell as the noise takes over.',
+    'Body to snappy is how much rattle rides on the head. At body there is no rattle at all and the slack head thuds like a kick; moving up, the head tightens into a ring and the grains around it swell as the noise takes over.',
   rim: 'Rim is fixed: one short, hard click with almost no body — all of it at one point.',
   clap: 'Bright to full is how much of the hands meets: a thin, crisp clap at one end, a thick, solid one at the other. The shells either side thicken with it.',
   hat: 'Closed to open lengthens the hat and lets the metal ring. The ring of marks grows out into rays as it opens — contained, then released.',
   ride: 'Low to high is the ride\'s tune: the metal sounds higher and a little shorter. The body hollows as it rises; the trace of the strike stays, because the ringing does.',
-  fx: 'Drum to electric adds vibration modes to a plain resonator — a fine shimmer first, then a metallic clang. The ring ripples, then breaks into lobes, as the timbre turns.',
+  fx: 'Drum to electric adds vibration modes to a plain resonator — a fine shimmer first, then a metallic clang. The ring ripples, then sets into a toothed gear, as the timbre turns.',
 }

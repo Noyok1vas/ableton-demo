@@ -24,6 +24,7 @@ const GROW_MS = 420
 export function RackPreview() {
   const { active, focus } = useMod()
   const { gesture, character, currentVelocity } = useSelector()
+  const velocity = currentVelocity()
   const cells = useRef(new Map<PatternId, HTMLDivElement>())
   const big = useRef<HTMLDivElement>(null)
 
@@ -68,7 +69,11 @@ export function RackPreview() {
             className={`rp-cell${pattern.id === gesture ? ' rp-cell--selected' : ''}`}
           >
             <div className="rp-art">
-              <SoundPreview pattern={pattern} character={character[pattern.id]} />
+              <SoundPreview
+                pattern={pattern}
+                character={character[pattern.id]}
+                velocity={velocity}
+              />
             </div>
           </div>
         ))}
@@ -80,7 +85,7 @@ export function RackPreview() {
             <SoundPreview
               pattern={focused}
               character={character[focused.id]}
-              velocity={currentVelocity()}
+              velocity={velocity}
             />
             {/* The one place a sound is named: when it is up close to be
                 shaped. The rack and the pads show marks only. */}

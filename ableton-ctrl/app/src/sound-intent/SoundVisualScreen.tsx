@@ -11,7 +11,13 @@ import { useSession as useRhythmicIntent } from '../rhythmic-intent/session.tsx'
 import { SOUND_MAX, SOUND_MIN } from './types.ts'
 import { useFx } from '../fx/session.tsx'
 import { FX_MAX, FX_MIN, type FxParams } from '../fx/types.ts'
-import { PATTERNS, type Bounds, type Pattern, type PatternId } from '../selector/patterns.ts'
+import {
+  PATTERNS,
+  type Bounds,
+  type Pattern,
+  type PatternId,
+  type Ringing,
+} from '../selector/patterns.ts'
 import './sound-intent.css'
 
 /** The direction a speck strays in when REVERB scatters the field: a fixed
@@ -31,6 +37,16 @@ type CoreSpeck = { x: number; y: number } & Stray
     `revealAt` is when this speck arrives. A rebuilt tail spawns with
     `revealAt = 0`, i.e. already fully swept, so a resize redraws instantly. */
 type TailSpeck = { x: number; y: number; alpha: number; revealAt: number } & Stray
+
+/** One speck of a ride's ringing tail. Beyond what a tail speck knows, it
+    knows when the ringing reaches it — `at`, as a share of the loop past the
+    strike — and how much ringing it takes to show (`needs`, 0..1), so the tail
+    can thicken and thin as the ride rings without re-placing a thing. */
+type RingSpeck = { x: number; y: number; at: number; needs: number; revealAt: number } & Stray
+
+/** A ride's ringing tail: where in the loop the strike is, how much of the
+    loop the ringing covers, and its specks. */
+type RingTail = { pos: number; reach: number; specks: RingSpeck[] }
 
 /** The loop's record: everything on screen is a pure function of this list,
     which is what makes a full re-place possible whenever it changes — a knob
@@ -61,6 +77,9 @@ type Tap = {
 type SpeckPool = {
   key: string
   pattern: Pattern
+  /** The field the specks are drawn from: the pattern's own, or for a mark
+      that rings on, the mark without its tail. */
+  shape: Pattern['field']
   c: number
   bounds: Bounds
   rand: () => number
@@ -74,11 +93,11 @@ type SpeckPool = {
 
 const PATTERN_BY_ID = new Map(PATTERNS.map((pattern) => [pattern.id, pattern]))
 
-// Cap on the specks every mark together may hold. A mark at full ENERGY and
-// velocity holds 3–6k of them, so this keeps most of a 1/16 bar of marks;
-// beyond it, spawn drops the oldest ink so a new tap never silently draws
-// nothing.
-const MAX_CORE_PARTICLES = 96000
+// Cap on the specks every mark together may hold. A mark holds up to about 2k
+// of them at resting ENERGY and velocity and up to about 6k at full, so this
+// keeps a whole 1/16 bar of marks; beyond it, spawn drops the oldest ink so a
+// new tap never silently draws nothing.
+const MAX_CORE_PARTICLES = 128000
 const BASE_ALPHA = 0.7
 // The loop mapped as a circle: a tap's 0..1 position becomes an angle, and its
 // blot lands on this ring (radius as a fraction of the min viewport dimension).
@@ -144,11 +163,14 @@ const ENERGY_MAX_DENSITY = 1 // …and at energy 100
 
 // ── Velocity → how much of the mark there is ──────────────────────────────
 // How hard a tap was played, from the Selector's VELOCITY or ACCENT. It scales
-// every mark the same two ways: a softer tap is a smaller mark with less ink in
-// it, so an accent reads as the heaviest thing on its stretch of the ring. The
-// floors keep a quiet tap a mark rather than a smudge.
-const VELOCITY_MIN_SIZE = 0.68 // size multiplier at velocity 0…
-const VELOCITY_MIN_INK = 0.35 // …and ink multiplier; both are 1 at velocity 1
+// every mark the same two ways: a softer tap is a smaller mark printed
+// lighter, a harder one a larger mark printed solid — so an accent reads as
+// the heaviest thing on its stretch of the ring. The floors keep a quiet tap a
+// mark rather than a smudge. Same size range as the pads (SoundPreview).
+const VELOCITY_MIN_SIZE = 0.45 // size multiplier at velocity 0…
+const VELOCITY_MAX_SIZE = 1.3 // …and at full velocity
+const VELOCITY_MIN_DENSITY = 0.75 // how densely a mark prints at velocity 0; 1 at full
+const VELOCITY_MIN_INK = 0.35 // share of its tail a tap leaves at velocity 0; 1 at full
 
 // ── Marks → the Selector's own fields, as specks ──────────────────────────
 // A mark here is not a shape of its own. It is the same ink field the
@@ -222,6 +244,37 @@ const TAIL_BIAS = 1.6
 // sweep (<1 = fast off the mark, slowing as it decays).
 const TAIL_GROWTH_S = 0.9
 const TAIL_SWEEP_EASE = 0.75
+
+// ── Ringing → RIDE's own tail ─────────────────────────────────────────────
+// The ride is the sound that keeps on sounding long after it is struck, so its
+// tail is not LENGTH's smear but its own: the trace from its pad (patterns.ts)
+// bent along the ring and drawn out for as long as the ride rings — a wisp of
+// grains, heaviest where it leaves the body and thinning to a point. LENGTH
+// stretches it exactly as it stretches the sound, and a higher tune shortens
+// it, since a higher ride rings shorter.
+//
+// And it is alive. Each time the playhead strikes the ride the ringing runs
+// along the tail behind the playhead, filling it to full density, and thins
+// away again as the ring-out dies — so the tail breathes once per pass of the
+// loop. Stopped, it rests at RING_REST: the record of the ringing.
+const RING_ARC = 0.85 // radians of ring per unit of the ride's ring-out…
+const RING_MAX_ARC = 2 // …never more than about a third of the loop
+// How densely the tail prints, against its mark: lighter, so it reads as what
+// is left in the air rather than as more of the body.
+const RING_INK = 0.55
+// LENGTH's stretch on every sound's decay, mirrored from the engine: a decay
+// times 0.45 at LENGTH 0, up to times 2.15 at LENGTH 100.
+const LENGTH_STRETCH_MIN = 0.45
+const LENGTH_STRETCH_RANGE = 1.7
+// How much shorter the ride rings at its highest tune than at its lowest —
+// the ratio of the two ends' decays in the engine.
+const RING_HIGH_TUNE_REACH = 0.72
+// Share of a tail's specks showing between strikes, and while stopped.
+const RING_REST = 0.32
+// How fast the ringing thins again once it has passed a speck, per length of
+// the tail: at 2.5 it is down to a tenth of its swell by the tail's end.
+const RING_FADE = 2.5
+const MAX_RING_PARTICLES = 60000
 
 // ── The beat grid → where the whole beats are ─────────────────────────────
 // The bottom layer, drawn for as long as the loop is open — which is exactly as
@@ -384,7 +437,8 @@ function makeRng(seed: number): () => number {
  * with, printed in specks.
  *
  * Every mark lands complete, at its moment. Sound Intent's LENGTH then smears
- * each one into a clockwise tail — how long the sound rings on.
+ * each one into a clockwise tail — how long the sound rings on — except the
+ * ride, which grows its own heavier tail and rings it again on every pass.
  *
  * Marks persist; the ring only clears on RESET or on the tap that begins a
  * fresh loop. Over all of it turns the playhead: the same position Rhythmic
@@ -528,12 +582,20 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     const buffer = document.createElement('canvas')
     const field = buffer.getContext('2d')
     if (!field) return
+    // The ink the marks and tails lay down, kept apart from the field so that
+    // a ride's ringing can be recomposed over it every frame without the
+    // hundred thousand specks under it being laid again.
+    const inkBuffer = document.createElement('canvas')
+    const inkLayer = inkBuffer.getContext('2d')
+    if (!inkLayer) return
 
     const taps: Tap[] = []
     // Every mark's specks live here: eight shapes, one kind of speck, one
     // draw pass.
     const cores: CoreSpeck[] = []
     const tails: TailSpeck[] = []
+    // The rides' ringing tails, drawn per frame — see `spawnRinging`.
+    const rings: RingTail[] = []
     // Each tap's mark, sampled from its field and kept by tap id — see
     // `speckPool`.
     const pools = new Map<string, SpeckPool>()
@@ -548,6 +610,9 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     // Was the last frame one of those? Kept so the frame *after* an animation
     // ends still repaints the field once, at its finished state.
     let wasAnimating = false
+    // Was the last frame a ride ringing? The frame after the loop stops still
+    // recomposes once, to settle every tail back to rest.
+    let wasRinging = false
     // The buffered field is stale and must be re-painted before the next blit.
     let fieldDirty = true
     // A pattern waiting to be placed, applied at the top of the next frame.
@@ -574,6 +639,8 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       canvas.height = height
       buffer.width = width
       buffer.height = height
+      inkBuffer.width = width
+      inkBuffer.height = height
       // Geometry is in device pixels, so a resize invalidates every speck.
       // Seeded taps make this a faithful redraw, not a reshuffle.
       rebuildAll()
@@ -609,24 +676,32 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
         : clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
 
     /** How much of a mark a tap's velocity leaves: `size` scales its extent,
-        `ink` its speck count. Both are 1 for a tap played at full velocity. */
+        `density` how solidly it prints and `ink` how much tail it leaves. */
     const velocityOf = (tap: Tap) => {
       const v = clamp01(tap.velocity)
-      return { size: lerp(VELOCITY_MIN_SIZE, 1, v), ink: lerp(VELOCITY_MIN_INK, 1, v) }
+      return {
+        size: lerp(VELOCITY_MIN_SIZE, VELOCITY_MAX_SIZE, v),
+        density: lerp(VELOCITY_MIN_DENSITY, 1, v),
+        ink: lerp(VELOCITY_MIN_INK, 1, v),
+      }
     }
 
     /** The tap's character as 0..1, or 0.5 for an identity that has none —
         RIM, which is drawn the same way every time by design. */
     const characterOf = (tap: Tap) => (tap.character === null ? 0.5 : clamp01(tap.character))
 
-    /** Device px per unit of the tap's field: ENERGY and velocity size every
-        mark the same way, whichever sound it is. */
-    const unitOf = (tap: Tap, dim: number) =>
-      MARK_UNIT *
+    const patternOf = (tap: Tap) => PATTERN_BY_ID.get(tap.gesture) ?? PATTERNS[0]
+
+    /** How many times its field's own size the tap's mark is drawn: ENERGY
+        and velocity size every mark the same way, and a mark too small to
+        read on the ring at its pad size (RIM) is drawn larger still. */
+    const scaleOf = (tap: Tap) =>
       lerp(ENERGY_MIN_RADIUS, ENERGY_MAX_RADIUS, energyOf(tap)) *
       velocityOf(tap).size *
-      dim *
-      MARK_SCALE
+      (patternOf(tap).ringScale ?? 1)
+
+    /** Device px per unit of the tap's field. */
+    const unitOf = (tap: Tap, dim: number) => MARK_UNIT * scaleOf(tap) * dim * MARK_SCALE
 
     /**
      * The tap's specks, in field units, sampled from its pattern at its
@@ -641,12 +716,16 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       const key = `${tap.gesture}|${c}|${tap.seed}`
       const kept = pools.get(tap.id)
       if (kept && kept.key === key) return kept
-      const pattern = PATTERN_BY_ID.get(tap.gesture) ?? PATTERNS[0]
+      const pattern = patternOf(tap)
+      // A mark that rings on is drawn here without its tail; spawnRinging
+      // grows the tail along the ring instead.
+      const shape = pattern.ringing ?? pattern
       const pool: SpeckPool = {
         key,
         pattern,
+        shape: shape.field,
         c,
-        bounds: pattern.bounds(c),
+        bounds: shape.bounds(c),
         rand: makeRng(tap.seed),
         tried: 0,
         xs: [],
@@ -667,7 +746,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
      * than being re-rolled.
      */
     const fillPool = (pool: SpeckPool, candidates: number): number => {
-      const { pattern, c, rand, bounds: b } = pool
+      const { shape, c, rand, bounds: b } = pool
       const w = b.x1 - b.x0
       const h = b.y1 - b.y0
       while (pool.tried < candidates) {
@@ -677,7 +756,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
         pool.tried++
         // Kept with the probability the field gives this point — which is all
         // it takes for a solid region to print solid and an edge to diffuse.
-        if (keep >= pattern.field(x, y, c)) continue
+        if (keep >= shape(x, y, c)) continue
         pool.xs.push(x)
         pool.ys.push(y)
         pool.jxs.push(gaussianFrom(rand))
@@ -698,9 +777,14 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
 
     /**
      * One tap, one mark: its sound's field, printed in specks at its point of
-     * the ring. ENERGY and velocity set how large it is drawn and how much ink
-     * goes into it; the sound and its character set everything else. All of
-     * them land complete, so none needs the clock.
+     * the ring. ENERGY and velocity set how large it is drawn and how densely
+     * it prints; the sound and its character set everything else. All of them
+     * land complete, so none needs the clock.
+     *
+     * A mark whose meaning has a direction (see `radial` in patterns.ts) is
+     * turned to face out along the ring's normal at its moment, so a clap
+     * closes on the line from both sides and a ride's trace streams outward
+     * wherever it lands. Every other mark keeps its pad's orientation.
      *
      * FX never re-spawns this, only re-draws it.
      */
@@ -710,22 +794,34 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       const vel = velocityOf(tap)
       const inkScale = ink()
       const { x0, y0, x1, y1 } = pool.bounds
+      // ENERGY's count already allows for the size ENERGY gives a mark. The
+      // size velocity and a ring scale add on top is paid for in draws here,
+      // so a mark drawn larger is not printed lighter.
+      const grown = vel.size * (pool.pattern.ringScale ?? 1)
       const candidates = Math.round(
         SPECK_DENSITY *
           (x1 - x0) *
           (y1 - y0) *
           lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, energyOf(tap)) *
-          vel.ink *
+          vel.density *
+          grown *
+          grown *
           inkScale,
       )
       const count = fillPool(pool, candidates)
       const unit = unitOf(tap, dim)
       const { ox, oy } = markCentre(tap, dim)
+      const radial = pool.pattern.radial
+      const turn = radial === undefined ? 0 : tap.pos * Math.PI * 2 - Math.PI / 2 - radial
+      const cos = Math.cos(turn) * unit
+      const sin = Math.sin(turn) * unit
       makeRoom(count, inkScale)
       for (let i = 0; i < count; i++) {
+        const fx = pool.xs[i]
+        const fy = pool.ys[i]
         cores.push({
-          x: ox + pool.xs[i] * unit,
-          y: oy + pool.ys[i] * unit,
+          x: ox + fx * cos - fy * sin,
+          y: oy + fx * sin + fy * cos,
           jx: pool.jxs[i],
           jy: pool.jys[i],
         })
@@ -739,6 +835,13 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
      * once because the canvas changed size, not the sound.
      */
     const spawnTail = (tap: Tap, sweep: boolean, now: number) => {
+      // A sound that rings on draws its own tail instead (see below), one
+      // that LENGTH already stretches.
+      const ringing = patternOf(tap).ringing
+      if (ringing) {
+        spawnRinging(tap, ringing, sweep, now)
+        return
+      }
       const v = clamp01((tap.length - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
       if (v <= 0) return // length 0 — the sound stops dead, nothing leaves the mark
 
@@ -775,8 +878,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       // the tail keeps out of each mark's own clearance (see patterns.ts) and
       // leaves from its edge; only a solid mark lets it start in the middle.
       const { ox, oy } = markCentre(tap, dim)
-      const pattern = PATTERN_BY_ID.get(tap.gesture) ?? PATTERNS[0]
-      const hollowR = pattern.clear(characterOf(tap)) * unitOf(tap, dim)
+      const hollowR = patternOf(tap).clear(characterOf(tap)) * unitOf(tap, dim)
       for (let i = 0; i < count; i++) {
         // s is 0..1 along the tail, biased toward the head.
         const s = Math.pow(rand(), TAIL_BIAS)
@@ -806,6 +908,87 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       if (sweep) revealUntil = Math.max(revealUntil, now + TAIL_GROWTH_S * 1000)
     }
 
+    /**
+     * A ride's own tail: the trace from its pad, bent along the ring and drawn
+     * out for as long as the ride rings. Sampled the way a mark is — draws
+     * through the tail's box, each kept with the probability the tail's field
+     * gives it — and placed by laying the tail's axis along the circle:
+     * distance along the tail is distance along the ring, distance across it
+     * is distance off it. How much of it shows at any moment is decided while
+     * drawing, from where the playhead is (see `compose`).
+     */
+    const spawnRinging = (tap: Tap, ringing: Ringing, sweep: boolean, now: number) => {
+      const dim = minDim()
+      // Its own stream, like LENGTH's tail, so the mark is untouched by it.
+      const rand = makeRng(tap.seed ^ 0x51ed270b)
+      const v = clamp01((tap.length - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
+      const c = characterOf(tap)
+      const arc = Math.min(
+        RING_MAX_ARC,
+        RING_ARC *
+          (LENGTH_STRETCH_MIN + LENGTH_STRETCH_RANGE * v) *
+          lerp(1, RING_HIGH_TUNE_REACH, c),
+      )
+      const unit = unitOf(tap, dim)
+      const ringR = CIRCLE_RADIUS * dim
+      // Where the tail ends along its own axis, in field units: as far round
+      // the ring as the ringing lasts, however large the mark is drawn.
+      const reach = (arc * ringR) / unit - ringing.start
+      if (reach <= 0) return
+
+      const vel = velocityOf(tap)
+      const inkScale = ink()
+      // Printed like the mark it leaves (see spawnMark), only lighter.
+      const grown = vel.size * (patternOf(tap).ringScale ?? 1)
+      const candidates = Math.round(
+        SPECK_DENSITY *
+          RING_INK *
+          reach *
+          2 *
+          ringing.width *
+          lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, energyOf(tap)) *
+          vel.density *
+          grown *
+          grown *
+          inkScale,
+      )
+      const theta0 = tap.pos * Math.PI * 2 - Math.PI / 2
+      const { ox, oy } = markCentre(tap, dim)
+      const hollowR = patternOf(tap).clear(c) * unit
+      const specks: RingSpeck[] = []
+      for (let i = 0; i < candidates; i++) {
+        const along = ringing.start + rand() * reach
+        const across = (rand() * 2 - 1) * ringing.width
+        const keep = rand()
+        if (keep >= ringing.tail(along, across, reach)) continue
+        // Radians past the strike: distance along the tail, as arc.
+        const turn = (along * unit) / ringR
+        const radius = ringR + across * unit
+        const x = Math.cos(theta0 + turn) * radius
+        const y = Math.sin(theta0 + turn) * radius
+        if (hollowR > 0 && Math.hypot(x - ox, y - oy) < hollowR) continue
+        const t = (along - ringing.start) / reach
+        specks.push({
+          x,
+          y,
+          at: turn / (Math.PI * 2),
+          needs: rand(),
+          revealAt: sweep ? now + TAIL_GROWTH_S * 1000 * Math.pow(t, TAIL_SWEEP_EASE) : 0,
+          jx: gaussianFrom(rand),
+          jy: gaussianFrom(rand),
+        })
+      }
+      if (specks.length === 0) return
+      // Room for it: past the cap, the oldest ringing goes first.
+      let total = specks.length
+      for (const ring of rings) total += ring.specks.length
+      while (rings.length > 0 && total > MAX_RING_PARTICLES * inkScale) {
+        total -= rings.shift()?.specks.length ?? 0
+      }
+      rings.push({ pos: tap.pos, reach: arc / (Math.PI * 2), specks })
+      if (sweep) revealUntil = Math.max(revealUntil, now + TAIL_GROWTH_S * 1000)
+    }
+
     // ── Rebuilds ────────────────────────────────────────────────────────
     // Only the canvas geometry can invalidate what is drawn now that every
     // dimension is snapshotted per tap: no slider rebuilds anything.
@@ -817,6 +1000,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     const rebuildAll = () => {
       cores.length = 0
       tails.length = 0
+      rings.length = 0
       revealUntil = 0
       const now = performance.now()
       for (const tap of taps) {
@@ -852,6 +1036,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       for (const id of pools.keys()) if (!live.has(id)) pools.delete(id)
       cores.length = 0
       tails.length = 0
+      rings.length = 0
       revealUntil = 0
       for (const tap of taps) {
         const fresh = !before.has(tap.id)
@@ -883,26 +1068,31 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
 
     // ── Drawing ─────────────────────────────────────────────────────────
 
-    /**
-     * The field — grid, marks, tails, ripples, tone map — painted into the
-     * buffer rather than onto the screen. It only has to be re-painted when
-     * something in it actually changes, which is what keeps the playhead's 60 Hz
-     * off the back of a hundred thousand specks: a frame that only turns the
-     * gradient blits this instead of re-laying the ink.
-     */
-    const paintField = (now: number) => {
-      field.clearRect(0, 0, width, height)
-
-      const cx = width / 2
-      const cy = height / 2
-      // One speck. It carries the square root of the ink correction (the count
-      // carries the other half), and stays fractional on purpose: rounding it
-      // would step the whole field's density 4× at the crossover while a window
-      // is being dragged.
-      const dot = Math.max(1, Math.max(1, Math.round(dpr)) * Math.sqrt(ink()) * SPECK_SCALE)
+    /** Where specks are drawn from and how: the canvas centre, one speck's
+        size, and REVERB's stray. */
+    const speckFrame = () => ({
+      cx: width / 2,
+      cy: height / 2,
+      // One speck. It carries the square root of the ink correction (the
+      // count carries the other half), and stays fractional on purpose:
+      // rounding it would step the whole field's density 4× at the crossover
+      // while a window is being dragged.
+      dot: Math.max(1, Math.max(1, Math.round(dpr)) * Math.sqrt(ink()) * SPECK_SCALE),
       // REVERB, in device px: every speck is offset along its own fixed stray
       // direction by this much. 0 draws each speck exactly where it was struck.
-      const stray = scatter * REVERB_MAX_SCATTER * minDim()
+      stray: scatter * REVERB_MAX_SCATTER * minDim(),
+    })
+
+    /**
+     * The ink — grid, marks, tails — painted into its own buffer rather than
+     * onto the screen. It only has to be re-painted when something in it
+     * actually changes, which is what keeps the playhead's 60 Hz off the back
+     * of a hundred thousand specks: a frame that only turns the gradient, or
+     * only rings a ride, reuses this instead of re-laying it.
+     */
+    const paintInk = (now: number) => {
+      inkLayer.clearRect(0, 0, width, height)
+      const { cx, cy, dot, stray } = speckFrame()
 
       // The beat grid is always there, playing or not — an empty canvas shows
       // the meter it will be played in, and redraws when the meter changes.
@@ -910,35 +1100,71 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
         // Spokes run past the corners rather than stopping at the ring: the
         // beat is a direction from the centre, not a segment of the circle.
         const reach = Math.hypot(width, height) / 2
-        field.globalAlpha = 1
-        field.strokeStyle = `rgba(0, 0, 0, ${GRID_ALPHA})`
-        field.lineWidth = Math.max(1, Math.round(dpr))
-        field.beginPath()
+        inkLayer.globalAlpha = 1
+        inkLayer.strokeStyle = `rgba(0, 0, 0, ${GRID_ALPHA})`
+        inkLayer.lineWidth = Math.max(1, Math.round(dpr))
+        inkLayer.beginPath()
         for (let beat = 0; beat < beats; beat++) {
           const theta = (beat / beats) * Math.PI * 2 - Math.PI / 2
-          field.moveTo(cx, cy)
-          field.lineTo(cx + Math.cos(theta) * reach, cy + Math.sin(theta) * reach)
+          inkLayer.moveTo(cx, cy)
+          inkLayer.lineTo(cx + Math.cos(theta) * reach, cy + Math.sin(theta) * reach)
         }
-        field.stroke()
-        field.beginPath()
-        field.arc(cx, cy, CIRCLE_RADIUS * minDim(), 0, Math.PI * 2)
-        field.stroke()
+        inkLayer.stroke()
+        inkLayer.beginPath()
+        inkLayer.arc(cx, cy, CIRCLE_RADIUS * minDim(), 0, Math.PI * 2)
+        inkLayer.stroke()
       }
 
-      field.fillStyle = '#000000'
+      inkLayer.fillStyle = '#000000'
 
       // Every mark — eight shapes at one strength.
-      field.globalAlpha = BASE_ALPHA
+      inkLayer.globalAlpha = BASE_ALPHA
       for (const p of cores) {
-        field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
+        inkLayer.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
       }
 
       for (const p of tails) {
         if (p.revealAt > now) continue // the sweep hasn't reached this speck yet
-        field.globalAlpha = p.alpha
-        field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
+        inkLayer.globalAlpha = p.alpha
+        inkLayer.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
       }
+      inkLayer.globalAlpha = 1
+    }
+
+    /**
+     * The field as it is shown: the ink, the rides ringing over it, and the
+     * tone map over both. `head` is where the playhead is, or null when the
+     * loop is stopped.
+     */
+    const compose = (now: number, head: number | null) => {
       field.globalAlpha = 1
+      field.clearRect(0, 0, width, height)
+      field.drawImage(inkBuffer, 0, 0)
+
+      // Each ride's tail, at the density its ringing has right now. A speck
+      // shows while the ringing at it is above what it `needs`: always at
+      // RING_REST, and up to everything as the playhead's strike runs past
+      // it, thinning back as the ring-out dies. Stopped, nothing rings.
+      if (rings.length > 0) {
+        const { cx, cy, dot, stray } = speckFrame()
+        field.fillStyle = '#000000'
+        field.globalAlpha = BASE_ALPHA
+        for (const ring of rings) {
+          // How far past this ride's strike the playhead is, as a share of
+          // the loop; -1 while stopped, which no speck is ever past.
+          const since = head === null ? -1 : wrapPos(head - ring.pos)
+          for (const p of ring.specks) {
+            if (p.revealAt > now) continue
+            let level = RING_REST
+            if (since >= p.at) {
+              level += (1 - RING_REST) * Math.exp(((p.at - since) / ring.reach) * RING_FADE)
+            }
+            if (p.needs >= level) continue
+            field.fillRect(cx + p.x + p.jx * stray, cy + p.y + p.jy * stray, dot, dot)
+          }
+        }
+        field.globalAlpha = 1
+      }
 
       // HIGH PASS FILTER + SATURATE, as one pass over the finished field. The
       // ink is black at some alpha, so re-mapping luminance is re-mapping alpha
@@ -950,7 +1176,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       // write over every pixel: ~8ms on a 1116×940 canvas versus ~0.8ms for the
       // ink itself, which is why `toneLut` is null (and this whole block
       // skipped) whenever both sliders sit at 0 — and why this runs on a change
-      // rather than on a frame.
+      // rather than on a frame, unless a ride is ringing.
       if (toneLut) {
         const image = field.getImageData(0, 0, width, height)
         const d = image.data
@@ -960,9 +1186,10 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     }
 
     /**
-     * One frame: the field, then the playhead over it. The field is re-painted
+     * One frame: the field, then the playhead over it. The ink is re-painted
      * only when something in it moved — a pattern change, a room change, a
-     * resize, or an animation still running — and otherwise blitted from the
+     * resize, or a tail still sweeping out — and the field recomposed over it
+     * when the ink changed or a ride is ringing; otherwise the frame blits the
      * buffer, so a turning playhead costs one copy and one gradient.
      */
     const frame = (now: number) => {
@@ -970,22 +1197,30 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
         applyMarks(pendingMarks, now)
         pendingMarks = null
       }
-      const running = playheadRef.current !== null
+      const head = playheadRef.current
+      const running = head !== null
       const animating = now < revealUntil
+      const ringing = running && rings.length > 0
       // `wasAnimating` earns the one extra paint after an animation ends —
       // without it the last specks of a tail would never be swept in.
+      let inkChanged = false
       if (fieldDirty || animating || wasAnimating) {
-        paintField(now)
+        paintInk(now)
         fieldDirty = false
+        inkChanged = true
       }
+      // A ride's tail changes with every move of the playhead, so while one
+      // is ringing the field is recomposed every frame — over ink that is only
+      // copied, never laid again.
+      if (inkChanged || ringing || wasRinging) compose(now, head)
       wasAnimating = animating
+      wasRinging = ringing
 
       ctx.clearRect(0, 0, width, height)
       ctx.drawImage(buffer, 0, 0)
 
       // Where the loop is now, over the top of everything else (see the
       // playhead block above for why it sits outside the tone map).
-      const head = playheadRef.current
       if (head !== null) {
         // Same mapping the marks use — 0 at 12 o'clock, clockwise around — so
         // the edge crosses each mark exactly when that tap sounds.

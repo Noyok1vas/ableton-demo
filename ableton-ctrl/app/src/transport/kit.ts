@@ -12,14 +12,18 @@
  */
 
 import type { MarchVoiceId, SoundVoiceId } from './engine.ts'
-import { fxModes } from '../selector/character.ts'
+import { fxModes, snareModes } from '../selector/character.ts'
 
 /** One pad, as a recipe rather than a sound file. `decay` is the voice's
     natural length in seconds at LENGTH's midpoint; LENGTH scales it. */
 export type Voice = { label: string } & (
   | { kind: 'kick'; freq: number; snap: number; decay: number }
-  | { kind: 'tom'; freq: number; decay: number }
-  | { kind: 'snare'; tone: number; noiseMix: number; decay: number }
+  // `sweep` is how far above its note the drum starts: a tom's 1.9 when absent,
+  // a kick's 4 or so at the floor of TOM's range, where it is tuned into one.
+  | { kind: 'tom'; freq: number; decay: number; sweep?: number }
+  // `thump` 0..1 hands the tuned shell over to a slack head's thud — the kick's
+  // body — which is all that is left at the bottom of SNAPPY.
+  | { kind: 'snare'; tone: number; noiseMix: number; decay: number; thump?: number }
   // `band` and `q` place the clap's one band: lower and wider is a fuller clap,
   // higher and narrower a brighter one. Absent, they are the 909's own.
   | { kind: 'clap'; decay: number; band?: number; q?: number }
@@ -181,24 +185,33 @@ export const SOUND_TYPE_KIT: Record<SoundVoiceId, SoundVoiceSpec> = {
 // hitting something harder drives, which is exactly what `energy` already did.
 
 // TOM: LOW ←→ HIGH. Tune is the tom's whole character; a higher tom is also a
-// shorter one, the way a smaller drum is.
-const TOM_LOW_FREQ = 78
+// shorter one, the way a smaller drum is. The floor of the range is tuned
+// right down into a kick: a kick's note, a kick's length and — over the
+// bottom of the axis — a kick's wide pitch drop, so that is what it sounds
+// like, as its mark goes solid. Pitch is spread evenly by ratio, not by Hz,
+// so every stretch of the slider is the same musical distance.
+const TOM_LOW_FREQ = 52
 const TOM_HIGH_FREQ = 196
-const TOM_LOW_DECAY = 0.44
+const TOM_LOW_DECAY = 0.5
 const TOM_HIGH_DECAY = 0.22
+const TOM_SWEEP = 1.9
+const TOM_KICK_SWEEP = 4.2
+// Where the kick's drop has fully narrowed into a tom's.
+const TOM_KICK_UNTIL = 0.45
 
-// SNARE: BODY ←→ SNAPPY, the 909's SNAPPY knob. At BODY the snares are nearly
-// off: the tuned shell is most of the sound and it closes in on the tom. At
-// SNAPPY the rattle takes over and rings on a little past the shell.
-const SNARE_BODY_NOISE = 0.2
+// SNARE: BODY ←→ SNAPPY, the 909's SNAPPY knob, as snareModes() shapes it. At
+// BODY there is no rattle at all and the head is slack: what sounds is a thud
+// with a kick's texture. Moving up, the rattle comes in from the first touch,
+// the thud hands over to the tuned 909 shell by halfway, and at SNAPPY the
+// rattle takes over and rings on a little past the shell.
 const SNARE_SNAPPY_NOISE = 0.86
 const SNARE_BODY_DECAY = 0.2
 const SNARE_SNAPPY_DECAY = 0.3
 const SNARE_BODY_TONE = 200
 const SNARE_SNAPPY_TONE = 185
-// The shell alone is quieter than the shell and rattle together, so the body
-// end is brought up to sit at the same weight.
-const SNARE_BODY_TRIM = 1.2
+// The middle of the axis, where the shell and the rattle share the hit, peaks
+// lower than either end, so it is lifted by up to this much to sit level.
+const SNARE_MID_LIFT = 0.28
 
 // CLAP: BRIGHT ←→ FULL. The band walks DOWN and WIDENS and the tail lengthens:
 // a thin, crisp clap becomes a thick one with body — the shells of its mark
@@ -233,6 +246,10 @@ const RIDE_LOW_DECAY = 1.45
 const RIDE_HIGH_DECAY = 1.05
 
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
+  return t * t * (3 - 2 * t)
+}
 
 /** What one identity plus its character comes to: the voice to play, the trim
     to play it at, and — for KICK alone — the energy to play it with, which is
@@ -260,22 +277,26 @@ export function resolveSoundVoice(id: SoundVoiceId, character?: number): Resolve
       return {
         voice: {
           ...voice,
-          freq: lerp(TOM_LOW_FREQ, TOM_HIGH_FREQ, c),
+          freq: TOM_LOW_FREQ * Math.pow(TOM_HIGH_FREQ / TOM_LOW_FREQ, c),
           decay: lerp(TOM_LOW_DECAY, TOM_HIGH_DECAY, c),
+          sweep: lerp(TOM_KICK_SWEEP, TOM_SWEEP, smoothstep(0, TOM_KICK_UNTIL, c)),
         },
         level: spec.level,
       }
 
-    case 'snare':
+    case 'snare': {
+      const { head, snares } = snareModes(c)
       return {
         voice: {
           ...voice,
           decay: lerp(SNARE_BODY_DECAY, SNARE_SNAPPY_DECAY, c),
-          noiseMix: lerp(SNARE_BODY_NOISE, SNARE_SNAPPY_NOISE, c),
+          noiseMix: SNARE_SNAPPY_NOISE * snares,
           tone: lerp(SNARE_BODY_TONE, SNARE_SNAPPY_TONE, c),
+          thump: 1 - head,
         },
-        level: spec.level * lerp(SNARE_BODY_TRIM, 1, c),
+        level: spec.level * (1 + SNARE_MID_LIFT * 4 * c * (1 - c)),
       }
+    }
 
     case 'clap':
       return {
@@ -383,8 +404,22 @@ function driveCurve(k: number): Float32Array<ArrayBuffer> {
   return curve
 }
 
-const KICK_DRIVE = driveCurve(2.2)
-const TOM_DRIVE = driveCurve(1.4)
+// Curves by amount, each built once: a hit picks its curve rather than
+// building one of its own.
+const driveCurves = new Map<number, Float32Array<ArrayBuffer>>()
+
+function drive(k: number): Float32Array<ArrayBuffer> {
+  const key = Math.round(k * 10) / 10
+  let curve = driveCurves.get(key)
+  if (!curve) {
+    curve = driveCurve(key)
+    driveCurves.set(key, curve)
+  }
+  return curve
+}
+
+const KICK_DRIVE = 2.2
+const TOM_DRIVE = 1.4
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 
@@ -506,6 +541,52 @@ function loudness(velocity: number, energy: number): number {
   return velocity * (0.5 + 0.5 * energy)
 }
 
+/**
+ * The 909 bass drum's body: a sine pushed into a soft clipper — the round,
+ * slightly squared body that makes it thump rather than boom — under a
+ * two-stage pitch sweep, with a click of noise on top. KICK is this and
+ * nothing else; a slack SNARE turns into it.
+ */
+type ThudParams = { freq: number; snap: number; energy: number; level: number; decay: number }
+
+function thud(
+  ctx: BaseAudioContext,
+  dest: AudioNode,
+  when: number,
+  { freq, snap, energy, level, decay }: ThudParams,
+  track: <T extends AudioScheduledSourceNode>(source: T) => T,
+): void {
+  const osc = track(ctx.createOscillator())
+  osc.type = 'sine'
+  // ENERGY deepens the drop, which is what makes a hard hit snap. The fast
+  // first stage is the punch; the slow second one is the 909's long downward
+  // bend into the note.
+  const top = freq * (1 + snap * (0.55 + 0.45 * energy))
+  osc.frequency.setValueAtTime(top, when)
+  osc.frequency.exponentialRampToValueAtTime(freq * 1.45, when + 0.022)
+  osc.frequency.exponentialRampToValueAtTime(freq, when + 0.13)
+  const shaper = ctx.createWaveShaper()
+  shaper.curve = drive(KICK_DRIVE)
+  // A short hold before the fall: the body sits at full level for a beat of
+  // the pitch sweep, which is where the 909's weight comes from.
+  const gain = envelope(ctx, when, level, decay, 0.001, 0.018)
+  osc.connect(shaper).connect(gain).connect(dest)
+  osc.start(when)
+  osc.stop(when + decay + 0.07)
+
+  // The attack: a click of filtered noise on top, ENERGY's share of it
+  // growing the way the 909's ATTACK knob does.
+  const click = track(noiseSource(ctx, when, 0.012))
+  const clickGain = envelope(ctx, when, level * (0.2 + 0.45 * energy), 0.006, 0.0005)
+  click.connect(lowpass(ctx, 5200)).connect(clickGain).connect(dest)
+}
+
+// SNARE's thud: the kick's body pitched a little above the kick, so the two
+// stay told apart, and let ring for twice the snare's own decay.
+const SNARE_THUD_FREQ = 56
+const SNARE_THUD_SNAP = 3.4
+const SNARE_THUD_STRETCH = 2
+
 // FX's two modulators, as ratios to the note and peak modulation indices. The
 // fine mode's ratio is high and off the harmonic series, so a little of it is
 // a shimmer over the drum; the deep mode's √2 is the classic metallic ratio,
@@ -570,52 +651,37 @@ export function playVoice(
   }
 
   switch (voice.kind) {
-    case 'kick': {
-      // The 909 bass drum: a sine pushed into a soft clipper — the round,
-      // slightly squared body that makes it thump rather than boom — under a
-      // two-stage pitch sweep. The fast first stage is the punch; the slow
-      // second one is the 909's long downward bend into the note.
-      const osc = track(ctx.createOscillator())
-      osc.type = 'sine'
-      // ENERGY deepens the drop, which is what makes a hard hit snap.
-      const top = voice.freq * (1 + voice.snap * (0.55 + 0.45 * energy))
-      osc.frequency.setValueAtTime(top, when)
-      osc.frequency.exponentialRampToValueAtTime(voice.freq * 1.45, when + 0.022)
-      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + 0.13)
-      const shaper = ctx.createWaveShaper()
-      shaper.curve = KICK_DRIVE
-      // A short hold before the fall: the body sits at full level for a beat
-      // of the pitch sweep, which is where the 909's weight comes from.
-      const gain = envelope(ctx, when, level, decay, 0.001, 0.018)
-      osc.connect(shaper).connect(gain).connect(dest)
-      osc.start(when)
-      osc.stop(when + decay + 0.07)
-
-      // The attack: a click of filtered noise on top, ENERGY's share of it
-      // growing the way the 909's ATTACK knob does.
-      const click = track(noiseSource(ctx, when, 0.012))
-      const clickGain = envelope(ctx, when, level * (0.2 + 0.45 * energy), 0.006, 0.0005)
-      click.connect(lowpass(ctx, 5200)).connect(clickGain).connect(dest)
+    case 'kick':
+      thud(ctx, dest, when, { freq: voice.freq, snap: voice.snap, energy, level, decay }, track)
       break
-    }
 
     case 'tom': {
       // 909 toms: a sine with a wide downward sweep, and a short burst of
-      // filtered noise for the stick hitting the head.
+      // filtered noise for the stick hitting the head. A wider sweep is a drum
+      // tuned down toward a kick, so it takes on the rest of the kick's recipe
+      // with it: a longer hold at the top and a harder drive.
+      const sweep = voice.sweep ?? TOM_SWEEP
+      const kick = clamp01((sweep - TOM_SWEEP) / (TOM_KICK_SWEEP - TOM_SWEEP))
       const osc = track(ctx.createOscillator())
       osc.type = 'sine'
-      osc.frequency.setValueAtTime(voice.freq * 1.9, when)
-      osc.frequency.exponentialRampToValueAtTime(voice.freq * 1.15, when + 0.04)
-      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + decay * 0.8)
+      // A tom glides into its note over most of its length; a kick punches
+      // down fast and lands on it in a beat.
+      osc.frequency.setValueAtTime(voice.freq * sweep, when)
+      osc.frequency.exponentialRampToValueAtTime(
+        voice.freq * (1 + (sweep - 1) * 0.15),
+        when + lerp(0.04, 0.022, kick),
+      )
+      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + lerp(decay * 0.8, 0.13, kick))
       const shaper = ctx.createWaveShaper()
-      shaper.curve = TOM_DRIVE
-      const gain = envelope(ctx, when, level * 0.9, decay, 0.001, 0.008)
+      shaper.curve = drive(lerp(TOM_DRIVE, KICK_DRIVE, kick))
+      const gain = envelope(ctx, when, level * 0.9, decay, 0.001, lerp(0.008, 0.018, kick))
       osc.connect(shaper).connect(gain).connect(dest)
       osc.start(when)
       osc.stop(when + decay + 0.05)
 
       const skin = track(noiseSource(ctx, when, 0.06))
-      const skinGain = envelope(ctx, when, level * 0.22 * (0.5 + energy), 0.045, 0.001)
+      const skinLevel = level * 0.22 * (0.5 + energy) * lerp(1, 0.5, kick)
+      const skinGain = envelope(ctx, when, skinLevel, 0.045, 0.001)
       skin.connect(bandpass(ctx, voice.freq * 7, 0.9)).connect(skinGain).connect(dest)
       break
     }
@@ -623,11 +689,31 @@ export function playVoice(
     case 'snare': {
       // The 909 snare: two tuned triangle oscillators about a sixth apart,
       // each bending down a little, under a bright, long noise — the SNAPPY
-      // half, which is what the 909 snare is really known for.
+      // half, which is what the 909 snare is really known for. `thump` hands
+      // the shell over to the thud of a slack head: the kick's own body, a
+      // little higher and shorter.
+      const thump = voice.thump ?? 0
+      if (thump > 0) {
+        thud(
+          ctx,
+          dest,
+          when,
+          {
+            freq: SNARE_THUD_FREQ,
+            snap: SNARE_THUD_SNAP,
+            energy,
+            level: level * thump,
+            decay: decay * SNARE_THUD_STRETCH,
+          },
+          track,
+        )
+      }
+      const shell = level * (1 - voice.noiseMix) * (1 - thump)
       for (const [ratio, share] of [
         [1, 0.62],
         [1.74, 0.38],
       ] as const) {
+        if (shell <= 0) break
         const freq = voice.tone * ratio
         const body = track(ctx.createOscillator())
         body.type = 'triangle'
@@ -638,13 +724,14 @@ export function playVoice(
         const bodyGain = envelope(
           ctx,
           when,
-          level * (1 - voice.noiseMix) * share * 1.6,
+          shell * share * 1.6,
           decay * (ratio === 1 ? 0.5 : 0.35),
           0.001,
         )
         body.connect(bodyGain).connect(dest)
       }
 
+      if (voice.noiseMix <= 0) break
       const rattle = track(noiseSource(ctx, when, decay + 0.05))
       const rattleGain = envelope(ctx, when, level * voice.noiseMix, decay, 0.001)
       rattle
@@ -743,7 +830,10 @@ export function playVoice(
         ring.connect(envelope(ctx, when, level * share, decay * 0.32, 0.0005)).connect(out)
       }
       const click = track(noiseSource(ctx, when, 0.01))
-      click.connect(bandpass(ctx, 4200, 1.5)).connect(envelope(ctx, when, level * 0.45, 0.004, 0.0003)).connect(out)
+      click
+        .connect(bandpass(ctx, 4200, 1.5))
+        .connect(envelope(ctx, when, level * 0.45, 0.004, 0.0003))
+        .connect(out)
       break
     }
     case 'bell': {
@@ -809,7 +899,7 @@ export function playVoice(
         modulator.stop(when + decay + 0.05)
       }
       const shaper = ctx.createWaveShaper()
-      shaper.curve = TOM_DRIVE
+      shaper.curve = drive(TOM_DRIVE)
       const gain = envelope(ctx, when, level * 0.9, decay, 0.001, 0.008)
       carrier.connect(shaper).connect(gain).connect(dest)
       carrier.start(when)

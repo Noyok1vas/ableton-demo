@@ -1,9 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { renderPatternTile, type Pattern } from './patterns.ts'
 
-// Velocity reads as size alone: a softer hit is a smaller mark, the same ink.
-// Same floor as the Sound Visual's ring, so the two agree on scale.
-const VELOCITY_MIN_SIZE = 0.68
+// Velocity reads as size alone: a softer hit is a smaller mark, the same ink,
+// and a full one draws the mark past its resting size. Same range as the Sound
+// Visual's ring, so the two agree on scale. The top is as far as the widest
+// marks (an open hat, a snappy snare's grains) go before the pad cuts them off.
+const VELOCITY_MIN_SIZE = 0.45
+const VELOCITY_MAX_SIZE = 1.3
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
 
 /**
@@ -66,7 +69,7 @@ export function SoundPreview({
         canvas.height = h
       }
       const v = Math.min(1, Math.max(0, velocityRef.current))
-      const size = lerp(VELOCITY_MIN_SIZE, 1, v)
+      const size = lerp(VELOCITY_MIN_SIZE, VELOCITY_MAX_SIZE, v)
       const dw = w * size
       const dh = h * size
       ctx.clearRect(0, 0, w, h)
