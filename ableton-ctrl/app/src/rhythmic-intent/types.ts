@@ -23,7 +23,7 @@ export type Tap = {
    * It is a COPY, not a link. Once it is here, moving the Selector's slider
    * changes what the next tap will be and nothing about this one, which is what
    * lets a bar hold a soft hit and a hard one and stay that way. Absent means
-   * the identity has no axis (SPLASH — the spec's `characterValue: null`) or
+   * the identity has no axis (RIM — the spec's `characterValue: null`) or
    * the tap came from hardware. */
   character?: number
 }

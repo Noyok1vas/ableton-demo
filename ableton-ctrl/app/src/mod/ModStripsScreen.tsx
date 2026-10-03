@@ -107,8 +107,8 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
  * (guiding mode names them, and the Main Screen names the sound up close).
  *
  *   left   velocity — how hard every pad plays, recorded or auditioned
- *   right  character — the selected sound's one axis (SOFT↔HARD for HIT,
- *          ROUNDED↔CRISPY for TICK, …); sounds without one leave it idle
+ *   right  character — the selected sound's one axis (SOFT↔HARD for KICK,
+ *          CLOSED↔OPEN for HAT, …); sounds without one leave it idle
  *
  * Hold either strip and press a pad: the pad auditions instead of recording,
  * and the Main Screen shows that sound large, changing as the strips move.

@@ -12,6 +12,7 @@
  */
 
 import type { MarchVoiceId, SoundVoiceId } from './engine.ts'
+import { fxModes } from '../selector/character.ts'
 
 /** One pad, as a recipe rather than a sound file. `decay` is the voice's
     natural length in seconds at LENGTH's midpoint; LENGTH scales it. */
@@ -19,19 +20,23 @@ export type Voice = { label: string } & (
   | { kind: 'kick'; freq: number; snap: number; decay: number }
   | { kind: 'tom'; freq: number; decay: number }
   | { kind: 'snare'; tone: number; noiseMix: number; decay: number }
-  | { kind: 'clap'; decay: number }
+  // `band` and `q` place the clap's one band: lower and wider is a fuller clap,
+  // higher and narrower a brighter one. Absent, they are the 909's own.
+  | { kind: 'clap'; decay: number; band?: number; q?: number }
   // `ring` 0..1 brings up the narrow metallic band an OPEN hat sustains — the
   // part that is not simply a longer closed hat.
   | { kind: 'hat'; cutoff: number; decay: number; ring?: number }
-  | { kind: 'cymbal'; cutoff: number; decay: number }
+  // `tune` replays the metal faster or slower, as the 909's TUNE re-pitches its
+  // cymbal samples: everything in it moves, and it shortens as it rises.
+  | { kind: 'cymbal'; cutoff: number; decay: number; tune?: number }
   | { kind: 'rim'; decay: number }
   | { kind: 'bell'; freqs: [number, number]; decay: number }
   | { kind: 'block'; freq: number; decay: number }
   | { kind: 'shaker'; decay: number }
-  // Not a hit at all: a bed of filtered noise that swells in and rustles away.
-  // `cutoff` is where its band sits, `q` how narrow it is (low = full and wide,
-  // high = thin), `wobble` how fast the grain stirs (Hz).
-  | { kind: 'texture'; cutoff: number; q: number; wobble: number; decay: number }
+  // A tom-like resonator under two frequency modulators: `ripple` and `lobes`
+  // (0..1) are the depths of a fine, high one and a deep, inharmonic one — the
+  // two modes of fxModes() in character.ts.
+  | { kind: 'fm'; freq: number; decay: number; ripple: number; lobes: number }
 )
 
 /** Lowest pad — C1, bottom-left of the grid, matching PAD_BASE_PITCH. */
@@ -42,7 +47,7 @@ export const KIT_BASE_PITCH = 36
     up. Rough General MIDI neighbourhood, so the layout feels familiar. */
 export const KIT: Voice[] = [
   // Row 1 — the backbone.
-  { label: 'KICK', kind: 'kick', freq: 48, snap: 3.2, decay: 0.42 },
+  { label: 'KICK', kind: 'kick', freq: 52, snap: 3.4, decay: 0.42 },
   { label: 'RIM', kind: 'rim', decay: 0.07 },
   { label: 'SNARE', kind: 'snare', tone: 185, noiseMix: 0.72, decay: 0.21 },
   { label: 'CLAP', kind: 'clap', decay: 0.28 },
@@ -100,16 +105,15 @@ export const MARCH_KIT: Record<MarchVoiceId, MarchVoiceSpec> = {
 }
 
 /**
- * The eight sound identities of the Selector: what HIT, TICK, SPLASH, SCATTER,
- * SNARE, TOM, RIM and CYMBAL actually sound like.
+ * The eight sound identities of the Selector: what KICK, TOM, SNARE, RIM,
+ * CLAP, HAT, RIDE and FX actually sound like.
  *
- * Their own kit rather than four of the 16 pads, for the same reason March has
- * one: the pads are an instrument the performer chooses from, while these four
- * are fixed roles in one composition — weight, lighter pulse, accent,
- * atmosphere — and each is tuned to sit against the other three rather than to
- * be a good general-purpose drum. They are still coloured live by ENERGY and
- * LENGTH, which is what separates them from March's fixed voices: these ARE
- * the instrument Sound Intent shapes.
+ * Their own kit rather than eight of the 16 pads, for the same reason March
+ * has one: the pads are an instrument the performer chooses from, while these
+ * are fixed roles in one composition, each tuned to sit against the other
+ * seven rather than to be a good general-purpose drum. They are still coloured
+ * live by ENERGY and LENGTH, which is what separates them from March's fixed
+ * voices: these ARE the instrument Sound Intent shapes.
  *
  * `level` trims one identity against the others *before* ENERGY and velocity;
  * the per-kind TRIM below still applies on top, since these use the same
@@ -118,134 +122,120 @@ export const MARCH_KIT: Record<MarchVoiceId, MarchVoiceSpec> = {
 export type SoundVoiceSpec = { voice: Voice; level: number }
 
 export const SOUND_TYPE_KIT: Record<SoundVoiceId, SoundVoiceSpec> = {
-  // A classic electronic kick: low, solid, punchy. The deep pitch drop is the
-  // punch, and the long-ish body is what makes it feel grounded rather than
-  // clicky. This is the composition's rhythmic weight, so it carries full level.
-  hit: {
-    voice: { label: 'HIT', kind: 'kick', freq: 45, snap: 3.6, decay: 0.5 },
+  // The 909 bass drum: low, solid, struck. The deep pitch drop is the punch and
+  // the held body is the weight. This is the composition's rhythmic weight, so
+  // it carries full level.
+  kick: {
+    voice: { label: 'KICK', kind: 'kick', freq: 50, snap: 3.8, decay: 0.5 },
     level: 1,
   },
-  // A hi-hat: short, high, and the light event against HIT's weight. Its
-  // character runs from a rounder hat with some wash in it to a crisp one that
-  // is over almost before it registers — see resolveSoundVoice.
-  tick: {
-    voice: { label: 'TICK', kind: 'hat', cutoff: 8400, decay: 0.042 },
-    level: 0.78,
-  },
-  // A clap: sharp, immediate, brighter than HIT, and — because it is three
-  // fast bursts and a tail rather than one envelope — expressive in a way a
-  // drum hit is not. Loud enough to read as an accent, short enough not to
-  // become a second backbone.
-  splash: {
-    voice: { label: 'SPLASH', kind: 'clap', decay: 0.22 },
-    level: 0.92,
-  },
-  // Not a hit: filtered noise that swells in and rustles away, well under the
-  // others in level. The decay is long enough that one SCATTER covers most of
-  // a two-bar loop on its own, so the loop repeating it produces a continuous
-  // bed rather than a pulse — which is the point. SCATTER is the air the other
-  // three happen in.
-  scatter: {
-    voice: { label: 'SCATTER', kind: 'texture', cutoff: 2600, q: 0.6, wobble: 7.5, decay: 2.4 },
-    level: 0.42,
-  },
-  // ── The drum-synth expansion: four conventional voices ─────────────────
-  // Plain drums rather than roles, so the kit covers what a drum machine is
-  // expected to cover. Each still has one character axis (see below) except
-  // RIM, which is fixed the way SPLASH is.
-  //
-  // A snare: pitched body under the rattle. The backbone HIT and SPLASH were
-  // standing in for.
-  snare: {
-    voice: { label: 'SNARE', kind: 'snare', tone: 190, noiseMix: 0.72, decay: 0.2 },
-    level: 0.9,
-  },
-  // A tom whose character is its pitch — low floor tom to high rack tom.
+  // A tom whose character is its tune — low floor tom to high rack tom.
   tom: {
     voice: { label: 'TOM', kind: 'tom', freq: 118, decay: 0.32 },
     level: 0.92,
+  },
+  // A snare: a tuned body under the rattle of the snares, which SNAPPY sets.
+  snare: {
+    voice: { label: 'SNARE', kind: 'snare', tone: 190, noiseMix: 0.72, decay: 0.24 },
+    level: 0.9,
   },
   // A rimshot click: short, dry, cutting.
   rim: {
     voice: { label: 'RIM', kind: 'rim', decay: 0.07 },
     level: 0.8,
   },
-  // Crash to ride on one axis: the long dark wash to the shorter bright ping.
-  cymbal: {
-    voice: { label: 'CYMBAL', kind: 'cymbal', cutoff: 7000, decay: 1.1 },
+  // The 909 hand clap: sharp, immediate and — because it is four fast bursts
+  // and a tail rather than one envelope — expressive in a way a drum hit is
+  // not. Loud enough to read as an accent, short enough not to become a second
+  // backbone.
+  clap: {
+    voice: { label: 'CLAP', kind: 'clap', decay: 0.22 },
+    level: 0.92,
+  },
+  // A hi-hat: short, high, and the light event against the kick's weight.
+  hat: {
+    voice: { label: 'HAT', kind: 'hat', cutoff: 8400, decay: 0.042 },
+    level: 0.78,
+  },
+  // A ride: metal with a ping riding on its wash, left to ring.
+  ride: {
+    voice: { label: 'RIDE', kind: 'cymbal', cutoff: 8600, decay: 1.3 },
     level: 0.62,
+  },
+  // FX: a tom that frequency modulation turns metallic.
+  fx: {
+    voice: { label: 'FX', kind: 'fm', freq: 150, decay: 0.38, ripple: 0, lobes: 0 },
+    level: 0.85,
   },
 }
 
 // ── Character → the voice that actually sounds ────────────────────────────
 // One 0..1 axis per identity, resolved here rather than at the call site so
-// that every path to a note — a live tap, a queued loop event, an audition in
-// the Selector — resolves it the same way. The values below ARE the axis: what
-// SOFT and HARD mean is these numbers and nothing else.
+// that every path to a note — a live tap, a queued loop event, an audition on
+// the pads — resolves it the same way. The values below ARE the axis: what
+// SOFT and HARD mean is these numbers and nothing else. Each axis is drawn by
+// the same identity's mark in patterns.ts, which moves the same way.
 
-// HIT: no numbers of its own. SOFT←→HARD is the existing Energy parameter under
-// a better name — it drives the same loudness-and-brightness pair that hitting
-// something harder drives, which is exactly what `energy` already did.
+// KICK: no numbers of its own. SOFT←→HARD is the existing Energy parameter
+// under a better name — it drives the same loudness-and-brightness pair that
+// hitting something harder drives, which is exactly what `energy` already did.
 
-// TICK: ROUNDED ←→ CRISPY, one continuous move over the same hi-hat.
-//
-// Rounded is the closed end of a hat: short, dry, damped, gone almost as soon
-// as it starts. Crispy is the open end: longer, brighter, with the metallic
-// band (`ring`) up underneath giving it wash and ring-out — an open hat is what
-// "crisp" (all transient, no dampening) actually sounds like, not what "round"
-// does. The axis runs FROM the short closed one TO the long open one, which is
-// why every pair below is ordered that way.
-const TICK_ROUNDED_DECAY = 0.026
-const TICK_CRISPY_DECAY = 0.3
-const TICK_ROUNDED_CUTOFF = 9900 // all edge, no body
-const TICK_CRISPY_CUTOFF = 6800 // more body under it
-// The crispy end spreads the same gesture over ten times the time, so it needs
-// trimming to sit at the same weight rather than reading as an accent.
-const TICK_CRISPY_TRIM = 0.84
-
-// SCATTER: airy to dense, both ends noise. The band walks DOWN and WIDENS —
-// thin and high becomes full and occupied. Nothing pitched is introduced at any
-// point of the travel; a wide low band is still a band of noise.
-const SCATTER_AIRY_CUTOFF = 5600
-const SCATTER_DENSE_CUTOFF = 1250
-const SCATTER_AIRY_Q = 1.15 // narrow → thin, breathable
-const SCATTER_DENSE_Q = 0.32 // wide → full, saturated
-const SCATTER_AIRY_WOBBLE = 11 // a fast flutter reads as air moving
-const SCATTER_DENSE_WOBBLE = 4.5 // a slow stir reads as mass
-const SCATTER_AIRY_LEVEL = 0.6
-const SCATTER_DENSE_LEVEL = 1.35
-// How long the texture voice takes to reach full volume — independent of
-// LENGTH (`decay`, below), which is the tail, not the onset. See the 'texture'
-// case for why the two used to be tied together.
-const TEXTURE_ATTACK = 0.045
-
-// SNARE: TIGHT ←→ LOOSE. Tight is a short, body-forward crack; loose lets the
-// snares rattle on and take over from the shell.
-const SNARE_TIGHT_DECAY = 0.11
-const SNARE_LOOSE_DECAY = 0.34
-const SNARE_TIGHT_NOISE = 0.58
-const SNARE_LOOSE_NOISE = 0.86
-const SNARE_TIGHT_TONE = 215
-const SNARE_LOOSE_TONE = 175
-
-// TOM: LOW ←→ HIGH. Pitch is the tom's whole character; a higher tom is also a
+// TOM: LOW ←→ HIGH. Tune is the tom's whole character; a higher tom is also a
 // shorter one, the way a smaller drum is.
 const TOM_LOW_FREQ = 78
 const TOM_HIGH_FREQ = 196
 const TOM_LOW_DECAY = 0.44
 const TOM_HIGH_DECAY = 0.22
 
-// CYMBAL: CRASH ←→ RIDE. A crash is lower-cut and rings long; a ride is
-// brighter and shorter, a ping more than a wash.
-const CYMBAL_CRASH_CUTOFF = 5000
-const CYMBAL_RIDE_CUTOFF = 9400
-const CYMBAL_CRASH_DECAY = 1.45
-const CYMBAL_RIDE_DECAY = 0.7
+// SNARE: BODY ←→ SNAPPY, the 909's SNAPPY knob. At BODY the snares are nearly
+// off: the tuned shell is most of the sound and it closes in on the tom. At
+// SNAPPY the rattle takes over and rings on a little past the shell.
+const SNARE_BODY_NOISE = 0.2
+const SNARE_SNAPPY_NOISE = 0.86
+const SNARE_BODY_DECAY = 0.2
+const SNARE_SNAPPY_DECAY = 0.3
+const SNARE_BODY_TONE = 200
+const SNARE_SNAPPY_TONE = 185
+// The shell alone is quieter than the shell and rattle together, so the body
+// end is brought up to sit at the same weight.
+const SNARE_BODY_TRIM = 1.2
+
+// CLAP: BRIGHT ←→ FULL. The band walks DOWN and WIDENS and the tail lengthens:
+// a thin, crisp clap becomes a thick one with body — the shells of its mark
+// thicken with it.
+const CLAP_BRIGHT_BAND = 2100
+const CLAP_FULL_BAND = 900
+const CLAP_BRIGHT_Q = 2.4
+const CLAP_FULL_Q = 0.8
+const CLAP_BRIGHT_DECAY = 0.15
+const CLAP_FULL_DECAY = 0.3
+// A narrow band passes less of the noise, so the bright end is brought up to
+// sit at the same weight.
+const CLAP_BRIGHT_TRIM = 1.1
+
+// HAT: CLOSED ←→ OPEN, one continuous move over the same hi-hat. Closed is
+// short, dry, damped, gone almost as soon as it starts; open is longer, with
+// the metallic band (`ring`) up underneath giving it wash and ring-out.
+const HAT_CLOSED_DECAY = 0.03
+const HAT_OPEN_DECAY = 0.32
+const HAT_CLOSED_CUTOFF = 9900 // all edge, no body
+const HAT_OPEN_CUTOFF = 6800 // more body under it
+// The open end spreads the same gesture over ten times the time, so it needs
+// trimming to sit at the same weight rather than reading as an accent.
+const HAT_OPEN_TRIM = 0.84
+
+// RIDE: LOW ←→ HIGH, the 909's cymbal TUNE: the metal replayed slower or
+// faster, so it is lower and longer at one end, higher and shorter at the
+// other. A slight change, as on the machine — it is still the same ride.
+const RIDE_LOW_TUNE = 0.85
+const RIDE_HIGH_TUNE = 1.2
+const RIDE_LOW_DECAY = 1.45
+const RIDE_HIGH_DECAY = 1.05
 
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
 
 /** What one identity plus its character comes to: the voice to play, the trim
-    to play it at, and — for HIT alone — the energy to play it with, which is
+    to play it at, and — for KICK alone — the energy to play it with, which is
     what that identity's axis controls. */
 export type ResolvedVoice = { voice: Voice; level: number; energy?: number }
 
@@ -254,74 +244,78 @@ export type ResolvedVoice = { voice: Voice; level: number; energy?: number }
  *
  * `character` is the value the EVENT carries, not the slider's current
  * position — every caller passes what was snapshotted at the moment of input,
- * which is what lets one bar hold a soft hit and a hard one.
+ * which is what lets one bar hold a soft kick and a hard one.
  */
 export function resolveSoundVoice(id: SoundVoiceId, character?: number): ResolvedVoice {
   const spec = SOUND_TYPE_KIT[id]
   if (character == null) return { voice: spec.voice, level: spec.level }
   const c = Math.min(1, Math.max(0, character))
+  const voice = spec.voice
 
-  switch (spec.voice.kind) {
+  switch (voice.kind) {
     case 'kick':
-      return { voice: spec.voice, level: spec.level, energy: c }
-
-    case 'hat':
-      return {
-        voice: {
-          ...spec.voice,
-          decay: lerp(TICK_ROUNDED_DECAY, TICK_CRISPY_DECAY, c),
-          cutoff: lerp(TICK_ROUNDED_CUTOFF, TICK_CRISPY_CUTOFF, c),
-          // The wash belongs to the crispy/open end and is absent at rounded.
-          ring: c,
-        },
-        level: spec.level * lerp(1, TICK_CRISPY_TRIM, c),
-      }
-
-    case 'texture':
-      return {
-        voice: {
-          ...spec.voice,
-          cutoff: lerp(SCATTER_AIRY_CUTOFF, SCATTER_DENSE_CUTOFF, c),
-          q: lerp(SCATTER_AIRY_Q, SCATTER_DENSE_Q, c),
-          wobble: lerp(SCATTER_AIRY_WOBBLE, SCATTER_DENSE_WOBBLE, c),
-        },
-        level: spec.level * lerp(SCATTER_AIRY_LEVEL, SCATTER_DENSE_LEVEL, c),
-      }
-
-    case 'snare':
-      return {
-        voice: {
-          ...spec.voice,
-          decay: lerp(SNARE_TIGHT_DECAY, SNARE_LOOSE_DECAY, c),
-          noiseMix: lerp(SNARE_TIGHT_NOISE, SNARE_LOOSE_NOISE, c),
-          tone: lerp(SNARE_TIGHT_TONE, SNARE_LOOSE_TONE, c),
-        },
-        level: spec.level,
-      }
+      return { voice, level: spec.level, energy: c }
 
     case 'tom':
       return {
         voice: {
-          ...spec.voice,
+          ...voice,
           freq: lerp(TOM_LOW_FREQ, TOM_HIGH_FREQ, c),
           decay: lerp(TOM_LOW_DECAY, TOM_HIGH_DECAY, c),
         },
         level: spec.level,
       }
 
+    case 'snare':
+      return {
+        voice: {
+          ...voice,
+          decay: lerp(SNARE_BODY_DECAY, SNARE_SNAPPY_DECAY, c),
+          noiseMix: lerp(SNARE_BODY_NOISE, SNARE_SNAPPY_NOISE, c),
+          tone: lerp(SNARE_BODY_TONE, SNARE_SNAPPY_TONE, c),
+        },
+        level: spec.level * lerp(SNARE_BODY_TRIM, 1, c),
+      }
+
+    case 'clap':
+      return {
+        voice: {
+          ...voice,
+          band: lerp(CLAP_BRIGHT_BAND, CLAP_FULL_BAND, c),
+          q: lerp(CLAP_BRIGHT_Q, CLAP_FULL_Q, c),
+          decay: lerp(CLAP_BRIGHT_DECAY, CLAP_FULL_DECAY, c),
+        },
+        level: spec.level * lerp(CLAP_BRIGHT_TRIM, 1, c),
+      }
+
+    case 'hat':
+      return {
+        voice: {
+          ...voice,
+          decay: lerp(HAT_CLOSED_DECAY, HAT_OPEN_DECAY, c),
+          cutoff: lerp(HAT_CLOSED_CUTOFF, HAT_OPEN_CUTOFF, c),
+          // The wash belongs to the open end and is absent when closed.
+          ring: c,
+        },
+        level: spec.level * lerp(1, HAT_OPEN_TRIM, c),
+      }
+
     case 'cymbal':
       return {
         voice: {
-          ...spec.voice,
-          cutoff: lerp(CYMBAL_CRASH_CUTOFF, CYMBAL_RIDE_CUTOFF, c),
-          decay: lerp(CYMBAL_CRASH_DECAY, CYMBAL_RIDE_DECAY, c),
+          ...voice,
+          tune: lerp(RIDE_LOW_TUNE, RIDE_HIGH_TUNE, c),
+          decay: lerp(RIDE_LOW_DECAY, RIDE_HIGH_DECAY, c),
         },
         level: spec.level,
       }
 
-    // SPLASH, RIM and anything else: fixed by design, character ignored.
+    case 'fm':
+      return { voice: { ...voice, ...fxModes(c) }, level: spec.level }
+
+    // RIM: fixed by design, character ignored.
     default:
-      return { voice: spec.voice, level: spec.level }
+      return { voice, level: spec.level }
   }
 }
 
@@ -336,10 +330,9 @@ export type HitParams = {
   lengthScale: number
 }
 
-// One noise buffer per context, shared by every noise-based voice: two seconds
-// covers the longest cymbal even fully stretched by LENGTH. SCATTER's texture
-// outlasts it, so that one voice loops the buffer instead of running off its
-// end (see `noiseSource`'s `loop`).
+// One noise buffer per context, shared by every noise-based voice. Two seconds
+// covers every voice but a cymbal stretched by LENGTH, and a cymbal loops the
+// buffer instead of running off its end (see `noiseSource`'s `loop`).
 const noiseBuffers = new WeakMap<BaseAudioContext, AudioBuffer>()
 
 function noise(ctx: BaseAudioContext): AudioBuffer {
@@ -352,23 +345,95 @@ function noise(ctx: BaseAudioContext): AudioBuffer {
   return buffer
 }
 
-/** A percussive gain envelope: near-instant attack, exponential fall. Returns
-    the node to route the source through, already scheduled. */
+/** The 909's own one-shot sounds: a bank of six square waves at inharmonic
+    ratios (the 808 cymbal circuit's tuning), summed into one looping buffer
+    per context. Played back high-passed it is metal rather than hiss — the
+    difference between a 909 hat and a noise burst — and because it is a
+    buffer, a hat costs one source rather than six oscillators. Naive squares
+    alias, which is wanted here: it is the grit of the 909's 6-bit samples. */
+const METAL_FREQS = [205.3, 304.4, 369.6, 522.7, 540, 800]
+const metalBuffers = new WeakMap<BaseAudioContext, AudioBuffer>()
+
+function metalBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const cached = metalBuffers.get(ctx)
+  if (cached) return cached
+  const rate = ctx.sampleRate
+  const buffer = ctx.createBuffer(1, Math.ceil(rate * 2), rate)
+  const data = buffer.getChannelData(0)
+  const phases = METAL_FREQS.map(() => Math.random())
+  for (let i = 0; i < data.length; i++) {
+    let sum = 0
+    for (let k = 0; k < METAL_FREQS.length; k++) {
+      sum += ((METAL_FREQS[k] * i) / rate + phases[k]) % 1 < 0.5 ? 1 : -1
+    }
+    data[i] = sum / METAL_FREQS.length
+  }
+  metalBuffers.set(ctx, buffer)
+  return buffer
+}
+
+/** A soft-clip transfer curve: tanh, normalized so full scale stays full scale.
+    The 909 bass drum and toms run their oscillators hot into the mixer, and
+    that squared-off sine is a large part of why they sound like a 909. */
+function driveCurve(k: number): Float32Array<ArrayBuffer> {
+  const samples = 1024
+  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT))
+  const norm = Math.tanh(k)
+  for (let i = 0; i < samples; i++) curve[i] = Math.tanh(k * ((i / (samples - 1)) * 2 - 1)) / norm
+  return curve
+}
+
+const KICK_DRIVE = driveCurve(2.2)
+const TOM_DRIVE = driveCurve(1.4)
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+
+/** A percussive gain envelope: near-instant attack, an optional hold at the
+    peak, exponential fall. Returns the node to route the source through,
+    already scheduled. */
 function envelope(
   ctx: BaseAudioContext,
   when: number,
   peak: number,
   decay: number,
   attack = 0.002,
+  hold = 0,
 ): GainNode {
   const gain = ctx.createGain()
+  const top = Math.max(peak, 0.0002)
+  const fall = when + attack + hold
   // exponentialRamp can't reach or start from zero, so the tail lands on a
   // silent-but-nonzero floor and is cut flat afterwards.
   gain.gain.setValueAtTime(0.0001, when)
-  gain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), when + attack)
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay)
-  gain.gain.setValueAtTime(0, when + attack + decay)
+  gain.gain.exponentialRampToValueAtTime(top, when + attack)
+  if (hold > 0) gain.gain.setValueAtTime(top, fall)
+  gain.gain.exponentialRampToValueAtTime(0.0001, fall + decay)
+  gain.gain.setValueAtTime(0, fall + decay)
   return gain
+}
+
+/** Play `buffer` from a random offset — so repeated hits aren't bit-identical —
+    at `rate`, looping when the sound may outlast it. */
+function bufferSource(
+  ctx: BaseAudioContext,
+  buffer: AudioBuffer,
+  when: number,
+  duration: number,
+  rate: number,
+  loop = false,
+): AudioBufferSourceNode {
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.playbackRate.value = rate
+  const offset = Math.random() * 1.5
+  if (loop) {
+    source.loop = true
+    source.start(when, offset)
+    source.stop(when + duration)
+  } else {
+    source.start(when, offset, duration * rate)
+  }
+  return source
 }
 
 function noiseSource(
@@ -422,6 +487,13 @@ function highpass(ctx: BaseAudioContext, freq: number): BiquadFilterNode {
   return filter
 }
 
+function lowpass(ctx: BaseAudioContext, freq: number): BiquadFilterNode {
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = freq
+  return filter
+}
+
 /** ENERGY opens every voice's noise up: dull thud → bright crack. */
 function brightness(energy: number): number {
   return 900 * Math.pow(2, 4.1 * energy) // ~0.9kHz .. ~15kHz
@@ -434,6 +506,17 @@ function loudness(velocity: number, energy: number): number {
   return velocity * (0.5 + 0.5 * energy)
 }
 
+// FX's two modulators, as ratios to the note and peak modulation indices. The
+// fine mode's ratio is high and off the harmonic series, so a little of it is
+// a shimmer over the drum; the deep mode's √2 is the classic metallic ratio,
+// and at full depth it throws partials everywhere — the clang.
+const FX_RIPPLE_RATIO = 7.13
+const FX_RIPPLE_INDEX = 0.45
+const FX_LOBE_RATIO = Math.SQRT2
+const FX_LOBE_INDEX = 5.5
+// Share of the note's decay over which the modulation dies away.
+const FX_INDEX_FALL = 0.6
+
 /**
  * Per-voice level trim. These are not taste: they were measured by rendering
  * each pad on its own and reading its peak, then set so no pad is more than
@@ -445,21 +528,19 @@ function loudness(velocity: number, energy: number): number {
  * Re-measure after changing any voice's synthesis.
  */
 const TRIM: Record<Voice['kind'], number> = {
-  kick: 1,
-  tom: 1,
-  snare: 0.72,
-  clap: 3.2,
-  hat: 1.4,
-  cymbal: 1.7,
-  rim: 3,
+  // The 909 kick and toms are driven, so they carry more RMS than their peak
+  // suggests; these are trimmed a little under their peak match for that.
+  kick: 0.8,
+  tom: 0.85,
+  snare: 0.8,
+  clap: 3.4,
+  hat: 2.6,
+  cymbal: 2.4,
+  rim: 1.55,
   bell: 2.2,
   block: 4,
   shaker: 1.5,
-  // Set by the same measurement as the rest, but read as RMS rather than peak:
-  // this voice has no transient, so its peak says nothing about how loud it is.
-  // At 1.5 it renders about 19dB under HIT's RMS — present as air under a loop,
-  // gone the moment you listen for it as a drum.
-  texture: 1.5,
+  fm: 0.85,
 }
 
 /**
@@ -490,103 +571,181 @@ export function playVoice(
 
   switch (voice.kind) {
     case 'kick': {
+      // The 909 bass drum: a sine pushed into a soft clipper — the round,
+      // slightly squared body that makes it thump rather than boom — under a
+      // two-stage pitch sweep. The fast first stage is the punch; the slow
+      // second one is the 909's long downward bend into the note.
       const osc = track(ctx.createOscillator())
       osc.type = 'sine'
-      // The pitch drop *is* the kick: start high, fall onto the body note.
       // ENERGY deepens the drop, which is what makes a hard hit snap.
       const top = voice.freq * (1 + voice.snap * (0.55 + 0.45 * energy))
       osc.frequency.setValueAtTime(top, when)
-      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + 0.055)
-      const gain = envelope(ctx, when, level, decay)
-      osc.connect(gain).connect(dest)
+      osc.frequency.exponentialRampToValueAtTime(voice.freq * 1.45, when + 0.022)
+      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + 0.13)
+      const shaper = ctx.createWaveShaper()
+      shaper.curve = KICK_DRIVE
+      // A short hold before the fall: the body sits at full level for a beat
+      // of the pitch sweep, which is where the 909's weight comes from.
+      const gain = envelope(ctx, when, level, decay, 0.001, 0.018)
+      osc.connect(shaper).connect(gain).connect(dest)
       osc.start(when)
-      osc.stop(when + decay + 0.05)
+      osc.stop(when + decay + 0.07)
 
-      // A trace of click on top, so it still reads on small speakers.
-      const click = track(noiseSource(ctx, when, 0.02))
-      const clickGain = envelope(ctx, when, level * 0.28 * energy, 0.015, 0.001)
-      click.connect(highpass(ctx, 1600)).connect(clickGain).connect(dest)
+      // The attack: a click of filtered noise on top, ENERGY's share of it
+      // growing the way the 909's ATTACK knob does.
+      const click = track(noiseSource(ctx, when, 0.012))
+      const clickGain = envelope(ctx, when, level * (0.2 + 0.45 * energy), 0.006, 0.0005)
+      click.connect(lowpass(ctx, 5200)).connect(clickGain).connect(dest)
       break
     }
 
     case 'tom': {
+      // 909 toms: a sine with a wide downward sweep, and a short burst of
+      // filtered noise for the stick hitting the head.
       const osc = track(ctx.createOscillator())
       osc.type = 'sine'
-      osc.frequency.setValueAtTime(voice.freq * 1.7, when)
-      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + 0.08)
-      const gain = envelope(ctx, when, level * 0.9, decay)
-      osc.connect(gain).connect(dest)
+      osc.frequency.setValueAtTime(voice.freq * 1.9, when)
+      osc.frequency.exponentialRampToValueAtTime(voice.freq * 1.15, when + 0.04)
+      osc.frequency.exponentialRampToValueAtTime(voice.freq, when + decay * 0.8)
+      const shaper = ctx.createWaveShaper()
+      shaper.curve = TOM_DRIVE
+      const gain = envelope(ctx, when, level * 0.9, decay, 0.001, 0.008)
+      osc.connect(shaper).connect(gain).connect(dest)
       osc.start(when)
       osc.stop(when + decay + 0.05)
+
+      const skin = track(noiseSource(ctx, when, 0.06))
+      const skinGain = envelope(ctx, when, level * 0.22 * (0.5 + energy), 0.045, 0.001)
+      skin.connect(bandpass(ctx, voice.freq * 7, 0.9)).connect(skinGain).connect(dest)
       break
     }
 
     case 'snare': {
-      // Two halves: a short pitched body and the rattle of the snares.
-      const body = track(tone(ctx, 'triangle', voice.tone, when, decay * 0.6 + 0.02))
-      const bodyGain = envelope(ctx, when, level * (1 - voice.noiseMix), decay * 0.5)
-      body.connect(bodyGain).connect(dest)
+      // The 909 snare: two tuned triangle oscillators about a sixth apart,
+      // each bending down a little, under a bright, long noise — the SNAPPY
+      // half, which is what the 909 snare is really known for.
+      for (const [ratio, share] of [
+        [1, 0.62],
+        [1.74, 0.38],
+      ] as const) {
+        const freq = voice.tone * ratio
+        const body = track(ctx.createOscillator())
+        body.type = 'triangle'
+        body.frequency.setValueAtTime(freq * 1.5, when)
+        body.frequency.exponentialRampToValueAtTime(freq, when + 0.025)
+        body.start(when)
+        body.stop(when + decay * 0.6 + 0.03)
+        const bodyGain = envelope(
+          ctx,
+          when,
+          level * (1 - voice.noiseMix) * share * 1.6,
+          decay * (ratio === 1 ? 0.5 : 0.35),
+          0.001,
+        )
+        body.connect(bodyGain).connect(dest)
+      }
 
       const rattle = track(noiseSource(ctx, when, decay + 0.05))
-      const rattleGain = envelope(ctx, when, level * voice.noiseMix, decay)
-      rattle.connect(highpass(ctx, Math.min(open, 3200))).connect(rattleGain).connect(dest)
+      const rattleGain = envelope(ctx, when, level * voice.noiseMix, decay, 0.001)
+      rattle
+        .connect(highpass(ctx, 1400))
+        .connect(lowpass(ctx, Math.min(open * 1.6 + 3000, 16000)))
+        .connect(rattleGain)
+        .connect(dest)
       break
     }
 
     case 'clap': {
-      // Three fast bursts then a tail — the reason a clap sounds like hands
-      // rather than a noise gate.
-      const filter = bandpass(ctx, 1100, 1.1)
-      filter.connect(dest)
+      // The 909 hand clap: noise through one band, retriggered four times by
+      // a sawtooth — sharp attack, fast fall, ~10ms apart — then a diffuse
+      // tail. The bursts are the many hands; the tail is the room.
+      const band = voice.band ?? 1150
+      const filter = bandpass(ctx, band, voice.q ?? 1.3)
+      filter.connect(highpass(ctx, band * 0.56)).connect(dest)
       for (const [offset, gainScale] of [
-        [0, 0.75],
-        [0.011, 0.95],
-        [0.023, 0.7],
+        [0, 0.8],
+        [0.0095, 0.9],
+        [0.019, 0.85],
+        [0.0285, 1],
       ] as const) {
-        const burst = track(noiseSource(ctx, when + offset, 0.02))
-        burst.connect(envelope(ctx, when + offset, level * gainScale, 0.014, 0.001)).connect(filter)
+        const burst = track(noiseSource(ctx, when + offset, 0.015))
+        burst
+          .connect(envelope(ctx, when + offset, level * gainScale, 0.0085, 0.0003))
+          .connect(filter)
       }
       const tail = track(noiseSource(ctx, when + 0.03, decay))
-      tail.connect(envelope(ctx, when + 0.03, level * 0.45, decay, 0.004)).connect(filter)
+      tail.connect(envelope(ctx, when + 0.03, level * 0.5, decay, 0.002)).connect(filter)
       break
     }
 
     case 'hat': {
-      const source = track(noiseSource(ctx, when, decay + 0.02))
-      const gain = envelope(ctx, when, level * 0.55, decay, 0.001)
-      source
-        .connect(highpass(ctx, Math.max(voice.cutoff, open)))
-        .connect(gain)
-        .connect(dest)
-      // What you actually hear when a hat opens is not just more of the same
-      // hiss but a narrow band ringing under it, so an open hat gets that band
-      // layered in rather than only a longer envelope. Without it the far end
-      // of CLOSED→OPEN reads as a hat someone forgot to stop.
+      // 909 hats are recordings of real cymbals, crushed to 6 bits — metal,
+      // not hiss. Here that is a bank of inharmonic square waves (`metal`)
+      // high-passed to its top edge, with a little noise for the grit.
+      const cutoff = Math.max(voice.cutoff, open)
+      const out = highpass(ctx, cutoff)
+      out.connect(dest)
+      const metal = track(bufferSource(ctx, metalBuffer(ctx), when, decay + 0.03, 1))
+      const metalGain = envelope(ctx, when, level * 0.5, decay, 0.0008)
+      metal.connect(bandpass(ctx, 10500, 0.7)).connect(metalGain).connect(out)
+      const air = track(noiseSource(ctx, when, decay + 0.03))
+      air.connect(envelope(ctx, when, level * 0.3, decay * 0.8, 0.0008)).connect(out)
+      // An open hat rings: the metal's own band carries on after the hiss
+      // has gone, which is what separates it from a longer closed one.
       if (voice.ring) {
-        const body = track(noiseSource(ctx, when, decay + 0.05))
-        const bodyGain = envelope(ctx, when, level * 0.34 * voice.ring, decay * 0.95, 0.005)
-        body.connect(bandpass(ctx, 9200, 8)).connect(bodyGain).connect(dest)
+        const body = track(bufferSource(ctx, metalBuffer(ctx), when, decay + 0.05, 1))
+        const bodyGain = envelope(ctx, when, level * 0.3 * voice.ring, decay * 1.1, 0.004)
+        body.connect(bandpass(ctx, 8200, 3)).connect(bodyGain).connect(dest)
       }
       break
     }
 
     case 'cymbal': {
-      const source = track(noiseSource(ctx, when, decay + 0.05))
-      const gain = envelope(ctx, when, level * 0.4, decay, 0.004)
-      const shimmer = bandpass(ctx, 7400, 0.6)
-      source.connect(highpass(ctx, voice.cutoff)).connect(shimmer).connect(gain).connect(dest)
+      // The 909's crash and ride, sampled metal like its hats but slowed down
+      // and left to ring. The brighter `cutoff` is (the ride end) the more a
+      // narrow ping sits on top of the wash — the bell of a ride. `tune` moves
+      // all of it together, the way replaying a sample faster does.
+      const ping = clamp01((voice.cutoff - 5000) / 4400)
+      const tune = voice.tune ?? 1
+      const cutoff = voice.cutoff * tune
+      const span = decay + 0.05
+      const metal = track(
+        bufferSource(ctx, metalBuffer(ctx), when, span, (0.82 + 0.3 * ping) * tune, true),
+      )
+      const metalGain = envelope(ctx, when, level * 0.42, decay, 0.002)
+      metal
+        .connect(highpass(ctx, cutoff))
+        .connect(bandpass(ctx, 7400 * tune, 0.5))
+        .connect(metalGain)
+        .connect(dest)
+      const wash = track(noiseSource(ctx, when, span, true))
+      const washGain = envelope(ctx, when, level * 0.3 * (1 - 0.5 * ping), decay * 0.75, 0.004)
+      wash.connect(highpass(ctx, cutoff)).connect(washGain).connect(dest)
+      if (ping > 0) {
+        const bell = track(bufferSource(ctx, metalBuffer(ctx), when, span, 1.1 * tune, true))
+        const bellGain = envelope(ctx, when, level * 0.35 * ping, decay * 0.7, 0.001)
+        bell.connect(bandpass(ctx, 4300 * tune, 5)).connect(bellGain).connect(dest)
+      }
       break
     }
 
     case 'rim': {
-      const source = track(noiseSource(ctx, when, decay + 0.01))
-      const gain = envelope(ctx, when, level * 0.7, decay, 0.001)
-      source.connect(bandpass(ctx, 1750, 5)).connect(gain).connect(dest)
-      const click = track(tone(ctx, 'triangle', 420, when, decay))
-      click.connect(envelope(ctx, when, level * 0.35, decay * 0.4, 0.001)).connect(dest)
+      // The 909 rimshot: a few tuned resonators struck at once and choked
+      // almost immediately, high-passed into a hard, woody tick.
+      const out = highpass(ctx, 320)
+      out.connect(dest)
+      for (const [freq, share] of [
+        [455, 0.5],
+        [1660, 0.38],
+        [2840, 0.22],
+      ] as const) {
+        const ring = track(tone(ctx, 'triangle', freq, when, decay + 0.01))
+        ring.connect(envelope(ctx, when, level * share, decay * 0.32, 0.0005)).connect(out)
+      }
+      const click = track(noiseSource(ctx, when, 0.01))
+      click.connect(bandpass(ctx, 4200, 1.5)).connect(envelope(ctx, when, level * 0.45, 0.004, 0.0003)).connect(out)
       break
     }
-
     case 'bell': {
       // Two detuned squares through a narrow band: the classic cowbell trick.
       const filter = bandpass(ctx, 2400, 1.4)
@@ -613,37 +772,52 @@ export function playVoice(
       break
     }
 
-    case 'texture': {
-      // The one voice with no transient. Noise through a wide band — soft
-      // static rather than a hiss — swelling in over a short attack instead of
-      // snapping on, and stirred by a slow LFO so it rustles like sand rather
-      // than sitting there as a flat tone. Everything here is the opposite of
-      // the percussive envelope above, which is the point: SCATTER has to read
-      // as air, not as a fourth drum.
-      //
-      // The attack is fixed rather than a share of `decay`: decay is LENGTH's
-      // knob, and LENGTH is how long the bed rings on after the hit, not how
-      // long the hit takes to arrive. Tying the two together meant turning
-      // LENGTH up — or just sitting at its default — pushed the attack past
-      // 800ms, so the sound was still swelling in half a beat after the tap
-      // that triggered it and a player had nothing to place on the beat. A
-      // fixed 45ms keeps the swell (SCATTER still reads as air, not a click)
-      // without it eating the downbeat.
-      const attack = TEXTURE_ATTACK
-      const span = attack + decay + 0.05
-      const source = track(noiseSource(ctx, when, span, true))
-      // ENERGY opens the band upward, the way it brightens every other voice;
-      // the character has already set where the band sits and how wide it is.
-      const band = bandpass(ctx, voice.cutoff * (0.55 + 0.9 * energy), voice.q)
-      // Amplitude stir: the LFO adds to a standing gain, so the bed breathes
-      // between roughly 0.45 and 1 instead of pulsing to silence.
-      const stir = ctx.createGain()
-      stir.gain.value = 0.72
-      const depth = ctx.createGain()
-      depth.gain.value = 0.28
-      track(tone(ctx, 'sine', voice.wobble, when, span)).connect(depth).connect(stir.gain)
-      const gain = envelope(ctx, when, level * 0.5, decay, attack)
-      source.connect(band).connect(stir).connect(gain).connect(dest)
+    case 'fm': {
+      // FX. With both modulators at rest this is the tom: a driven sine
+      // bending down onto its note, a stick on the head. The modulators bend
+      // that sine's frequency at audio rate, and every sideband they throw is
+      // a new partial — the fine one high and shallow (a shimmer), the deep one
+      // low and inharmonic (the clang). Their depth falls away faster than the
+      // note does, so even the metallic end settles back toward the drum as it
+      // rings, the way struck metal does.
+      const freq = voice.freq
+      const sweep = (param: AudioParam, scale: number) => {
+        param.setValueAtTime(freq * 1.9 * scale, when)
+        param.exponentialRampToValueAtTime(freq * 1.15 * scale, when + 0.04)
+        param.exponentialRampToValueAtTime(freq * scale, when + decay * 0.8)
+      }
+      const carrier = track(ctx.createOscillator())
+      carrier.type = 'sine'
+      sweep(carrier.frequency, 1)
+      for (const [ratio, index] of [
+        [FX_RIPPLE_RATIO, FX_RIPPLE_INDEX * voice.ripple],
+        [FX_LOBE_RATIO, FX_LOBE_INDEX * voice.lobes],
+      ] as const) {
+        if (index <= 0) continue
+        const modulator = track(ctx.createOscillator())
+        modulator.type = 'sine'
+        // Tracks the carrier's bend, so the partials keep their ratios
+        // through the attack instead of smearing.
+        sweep(modulator.frequency, ratio)
+        // Index → Hz of deviation: the index times the modulator's frequency.
+        const depth = ctx.createGain()
+        const peak = index * freq * ratio
+        depth.gain.setValueAtTime(peak, when)
+        depth.gain.exponentialRampToValueAtTime(peak * 0.04, when + decay * FX_INDEX_FALL)
+        modulator.connect(depth).connect(carrier.frequency)
+        modulator.start(when)
+        modulator.stop(when + decay + 0.05)
+      }
+      const shaper = ctx.createWaveShaper()
+      shaper.curve = TOM_DRIVE
+      const gain = envelope(ctx, when, level * 0.9, decay, 0.001, 0.008)
+      carrier.connect(shaper).connect(gain).connect(dest)
+      carrier.start(when)
+      carrier.stop(when + decay + 0.05)
+
+      const skin = track(noiseSource(ctx, when, 0.06))
+      const skinGain = envelope(ctx, when, level * 0.22 * (0.5 + energy), 0.045, 0.001)
+      skin.connect(bandpass(ctx, freq * 7, 0.9)).connect(skinGain).connect(dest)
       break
     }
   }

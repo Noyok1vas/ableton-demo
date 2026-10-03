@@ -16,7 +16,7 @@
  * properties of the room, so they hang on the master chain and change what is
  * already sounding — exactly the split FX and Sound Intent describe.
  *
- * Two tracks play through it. MAIN is every tap: the four Selector identities
+ * Two tracks play through it. MAIN is every tap: the eight Selector identities
  * (see SOUND_TYPE_KIT), or the selected pad for a tap that carries none, both
  * shaped by Sound Intent and held in Rhythmic Intent's loop. MARCH is the
  * generated percussion layer,
@@ -683,15 +683,15 @@ export class WebAudioEngine implements SoundEngine {
 
   /**
    * Schedule one note. A note that carries a sound identity plays that
-   * identity's voice — HIT is a kick wherever it is played from, which is what
-   * makes the four Selector marks four sounds rather than four pictures of the
-   * same one. A note without one falls back to the pad the PITCH mapping
+   * identity's voice — KICK is a kick wherever it is played from, which is
+   * what makes the eight Selector marks eight sounds rather than eight pictures
+   * of the same one. A note without one falls back to the pad the PITCH mapping
    * selects, which is how a hardware pad's own taps still play what is under
    * the finger.
    *
    * `character` is the identity's axis as the event recorded it, so a loop
    * replays each note at the hardness or openness it was played with rather
-   * than at whatever the Selector says now. HIT's axis IS energy, which is why
+   * than at whatever the Selector says now. KICK's axis IS energy, which is why
    * the resolver can hand one back and override the live macro for that note.
    *
    * Returns the hit's sources so a queued loop note can be taken back; a live

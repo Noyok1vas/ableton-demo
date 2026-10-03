@@ -37,7 +37,7 @@ function toMacroValue(value: number): number {
     so a later visual/sound reads the values it was fired with even if the
     sliders move afterwards. `gesture` is the sound identity that fired it —
     which voice sounded and which mark is drawn — `character` that identity's
-    axis at the instant of the press (null for SPLASH, which has none), and
+    axis at the instant of the press (null for RIM, which has none), and
     `repeats` the Ripple window's count. All snapshotted for the same reason as
     `params`: a mark is whatever it was when it sounded. */
 export type SoundTap = {

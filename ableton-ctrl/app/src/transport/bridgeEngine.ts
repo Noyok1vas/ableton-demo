@@ -245,7 +245,7 @@ export class BridgeEngine implements SoundEngine {
    * The sound identity is deliberately dropped here. Under this source what a
    * note sounds like is the performer's own rack, selected with the PITCH pad —
    * the app has no business overriding it, and nothing in the protocol carries
-   * a per-note pitch yet. So HIT/TICK/SPLASH/SCATTER differ visually under
+   * a per-note pitch yet. So the eight identities differ visually under
    * Ableton and sound the same; under the built-in source they differ in both.
    * Giving each identity its own drum-rack pitch is the obvious next step, and
    * needs a bridge-side change to go with it.

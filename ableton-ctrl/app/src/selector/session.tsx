@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { DEFAULT_CHARACTER, characterOf, type CharacterState } from './character.ts'
 import type { PatternId } from './patterns.ts'
-import { SOUND_VOICES, type SoundVoiceId } from '../transport/engine.ts'
+import { parseVoice } from '../transport/engine.ts'
 import { finiteIn, isRecord, loadSaved, mergeNumbers, useSaved } from '../persist.ts'
 
 /** Velocity, as the panel shows it: 1..100. */
@@ -34,7 +34,7 @@ export type SelectorSessionValue = {
       same instant still lands on the pad just pressed. */
   setSelectedCharacter: (value: number) => void
   /** The character an event fired right now would carry — null for an identity
-      with no axis (SPLASH, RIM). This is the value that gets snapshotted onto a
+      with no axis (RIM). This is the value that gets snapshotted onto a
       tap; after that the tap owns it and this can move freely. */
   currentCharacter: () => number | null
   /** How hard an ordinary tap is played, VELOCITY_MIN..VELOCITY_MAX. */
@@ -64,9 +64,9 @@ function restoreSelector(): SavedSelector {
   const raw = loadSaved('selector')
   const saved = isRecord(raw) ? raw : {}
   return {
-    gesture: SOUND_VOICES.includes(saved.gesture as SoundVoiceId)
-      ? (saved.gesture as PatternId)
-      : 'hit',
+    // An older save may name a sound by its old name (HIT for KICK); one that
+    // no longer exists falls back to the kick.
+    gesture: parseVoice(saved.gesture) ?? 'kick',
     character: mergeNumbers(DEFAULT_CHARACTER, saved.character, 0, 1),
     velocity: Math.round(finiteIn(saved.velocity, VELOCITY_MIN, VELOCITY_MAX) ?? DEFAULT_VELOCITY),
   }
@@ -78,7 +78,7 @@ function restoreSelector(): SavedSelector {
  *
  * Lifted out of the Selector window because none of them is that window's
  * private state — the Selector's pads, Space and the Sound Visual all read the
- * same choice, so selecting SPLASH or opening the hat changes what the next tap
+ * same choice, so selecting CLAP or opening the hat changes what the next tap
  * sounds and what it draws, wherever it is fired.
  *
  * All three are LIVE values: they describe the next event, never a recorded

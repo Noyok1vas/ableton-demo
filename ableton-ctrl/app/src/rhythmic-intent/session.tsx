@@ -28,7 +28,7 @@ import {
 } from './types.ts'
 import { useSoundEngine } from '../transport/session.tsx'
 import {
-  SOUND_VOICES,
+  parseVoice,
   type EngineStatus,
   type LoopEvent,
   type SoundVoiceId,
@@ -59,9 +59,9 @@ function parseTap(raw: unknown): Tap | null {
   const time = finiteIn(raw.time, 0, Number.MAX_SAFE_INTEGER)
   const velocity = finiteIn(raw.velocity, 0, 1)
   if (time === null || velocity === null) return null
-  const voice = SOUND_VOICES.includes(raw.voice as SoundVoiceId)
-    ? (raw.voice as SoundVoiceId)
-    : undefined
+  const voice = parseVoice(raw.voice)
+  // A sound that has since been removed (SCATTER) takes its taps with it.
+  if (voice === null) return null
   const character = finiteIn(raw.character, 0, 1) ?? undefined
   return { id: raw.id, time, velocity, voice, character }
 }

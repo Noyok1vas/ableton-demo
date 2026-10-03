@@ -16,49 +16,62 @@
  * for the same reason MarchVoiceId is: the *engine* resolves an identity to a
  * sound. Everything above only says which of the eight a tap was.
  *
- *   hit     — the rhythmic weight: a kick
- *   tick    — the lighter rhythmic event: a hi-hat
- *   splash  — the accent: a clap
- *   scatter — the atmosphere: a soft noise texture, not a drum hit
- *   snare   — the backbeat
- *   tom     — a pitched drum
- *   rim     — a short wooden click
- *   cymbal  — the long metal wash
- *
- * The last four are the drum-synth expansion: they sound, but their graphics
- * are still a placeholder (a diffuse dot) until each gets a mark of its own.
+ *   kick  — the weight: low, solid, struck
+ *   tom   — a pitched drum, solid to hollow as it is tuned up
+ *   snare — a drum head with the snares rattling around it
+ *   rim   — one hard, local click
+ *   clap  — two surfaces meeting
+ *   hat   — a constrained metal, closed to open
+ *   ride  — a struck metal that keeps on ringing
+ *   fx    — a resonator gone electric: drum-like to metallic
  *
  * A note with no identity plays the pad the PITCH mapping selects, which is
  * what a hardware pad's own taps do.
  */
-export type SoundVoiceId =
-  | 'hit'
-  | 'tick'
-  | 'splash'
-  | 'scatter'
-  | 'snare'
-  | 'tom'
-  | 'rim'
-  | 'cymbal'
+export type SoundVoiceId = 'kick' | 'tom' | 'snare' | 'rim' | 'clap' | 'hat' | 'ride' | 'fx'
 
 /** Every identity, in pad order — the order the Selector and the mixer list
-    them in: the original four across the top row, the expansion under them. */
+    them in. The top row is one family of drum bodies read left to right (a
+    solid mass, a hollowing shell, a head with snares, a single point); the
+    bottom row is everything that is not a drum skin. */
 export const SOUND_VOICES: readonly SoundVoiceId[] = [
-  'splash',
-  'hit',
-  'tick',
-  'scatter',
-  'snare',
+  'kick',
   'tom',
+  'snare',
   'rim',
-  'cymbal',
+  'clap',
+  'hat',
+  'ride',
+  'fx',
 ]
+
+/** Identities an older save can carry, mapped to the sound that took each one
+    over. SCATTER has no successor — it was a texture, not a drum — so a tap
+    that carries it is dropped rather than replayed as something it never was. */
+const LEGACY_VOICES: Record<string, SoundVoiceId | null> = {
+  hit: 'kick',
+  tick: 'hat',
+  splash: 'clap',
+  cymbal: 'ride',
+  scatter: null,
+}
+
+/**
+ * Read a stored identity: the identity itself, the one an older name became,
+ * `null` for an identity that no longer exists (drop what carried it), or
+ * `undefined` when there was none to read.
+ */
+export function parseVoice(raw: unknown): SoundVoiceId | null | undefined {
+  if (typeof raw !== 'string') return undefined
+  if (SOUND_VOICES.includes(raw as SoundVoiceId)) return raw as SoundVoiceId
+  return raw in LEGACY_VOICES ? LEGACY_VOICES[raw] : undefined
+}
 
 /**
  * One scheduled loop event: `pos` is 0..1 within the bar. `voice` is the sound
  * identity the tap was played with (absent means the selected pad), and
  * `character` is that identity's one axis at the moment of input, 0..1 —
- * absent for an identity that has none (SPLASH) and for a hardware pad's taps.
+ * absent for an identity that has none (RIM) and for a hardware pad's taps.
  *
  * Character travels WITH the event rather than being read from the Selector at
  * play time. That is the whole of the v0.3 model: an event is a snapshot, so a

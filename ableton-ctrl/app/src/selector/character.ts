@@ -1,55 +1,60 @@
 /**
  * Sound character — the second level of the Selector.
  *
- * Level one is identity: WHICH of the four sounds this is, chosen in the grid
+ * Level one is identity: WHICH of the eight sounds this is, chosen on the pads
  * and never edited. Level two is character: what that sound is currently LIKE,
- * one continuous 0..1 axis per identity, edited in the panel underneath.
+ * one continuous 0..1 axis per identity, edited on the character mod strip.
  *
  * One axis each, deliberately. The value of a prototype like this comes from
  * finding out whether a single number per sound is enough to carry perceptual
  * character through a recording — which it can only answer if there is exactly
  * one number to follow.
  *
- * SPLASH has no axis at all (the spec's `characterValue: null`): an accent that
- * is always the same accent is a useful control, because it gives the other
- * three something fixed to be measured against.
+ * Every axis is one move made twice: once in the sound (kit.ts) and once in
+ * the mark (patterns.ts), each picturing the other — a tom tuned up is a
+ * hollower drum, an opening hat is a ring letting go of its energy. RIM has no
+ * axis at all: a click that is always the same click gives the other seven
+ * something fixed to be measured against.
  */
 
 import type { SoundVoiceId } from '../transport/engine.ts'
 
 /** What one sound's character axis is, or null for a sound that has none. */
 export type CharacterAxis = {
-  /** Slider ends, low (0) then high (1). Shown verbatim in the panel. */
+  /** Axis ends, low (0) then high (1). */
   ends: [string, string]
   /** Where the axis rests before anyone touches it. */
   initial: number
 }
 
 export const CHARACTER: Record<SoundVoiceId, CharacterAxis | null> = {
-  // HIT's axis IS the existing Energy parameter, relabelled. Nothing new is
-  // synthesized for it: soft/hard drives the same loudness-and-brightness that
-  // ENERGY has always driven, which is exactly what hitting something harder
-  // does. See `resolveSoundVoice` in kit.ts.
-  hit: { ends: ['SOFT', 'HARD'], initial: 0.55 },
-  // Rounded hat → crisp hat, as one continuous move rather than two samples.
-  // Sonically it is the closed end of a hat travelling to the open end: the
-  // decay lengthens, the band darkens and a metallic wash rises underneath —
-  // an open hat is what "crisp" (all transient, ringing on) actually is.
-  // Visually the ring widens and breaks from a solid contour into separate
-  // marks — round becoming granular is the same idea seen instead of heard.
-  tick: { ends: ['ROUNDED', 'CRISPY'], initial: 0.75 },
-  // No axis in v0.3 — see the note above.
-  splash: null,
-  // Thin high noise → full wide noise. Still noise at every point of the
-  // travel: the band moves and widens, nothing pitched is ever introduced.
-  scatter: { ends: ['AIRY', 'DENSE'], initial: 0.45 },
-  // The drum-synth four. Each axis is the one thing a drum machine's own knob
-  // for that voice would most likely be: snappy, pitch, and crash-or-ride.
-  snare: { ends: ['TIGHT', 'LOOSE'], initial: 0.45 },
+  // KICK's axis IS the existing Energy parameter, relabelled: soft/hard drives
+  // the same loudness-and-brightness that ENERGY has always driven, which is
+  // exactly what striking something heavier does. The mass gathers and its
+  // edge firms up as it hardens. See `resolveSoundVoice` in kit.ts.
+  kick: { ends: ['SOFT', 'HARD'], initial: 0.55 },
+  // Tuned up, a drum is a smaller, tighter shell: struck solid wall to struck
+  // hollow wall. The disc empties from the centre as the pitch rises.
   tom: { ends: ['LOW', 'HIGH'], initial: 0.4 },
-  // Fixed, like SPLASH: a click is a click.
+  // The 909's SNAPPY knob: how much rattle rides on the head. At BODY the
+  // snares are off and the drum is all shell — it closes in on the tom; at
+  // SNAPPY the grains around the head swell and the noise takes over.
+  snare: { ends: ['BODY', 'SNAPPY'], initial: 0.6 },
+  // Fixed: a click is a click.
   rim: null,
-  cymbal: { ends: ['CRASH', 'RIDE'], initial: 0.3 },
+  // How much of the hands meets: a thin, light, bright clap at one end, a
+  // thick, full one at the other. The shells either side thicken with it.
+  clap: { ends: ['BRIGHT', 'FULL'], initial: 0.6 },
+  // Closed to open, one continuous move: the decay lengthens and the metal
+  // starts to ring. The ring of marks grows outward into rays — contained,
+  // then released.
+  hat: { ends: ['CLOSED', 'OPEN'], initial: 0.2 },
+  // The ride's tune: the metal plays higher and a little shorter. Its body
+  // hollows the way the tom's does; the trace of the strike stays.
+  ride: { ends: ['LOW', 'HIGH'], initial: 0.4 },
+  // From a plain tom-like resonator to a metallic, electronic one — see
+  // `fxModes` below, which both the sound and the mark are built from.
+  fx: { ends: ['DRUM', 'ELECTRIC'], initial: 0.25 },
 }
 
 /** Every identity's starting character, and the shape the session holds. */
@@ -61,26 +66,47 @@ export const DEFAULT_CHARACTER = Object.fromEntries(
 
 /**
  * The character an event fired right now would carry — `null` for an identity
- * with no axis, which is what gets recorded for a SPLASH.
+ * with no axis, which is what gets recorded for a RIM.
  */
 export function characterOf(id: SoundVoiceId, state: CharacterState): number | null {
   return CHARACTER[id] === null ? null : state[id]
 }
 
+const smoothstep = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * FX's two vibration modes, each 0..1, at character `c`.
+ *
+ * FX is a resonator acquiring vibration modes, so its axis is two of them
+ * rather than one amount. `ripple` is a fine, fast mode that arrives first and
+ * goes again; `lobes` is a coarse, slow one that arrives late and grows to the
+ * end. The mark draws them as ripples and as lobes on its ring; the sound
+ * plays them as two frequency modulators — a high ratio at low depth (a fine
+ * shimmer), then a low inharmonic ratio at high depth (the clang). Reading both
+ * from here is what makes the shape and the timbre the same change.
+ */
+export function fxModes(c: number): { ripple: number; lobes: number } {
+  const x = Math.min(1, Math.max(0, c))
+  return {
+    ripple: Math.pow(Math.sin(Math.PI * Math.min(1, x / 0.72)), 1.2),
+    lobes: Math.pow(smoothstep(0.3, 1, x), 1.2),
+  }
+}
+
 /** One line under each panel, saying what the axis actually does to the sound.
     Written per identity rather than generically, because "what moves when you
-    move this" is different in kind for each of the four. */
+    move this" is different in kind for each of the eight. */
 export const CHARACTER_NOTE: Record<SoundVoiceId, string> = {
-  hit: 'Soft to hard is how hard the kick is struck — quieter and duller at one end, louder and brighter with a deeper pitch drop at the other. It is the Energy parameter, under the name it deserves.',
-  tick: 'Rounded to crispy lengthens the hat and brings a metallic wash up underneath it — the closed end of a hat travelling to the open end. The ring widens as it goes and breaks from one contour into separate marks.',
-  splash:
-    'Splash is fixed in this version. An accent that is always the same accent gives the other three something to be measured against — its editable character comes later.',
-  scatter:
-    'Airy to dense moves the noise band down and widens it: thin and high at one end, full and occupied at the other. It stays noise the whole way — nothing pitched is introduced.',
+  kick: 'Soft to hard is how hard the kick is struck — quieter and duller at one end, louder and brighter with a deeper pitch drop at the other. The mass gathers and its edge firms up as it hardens.',
+  tom: 'Low to high is the tom\'s tune, from floor tom to rack tom, and a higher drum is a shorter one. The drum empties from the centre as it rises: a struck solid wall becomes a struck hollow one.',
   snare:
-    'Tight to loose lets the snares ring on: a short, body-forward crack at one end, a longer rattle that buries the shell at the other. Its mark is a placeholder for now.',
-  tom: 'Low to high is the tom\'s pitch, from floor tom to rack tom — and a higher drum is a shorter one. Its mark is a placeholder for now.',
-  rim: 'Rim is fixed in this version: one short, dry click. Its mark is a placeholder for now.',
-  cymbal:
-    'Crash to ride moves the metal from a long, darker wash to a shorter, brighter ping. Its mark is a placeholder for now.',
+    'Body to snappy is how much rattle rides on the head. At body the snares are off and it closes in on the tom; toward snappy the grains around the head swell as the noise takes over.',
+  rim: 'Rim is fixed: one short, hard click with almost no body — all of it at one point.',
+  clap: 'Bright to full is how much of the hands meets: a thin, crisp clap at one end, a thick, solid one at the other. The shells either side thicken with it.',
+  hat: 'Closed to open lengthens the hat and lets the metal ring. The ring of marks grows out into rays as it opens — contained, then released.',
+  ride: 'Low to high is the ride\'s tune: the metal sounds higher and a little shorter. The body hollows as it rises; the trace of the strike stays, because the ringing does.',
+  fx: 'Drum to electric adds vibration modes to a plain resonator — a fine shimmer first, then a metallic clang. The ring ripples, then breaks into lobes, as the timbre turns.',
 }

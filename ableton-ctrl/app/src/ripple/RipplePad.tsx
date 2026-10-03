@@ -195,14 +195,14 @@ export function RipplePad({ count }: RipplePadProps) {
     setCountRef.current?.(count)
   }, [count])
 
-  // Any TICK-identity tap — the Selector's mark, the TAP button, Space — plays
+  // Any HAT-identity tap — the Selector's mark, the TAP button, Space — plays
   // here too, with the repeat count that tap was fired with. This window keeps
-  // its ratchet: the Sound Visual's TICK mark is a single ring now, so the
-  // repeats live here alone until the gesture is taken further.
+  // its ratchet: the Sound Visual's HAT mark is a single ring, so the repeats
+  // live here alone until the gesture is taken further.
   useEffect(
     () =>
       onTap((tap) => {
-        if (tap.gesture !== 'tick') return
+        if (tap.gesture !== 'hat') return
         fireRef.current?.(tap.repeats)
       }),
     [onTap],
