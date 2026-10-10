@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "ableton-ctrl/app", "--", "--port", "5173", "--strictPort"],
       "port": 5173
+    },
+    {
+      "name": "geometry-explore",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5175", "--bind", "0.0.0.0", "--directory", "geometry-explore"],
+      "port": 5175
     }
   ]
 }
