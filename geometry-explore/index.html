@@ -1,0 +1,1639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drum Machine Block Study</title>
+<meta name="description" content="Real-scale 3D hardware layout study for a compact drum machine / synth: screen, 4×2 pad block, Shape control and mode buttons. Exports layered Rhino .3dm.">
+<style>
+:root {
+  --bg: #e7e7e5;
+  --panel: #f6f6f5;
+  --panel-2: #eeeeec;
+  --ink: #1d1d1c;
+  --ink-2: #474745;
+  --muted: #7b7b78;
+  --line: #dadad6;
+  --line-2: #c4c4bf;
+  --accent: #e8661c;
+  --err: #c8372f;
+  --warn: #b77a08;
+  --ok: #3b8350;
+  --info: #66727f;
+  --c-chassis: #cfcfcb;
+  --c-screen: #1d1e21;
+  --c-pads: #8b8b88;
+  --c-shape: #5f6164;
+  --c-buttons: #b3b3af;
+  --c-env: #3d7bd6;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 12px/1.35 var(--sans); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line-2); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+button:hover { border-color: #96968f; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+button.primary:hover { background: #000; }
+button:disabled { opacity: .45; cursor: default; }
+
+.app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 50px minmax(0, 1fr); height: 100vh; }
+.topbar { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.brand { display: flex; flex-direction: column; line-height: 1.2; margin-right: auto; min-width: 0; }
+.brand b { font-size: 13px; letter-spacing: .01em; }
+.brand span { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
+.icon-btn { padding: 5px 8px; min-width: 32px; }
+
+.main { display: grid; grid-template-columns: 348px minmax(0, 1fr); min-height: 0; }
+.panel { overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding-bottom: 40px; }
+.viewport { position: relative; min-width: 0; min-height: 0; overflow: hidden; container-type: inline-size; }
+#canvasHost { position: absolute; inset: 0; }
+#canvasHost canvas { display: block; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+
+/* ---------- panel sections ---------- */
+.sec { border-bottom: 1px solid var(--line); }
+.sec > header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; user-select: none; }
+.sec > header h2 { font-size: 12px; font-weight: 650; margin: 0; letter-spacing: .01em; }
+.sec > header code { font: 10px var(--mono); color: var(--muted); background: var(--panel-2); border-radius: 4px; padding: 1px 5px; }
+.sec > header .chev { margin-left: auto; color: var(--muted); transition: transform .15s; }
+.sec.collapsed > header .chev { transform: rotate(-90deg); }
+.sec.collapsed > .body { display: none; }
+.sec.selected > header { background: #fff3ea; box-shadow: inset 3px 0 0 var(--accent); }
+.sec.flash > header { animation: flash .9s ease-out; }
+@keyframes flash { from { background: #ffd9bf; } }
+.swatch { width: 10px; height: 10px; border-radius: 3px; border: 1px solid rgba(0,0,0,.25); flex: none; }
+.sw-chassis { background: var(--c-chassis); } .sw-screen { background: var(--c-screen); } .sw-pads { background: var(--c-pads); }
+.sw-shape { background: var(--c-shape); } .sw-buttons { background: var(--c-buttons); } .sw-rules { background: #fff; border-style: dashed; }
+.sw-presets { background: linear-gradient(135deg, var(--c-chassis) 50%, var(--c-screen) 50%); } .sw-export { background: var(--c-env); }
+.sec > .body { padding: 0 12px 12px; }
+
+.row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 58px 18px; align-items: center; gap: 6px; min-height: 26px; }
+.row[hidden] { display: none; }
+.row > label { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row > label[title] { text-decoration: underline dotted #b5b5b0; text-underline-offset: 3px; cursor: help; }
+.row .unit { color: var(--muted); font: 10px var(--mono); }
+.row.disabled > label { color: var(--muted); }
+.row input[type=number], .row input[type=text] { font: 11px var(--mono); width: 100%; padding: 3px 5px; border: 1px solid var(--line-2); border-radius: 5px; background: #fff; color: var(--ink); text-align: right; }
+.row input[type=text] { text-align: left; }
+.row input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.row input[type=number]::-webkit-inner-spin-button, .row input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.row input:disabled { background: var(--panel-2); color: var(--muted); }
+.row.wide { grid-template-columns: 112px minmax(0, 1fr); }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 3px; background: var(--line-2); border-radius: 2px; }
+input[type=range]::-moz-range-track { height: 3px; background: var(--line-2); border-radius: 2px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; margin-top: -5px; border-radius: 50%; background: #fff; border: 1.5px solid #5d5d59; }
+input[type=range]::-moz-range-thumb { width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 1.5px solid #5d5d59; }
+input[type=range]:disabled { opacity: .4; cursor: default; }
+.seg { display: flex; flex-wrap: wrap; gap: 3px; }
+.seg button { padding: 3px 7px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border-radius: 5px; background: #fff; }
+.seg button svg { width: 14px; height: 14px; fill: #8b8b88; stroke: #4d4d4a; stroke-width: 1.2; }
+.seg button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.seg button.on svg { fill: #cfcfcb; stroke: #fff; }
+.seg-row { grid-template-columns: 112px minmax(0, 1fr); padding: 2px 0; }
+.subhead { margin: 10px 0 2px; font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.subhead::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.info { margin-top: 8px; padding: 6px 8px; background: var(--panel-2); border-radius: 6px; font: 10.5px/1.5 var(--mono); color: var(--ink-2); }
+.info b { color: var(--ink); font-weight: 600; }
+.info .note { color: var(--muted); font-family: var(--sans); font-size: 10.5px; }
+.actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.actions button { font-size: 11px; padding: 3px 8px; }
+.check { display: flex; align-items: center; gap: 6px; min-height: 24px; color: var(--ink-2); cursor: pointer; }
+.check input { margin: 0; accent-color: var(--ink); }
+
+.presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.preset { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 5px; text-align: left; white-space: normal; border-radius: 8px; }
+.preset .thumb { display: block; background: #fbfbfa; border-radius: 5px; }
+.preset .thumb svg { display: block; width: 100%; height: 62px; }
+.preset .pname { font-size: 10.5px; line-height: 1.2; color: var(--ink-2); min-height: 2.4em; }
+.preset.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.preset.on .pname { color: var(--ink); font-weight: 600; }
+.preset.mod .pname::after { content: " · edited"; color: var(--accent); font-weight: 500; }
+.t-ch { fill: #dcdcd9; stroke: #8f8f8b; } .t-gl { fill: #202124; } .t-pad { fill: #8e8e8b; } .t-strip { fill: #5d5f62; }
+.t-btn { fill: #b9b9b5; } .t-slot { fill: #2c2c2c; } .t-cap { fill: #4e4e4c; }
+.thumb svg * { vector-effect: non-scaling-stroke; stroke-width: 1px; }
+
+/* ---------- viewport overlays ---------- */
+.ov { position: absolute; z-index: 3; }
+.status { top: 10px; left: 12px; font: 11px/1.45 var(--mono); color: var(--ink-2); background: rgba(247,247,246,.88); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; pointer-events: none; max-width: calc(100% - 340px); }
+.status b { font-family: var(--sans); color: var(--ink); font-weight: 650; }
+.status .edited { color: var(--accent); font-family: var(--sans); }
+.checks { top: 10px; right: 12px; width: 310px; max-height: calc(100% - 80px); overflow: auto; background: rgba(250,250,249,.95); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.checks .ch-head { display: flex; align-items: center; gap: 7px; padding: 7px 10px; font-weight: 650; cursor: pointer; user-select: none; position: sticky; top: 0; background: inherit; }
+.checks .ch-head .count { margin-left: auto; font: 10.5px var(--mono); color: var(--muted); font-weight: 400; }
+.checks ul { list-style: none; margin: 0; padding: 0 6px 6px; }
+.checks.closed ul { display: none; }
+.checks li { display: flex; gap: 7px; padding: 4px 4px; border-radius: 5px; color: var(--ink-2); line-height: 1.35; cursor: default; }
+.checks li[data-group] { cursor: pointer; }
+.checks li[data-group]:hover { background: #f0f0ee; }
+.dotc { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 4px; background: var(--ok); }
+.lv-error .dotc, .dotc.error { background: var(--err); }
+.lv-warn .dotc, .dotc.warn { background: var(--warn); }
+.lv-info .dotc, .dotc.info { background: #a8b0b9; }
+.viewbar { left: 12px; bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; max-width: calc(100% - 24px); }
+.vgroup { display: flex; background: rgba(250,250,249,.95); border: 1px solid var(--line-2); border-radius: 7px; overflow: hidden; }
+.vgroup button { border: 0; border-radius: 0; background: transparent; padding: 5px 9px; font-size: 11px; }
+.vgroup button + button { border-left: 1px solid var(--line); }
+.vgroup button.on { background: var(--ink); color: #fff; }
+.vgroup select { font: 11px var(--sans); border: 0; background: transparent; padding: 0 6px; color: var(--ink); }
+.vgroup .lab { padding: 5px 0 5px 8px; color: var(--muted); font-size: 11px; }
+.hint { right: 12px; bottom: 14px; color: var(--muted); font-size: 11px; pointer-events: none; text-align: right; line-height: 1.5; }
+.toast { left: 50%; top: 12px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 7px 12px; border-radius: 7px; font-size: 12px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 80%; }
+.toast.show { opacity: 1; }
+.toast.err { background: var(--err); }
+.boot { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-2); text-align: center; padding: 24px; z-index: 20; background: var(--bg); }
+.boot[hidden] { display: none; }
+
+/* 3D labels */
+.lbl { font: 600 9px/1 var(--mono); color: #2b2b29; background: rgba(255,255,255,.82); padding: 2px 4px; border-radius: 3px; letter-spacing: .04em; white-space: nowrap; }
+.lbl.dark { color: #ececea; background: rgba(18,18,20,.55); }
+.lbl.num { background: none; color: rgba(30,30,28,.62); font-size: 9px; padding: 0; }
+.lbl.axis { background: none; font-size: 9px; padding: 0; }
+.dim { font: 600 10px/1 var(--mono); color: #3a3a37; background: rgba(231,231,229,.92); padding: 2px 4px; border-radius: 3px; white-space: nowrap; }
+
+@container (max-width: 1240px) { .hint { display: none; } }
+@container (max-width: 760px) { .status { display: none; } }
+@media (max-width: 900px) {
+  body { overflow: auto; }
+  .app { height: auto; min-height: 100vh; grid-template-rows: auto auto; }
+  .topbar { flex-wrap: wrap; padding: 8px 12px; height: auto; }
+  .brand { flex-basis: 100%; }
+  .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 62vh auto; }
+  .viewport { order: -1; border-bottom: 1px solid var(--line); }
+  .panel { border-right: 0; overflow: visible; }
+  .checks { width: min(300px, calc(100% - 24px)); max-height: 40%; }
+}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <b>Drum Machine Block Study</b>
+      <span>Screen · 4×2 pads · Shape control · mode buttons — real scale, millimetres</span>
+    </div>
+    <button id="btnUndo" class="icon-btn" title="Undo (Ctrl/⌘ Z)" aria-label="Undo">↶</button>
+    <button id="btnRedo" class="icon-btn" title="Redo (Ctrl/⌘ ⇧ Z)" aria-label="Redo">↷</button>
+    <span class="sep"></span>
+    <button id="btnReset" title="Restore the default layout">Reset</button>
+    <button id="btnLoad" title="Load a configuration .json">Load JSON</button>
+    <button id="btnSave" title="Save the current configuration as .json">Save JSON</button>
+    <button id="btnExport" class="primary" title="Export layered solids to Rhino (.3dm, millimetres)">Export .3DM</button>
+    <input type="file" id="fileInput" accept=".json,application/json" hidden>
+  </header>
+  <div class="main">
+    <aside class="panel" id="panel" aria-label="Parameters"></aside>
+    <section class="viewport" id="viewport">
+      <div id="canvasHost"></div>
+      <div class="ov status" id="status"></div>
+      <div class="ov checks" id="checks"></div>
+      <div class="ov viewbar" id="viewbar">
+        <div class="vgroup" id="viewBtns">
+          <button data-view="iso" title="3/4 view">Iso</button>
+          <button data-view="top" title="Plan view">Top</button>
+          <button data-view="front" title="Front elevation">Front</button>
+          <button data-view="right" title="Right elevation">Right</button>
+        </div>
+        <div class="vgroup">
+          <button id="btnProj" title="Toggle perspective / orthographic">Persp</button>
+          <button id="btnFit" title="Frame the chassis">Fit</button>
+        </div>
+        <div class="vgroup" id="toggles">
+          <button data-pref="xray" title="See-through chassis to inspect mechanical envelopes">X-ray</button>
+          <button data-pref="envelopes" title="Show mechanical envelopes (under-panel volumes)">Envelopes</button>
+          <button data-pref="cutouts" title="Show panel cut-out curves">Cut-outs</button>
+          <button data-pref="dims" title="Show chassis dimensions">Dims</button>
+          <button data-pref="labels" title="Show labels">Labels</button>
+          <button data-pref="grid" title="Show 10 mm ground grid">Grid</button>
+        </div>
+        <div class="vgroup">
+          <span class="lab">Snap</span>
+          <select id="snapSel" title="Drag snapping">
+            <option value="0.5">0.5 mm</option><option value="1">1 mm</option><option value="2.5">2.5 mm</option><option value="5">5 mm</option><option value="10">10 mm</option>
+          </select>
+        </div>
+      </div>
+      <div class="ov hint">Drag a part to move it · drag background to orbit · right-drag to pan · wheel to zoom<br>Arrow keys nudge the selected part 1 mm (⇧ 10 mm) · Esc deselects</div>
+      <div class="ov toast" id="toast"></div>
+      <div class="boot" id="bootMsg" hidden>
+        <div><b>The 3D viewer could not start.</b><br>This page loads three.js and rhino3dm.js from cdn.jsdelivr.net and needs WebGL.<br>Check your connection, then reload.</div>
+      </div>
+    </section>
+  </div>
+</div>
+<script>
+  setTimeout(function () { if (!window.__dbsBooted) document.getElementById('bootMsg').hidden = false; }, 12000);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// Model space is Rhino space: X = width (left → right), Y = depth (front → back), Z = up, millimetres.
+THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+
+const RHINO3DM_URL = 'https://cdn.jsdelivr.net/npm/rhino3dm@8.17.0/rhino3dm.module.min.js';
+const STORE_KEY = 'drum-block-study.config.v1';
+const PREFS_KEY = 'drum-block-study.prefs.v1';
+const FORMAT_ID = 'drum-block-study';
+
+/* =====================================================================
+   1. Utilities
+   ===================================================================== */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const deg = d => d * Math.PI / 180;
+const clone = o => JSON.parse(JSON.stringify(o));
+const round = (v, s = 0.5) => Math.round(v / s) * s;
+const range = n => Array.from({ length: n }, (_, i) => i);
+function fmt(v, d = 1) {
+  const s = (+v).toFixed(d);
+  return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s;
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+function h(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+// Merge only keys that exist in `base` and match its type, so loaded files cannot change the schema.
+function deepMerge(base, over) {
+  if (!over || typeof over !== 'object') return base;
+  for (const k of Object.keys(base)) {
+    if (!(k in over)) continue;
+    const b = base[k], o = over[k];
+    if (b && typeof b === 'object') { if (o && typeof o === 'object' && !Array.isArray(o)) deepMerge(b, o); }
+    else if (typeof o === typeof b) base[k] = o;
+  }
+  return base;
+}
+function loadJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
+function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable */ } }
+
+/* =====================================================================
+   2. Configuration, presets
+   All dimensions in mm. Component x / y are centre positions relative to
+   the chassis centre (+Y = towards the back of the device).
+   ===================================================================== */
+const DEFAULT_CONFIG = {
+  version: 1,
+  units: 'mm',
+  meta: { preset: 'screen-above-pads' },
+  chassis: { width: 230, depth: 240, height: 32, cornerRadius: 14, wall: 2.5, edgeMargin: 8 },
+  screen: { size: 110, bezel: 4, cornerRadius: 3, x: -12.5, y: 45, rise: 0.8, moduleMargin: 6, moduleDepth: 6 },
+  pads: {
+    x: 0, y: -75, orientation: 'landscape',
+    padW: 32, padH: 32, spacing: 5, capShape: 'rounded', cornerRadius: 4, rise: 3.5,
+    clearance: 0.5, flange: 2.5, depth: 8,
+  },
+  shape: {
+    type: 'strip', x: 65.5, y: 45, angle: 90, length: 80, width: 12,
+    cornerRadius: 6, rise: 0.4,
+    capLength: 12, capHeight: 9, slotWidth: 3, value: 0.5,
+    envEnd: 6, envWidth: 18, envDepth: 3,
+  },
+  buttons: {
+    labels: 'PLAY, REC, METRO, UNDO, SHIFT', x: 0, y: -27, arrangement: 'row', columns: 3,
+    w: 12, h: 12, capShape: 'rounded', cornerRadius: 2, spacing: 6, rise: 2,
+    clearance: 0.4, envMargin: 2, envDepth: 6,
+  },
+  rules: { minGap: 4, minWeb: 1.2 },
+};
+
+const PRESETS = [
+  {
+    id: 'screen-above-pads', name: 'Screen above pads',
+    note: 'Portrait block: screen + vertical touch strip over the 4×2 pads, transport row between',
+    over: {},
+  },
+  {
+    id: 'screen-left', name: 'Screen left / pads right',
+    note: 'Landscape: screen left; pads, horizontal strip and transport row stacked on the right',
+    over: {
+      chassis: { width: 300, depth: 160, height: 30, cornerRadius: 12 },
+      screen: { x: -78, y: 0 },
+      pads: { x: 66, y: 24 },
+      shape: { x: 66, y: -29, angle: 0, length: 100 },
+      buttons: { x: 66, y: -53 },
+    },
+  },
+  {
+    id: 'pads-left', name: 'Pads left / screen right',
+    note: 'Mirror of “screen left”: performance surface under the left hand',
+    over: {
+      chassis: { width: 300, depth: 160, height: 30, cornerRadius: 12 },
+      screen: { x: 78, y: 0 },
+      pads: { x: -66, y: 24 },
+      shape: { x: -66, y: -29, angle: 0, length: 100 },
+      buttons: { x: -66, y: -53 },
+    },
+  },
+  {
+    id: 'compact-stacked', name: 'Compact stacked',
+    note: 'Smallest footprint: 100 mm screen, strip and button column side by side, 28 mm pads below',
+    over: {
+      chassis: { width: 180, depth: 200, height: 24, cornerRadius: 10 },
+      screen: { size: 100, bezel: 3, cornerRadius: 2, x: -21, y: 37, moduleMargin: 5 },
+      pads: { x: 0, y: -56.5, padW: 28, padH: 28, spacing: 4, cornerRadius: 3.5 },
+      shape: { x: 48, y: 37, angle: 90, length: 80 },
+      buttons: { x: 69, y: 37, arrangement: 'column', w: 10, h: 10, cornerRadius: 2, spacing: 5 },
+    },
+  },
+  {
+    id: 'asymmetric', name: 'Asymmetric',
+    note: 'Large screen top-left, vertical fader as divider, pad block rotated to 2×4 on the right',
+    over: {
+      chassis: { width: 260, depth: 190, height: 34, cornerRadius: 18 },
+      screen: { size: 120, bezel: 4, cornerRadius: 4, x: -52, y: 19 },
+      pads: { x: 85, y: 15, orientation: 'portrait', padW: 30, padH: 30, spacing: 5, capShape: 'soft', cornerRadius: 9.5 },
+      shape: {
+        type: 'fader', x: 32, y: 19, angle: 90, length: 90, width: 14,
+        capLength: 14, capHeight: 10, slotWidth: 3, value: 0.35, envEnd: 7.5, envWidth: 10, envDepth: 18,
+      },
+      buttons: { x: -52, y: -65, capShape: 'circle', w: 12, h: 12, spacing: 6 },
+    },
+  },
+];
+
+function presetConfig(p) {
+  const c = deepMerge(clone(DEFAULT_CONFIG), clone(p.over));
+  c.meta.preset = p.id;
+  return c;
+}
+
+// Reference data behind the default ranges and envelope defaults (see README for sources).
+const SHAPE_TYPE_DEFAULTS = {
+  // Bourns PTA60xx: 60 mm travel, 75 mm body (= travel + 2 × 7.5), 9 mm wide; lever + body + PCB ≈ 18 mm below panel.
+  fader: { envEnd: 7.5, envWidth: 10, envDepth: 18 },
+  // Membrane / capacitive strip: sensor + PCB + adhesive ≈ 3 mm; ~6 mm per end for tail / lamination margin.
+  strip: { envEnd: 6, envDepth: 3 },
+};
+const STOCK_FADER_TRAVEL = [20, 30, 45, 60, 100];
+const CAP_RADIUS_FACTOR = { rounded: 0.125, soft: 0.32 };
+
+/* =====================================================================
+   3. Geometry model — one engine-neutral description used by the 3D view,
+      the interference checks and the Rhino exporter (so they always agree).
+   ===================================================================== */
+function rrect(cx, cy, w, h, r = 0, angle = 0) {
+  w = Math.max(w, 0.01); h = Math.max(h, 0.01);
+  return { cx, cy, w, h, r: clamp(r, 0, Math.min(w, h) / 2), angle };
+}
+const inflate = (p, d) => rrect(p.cx, p.cy, p.w + 2 * d, p.h + 2 * d, p.r + d, p.angle);
+const isCircle = p => Math.abs(p.w - p.h) < 1e-6 && p.r >= p.w / 2 - 1e-6;
+function rot(x, y, a) { const c = Math.cos(a), s = Math.sin(a); return [x * c - y * s, x * s + y * c]; }
+
+// Effective cap outline for a cap-geometry choice.
+function capGeom(shape, w, h, r) {
+  if (shape === 'circle') return { w, h: w, r: w / 2 };
+  const m = Math.min(w, h) / 2;
+  if (shape === 'square') return { w, h, r: 0 };
+  if (shape === 'pill') return { w, h, r: m };
+  return { w, h, r: Math.min(r, m) };
+}
+
+function parseLabels(text) {
+  let list = String(text || '').split(/[,\n;]+/).map(s => s.trim()).filter(Boolean).slice(0, 10);
+  if (!list.length) list = ['PLAY', 'REC', 'METRO', 'UNDO', 'SHIFT'];
+  const seen = {};
+  return list.map(t => {
+    let key = t.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'BTN';
+    if (seen[key]) key += '_' + (++seen[key]); else seen[key] = 1;
+    return { text: t, key };
+  });
+}
+
+function buttonOffsets(B, n, cap) {
+  const px = cap.w + B.spacing, py = cap.h + B.spacing;
+  if (B.arrangement === 'column') return range(n).map(i => [0, ((n - 1) / 2 - i) * py]);
+  if (B.arrangement === 'grid') {
+    const cols = clamp(Math.round(B.columns), 1, n), rows = Math.ceil(n / cols);
+    return range(n).map(i => [((i % cols) - (cols - 1) / 2) * px, ((rows - 1) / 2 - Math.floor(i / cols)) * py]);
+  }
+  return range(n).map(i => [(i - (n - 1) / 2) * px, 0]);
+}
+
+/*
+  Part fields:
+    group   chassis | screen | pads | shape | buttons      (selection / dragging / checks)
+    layer   Rhino parent layer; sub = optional sub-layer
+    kind    solid (extruded profile z0→z1) | outline (closed curve at z) | line (a→b)
+    style   drawing hint for the 3D view
+    foot    'top'  = visible footprint on the panel (checked against edge margin / min gap)
+            'under'= mechanical envelope below the panel (checked against wall / collisions)
+*/
+function buildModel(cfg) {
+  const parts = [];
+  const add = o => (parts.push(o), o);
+  const C = cfg.chassis, H = C.height;
+  const R = Math.min(C.cornerRadius, Math.min(C.width, C.depth) / 2);
+  add({ group: 'chassis', layer: 'CHASSIS', name: 'CHASSIS_BODY', kind: 'solid', style: 'chassis', prof: rrect(0, 0, C.width, C.depth, R), z0: 0, z1: H });
+
+  // Screen: cover glass (active area + bezel) on the panel, display module envelope below.
+  const S = cfg.screen, g = S.size + 2 * S.bezel;
+  const glass = rrect(S.x, S.y, g, g, S.cornerRadius);
+  add({ group: 'screen', layer: 'SCREEN', name: 'SCREEN_GLASS', kind: 'solid', style: 'glass', prof: glass, z0: H, z1: H + S.rise });
+  add({ group: 'screen', layer: 'SCREEN', sub: 'ACTIVE_AREA', name: 'SCREEN_ACTIVE_AREA', kind: 'outline', style: 'active', prof: rrect(S.x, S.y, S.size, S.size, Math.max(0, S.cornerRadius - S.bezel)), z: H + S.rise });
+  add({ group: 'screen', layer: 'SCREEN', sub: 'PANEL_OPENINGS', name: 'SCREEN_OPENING', kind: 'outline', style: 'cut', prof: inflate(glass, 0.3), z: H, foot: 'top' });
+  const mod = S.size + 2 * S.moduleMargin;
+  add({ group: 'screen', layer: 'SCREEN', sub: 'MECH_ENVELOPE', name: 'SCREEN_MODULE_ENVELOPE', kind: 'solid', style: 'env', prof: rrect(S.x, S.y, mod, mod, 1), z0: H - S.moduleDepth, z1: H, foot: 'under' });
+
+  // Pads: fixed 4 × 2 block; portrait rotates the whole block 90°.
+  // Numbering is MPC-style in either orientation: pad 1 front-left, then left → right, front → back.
+  const P = cfg.pads, pc = capGeom(P.capShape, P.padW, P.padH, P.cornerRadius);
+  const pa = P.orientation === 'portrait' ? Math.PI / 2 : 0;
+  const ppx = pc.w + P.spacing, ppy = pc.h + P.spacing;
+  const padPos = [];
+  for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) padPos.push(rot((col - 1.5) * ppx, (row - 0.5) * ppy, pa));
+  padPos.sort((a, b) => (Math.abs(a[1] - b[1]) > 1e-6 ? a[1] - b[1] : a[0] - b[0]));
+  padPos.forEach(([dx, dy], i) => {
+    const n = i + 1, id = String(n).padStart(2, '0');
+    const prof = rrect(P.x + dx, P.y + dy, pc.w, pc.h, pc.r, pa);
+    add({ group: 'pads', layer: 'DRUM_PADS', name: `PAD_${id}`, kind: 'solid', style: 'pad', prof, z0: H, z1: H + P.rise, label: String(n) });
+    add({ group: 'pads', layer: 'DRUM_PADS', sub: 'PANEL_OPENINGS', name: `PAD_${id}_OPENING`, kind: 'outline', style: 'cut', prof: inflate(prof, P.clearance), z: H, foot: 'top' });
+    add({ group: 'pads', layer: 'DRUM_PADS', sub: 'MECH_ENVELOPE', name: `PAD_${id}_FOOTPRINT`, kind: 'solid', style: 'env', prof: inflate(prof, P.flange), z0: H - P.depth, z1: H, foot: 'under' });
+  });
+
+  // Shape control: visible / travel length vs. larger mechanical envelope below.
+  const K = cfg.shape, ka = deg(K.angle), ux = Math.cos(ka), uy = Math.sin(ka);
+  const L = K.length, W = K.width;
+  const zt = K.type === 'fader' ? H : H + K.rise;
+  if (K.type === 'fader') {
+    add({ group: 'shape', layer: 'SHAPE_CONTROL', sub: 'PANEL_OPENINGS', name: 'SHAPE_FADER_SLOT', kind: 'outline', style: 'cut', prof: rrect(K.x, K.y, L + K.slotWidth, K.slotWidth, K.slotWidth / 2, ka), z: H });
+    const t = (clamp(K.value, 0, 1) - 0.5) * L;
+    add({ group: 'shape', layer: 'SHAPE_CONTROL', name: 'SHAPE_FADER_CAP', kind: 'solid', style: 'faderCap', prof: rrect(K.x + ux * t, K.y + uy * t, K.capLength, W, Math.min(2, W / 2), ka), z0: H, z1: H + K.capHeight });
+    add({ group: 'shape', layer: 'SHAPE_CONTROL', sub: 'TRAVEL', name: 'SHAPE_CAP_SWEEP', kind: 'outline', style: 'sweep', prof: rrect(K.x, K.y, L + K.capLength, W, Math.min(2, W / 2), ka), z: H, foot: 'top' });
+  } else {
+    const strip = rrect(K.x, K.y, L, W, K.cornerRadius, ka);
+    add({ group: 'shape', layer: 'SHAPE_CONTROL', name: 'SHAPE_TOUCH_STRIP', kind: 'solid', style: 'strip', prof: strip, z0: H, z1: H + K.rise });
+    add({ group: 'shape', layer: 'SHAPE_CONTROL', sub: 'PANEL_OPENINGS', name: 'SHAPE_STRIP_OPENING', kind: 'outline', style: 'cut', prof: inflate(strip, 0.4), z: H, foot: 'top' });
+  }
+  add({
+    group: 'shape', layer: 'SHAPE_CONTROL', sub: 'TRAVEL', name: K.type === 'fader' ? 'SHAPE_TRAVEL_AXIS' : 'SHAPE_ACTIVE_LENGTH', kind: 'line', style: 'travel',
+    a: [K.x - ux * L / 2, K.y - uy * L / 2, zt], b: [K.x + ux * L / 2, K.y + uy * L / 2, zt],
+  });
+  add({ group: 'shape', layer: 'SHAPE_CONTROL', sub: 'MECH_ENVELOPE', name: K.type === 'fader' ? 'SHAPE_FADER_BODY_ENVELOPE' : 'SHAPE_SENSOR_ENVELOPE', kind: 'solid', style: 'env', prof: rrect(K.x, K.y, L + 2 * K.envEnd, K.envWidth, 0.5, ka), z0: H - K.envDepth, z1: H, foot: 'under' });
+
+  // Mode / transport buttons.
+  const B = cfg.buttons, labels = parseLabels(B.labels);
+  const bc = capGeom(B.capShape, B.w, B.h, B.cornerRadius);
+  buttonOffsets(B, labels.length, bc).forEach(([dx, dy], i) => {
+    const lab = labels[i], nm = `BTN_${String(i + 1).padStart(2, '0')}_${lab.key}`;
+    const prof = rrect(B.x + dx, B.y + dy, bc.w, bc.h, bc.r);
+    add({ group: 'buttons', layer: 'MODE_BUTTONS', name: nm, kind: 'solid', style: 'button', prof, z0: H, z1: H + B.rise, label: lab.text });
+    add({ group: 'buttons', layer: 'MODE_BUTTONS', sub: 'PANEL_OPENINGS', name: `${nm}_OPENING`, kind: 'outline', style: 'cut', prof: inflate(prof, B.clearance), z: H, foot: 'top' });
+    add({ group: 'buttons', layer: 'MODE_BUTTONS', sub: 'MECH_ENVELOPE', name: `${nm}_SWITCH_ENVELOPE`, kind: 'solid', style: 'env', prof: rrect(prof.cx, prof.cy, bc.w + 2 * B.envMargin, bc.h + 2 * B.envMargin, 1), z0: H - B.envDepth, z1: H, foot: 'under' });
+  });
+
+  return { parts, labels };
+}
+
+// Polygon approximation of a rounded rectangle (CCW). Used for three.js shapes, checks and thumbnails.
+function segFor(r) { return r < 1e-6 ? 0 : clamp(Math.ceil(r / 1.5) + 3, 4, 16); }
+function localPts(w, h, r) {
+  const hw = w / 2, hh = h / 2, seg = segFor(r), pts = [];
+  const corners = [[hw - r, -hh + r, -Math.PI / 2], [hw - r, hh - r, 0], [-hw + r, hh - r, Math.PI / 2], [-hw + r, -hh + r, Math.PI]];
+  for (const [cx, cy, a0] of corners) {
+    if (!seg) { pts.push([cx, cy]); continue; }
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 + (Math.PI / 2) * (i / seg);
+      const p = [cx + r * Math.cos(a), cy + r * Math.sin(a)], q = pts[pts.length - 1];
+      if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-7) pts.push(p);
+    }
+  }
+  const f = pts[0], l = pts[pts.length - 1];
+  if (pts.length > 1 && Math.hypot(f[0] - l[0], f[1] - l[1]) < 1e-7) pts.pop();
+  return pts;
+}
+function worldPts(p) {
+  const c = Math.cos(p.angle), s = Math.sin(p.angle);
+  return localPts(p.w, p.h, p.r).map(([x, y]) => [p.cx + x * c - y * s, p.cy + x * s + y * c]);
+}
+function polyArea(pts) { let a = 0; for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; }
+
+/* =====================================================================
+   4. Interference / clearance checks
+   ===================================================================== */
+const GROUPS = ['screen', 'pads', 'shape', 'buttons'];
+const GROUP_LABEL = { chassis: 'Chassis', screen: 'Screen', pads: 'Pad block', shape: 'Shape control', buttons: 'Mode buttons' };
+
+function overlaps(A, B) { // separating-axis test, convex polygons; touching counts as clear
+  for (const P of [A, B]) for (let i = 0; i < P.length; i++) {
+    const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length];
+    const nx = y2 - y1, ny = x1 - x2;
+    if (Math.abs(nx) + Math.abs(ny) < 1e-12) continue;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, y] of A) { const d = x * nx + y * ny; if (d < a0) a0 = d; if (d > a1) a1 = d; }
+    for (const [x, y] of B) { const d = x * nx + y * ny; if (d < b0) b0 = d; if (d > b1) b1 = d; }
+    const eps = 1e-9 * Math.hypot(nx, ny);
+    if (a1 <= b0 + eps || b1 <= a0 + eps) return false;
+  }
+  return true;
+}
+function segDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy;
+  const t = L ? clamp(((px - x1) * dx + (py - y1) * dy) / L, 0, 1) : 0;
+  return Math.hypot(px - x1 - t * dx, py - y1 - t * dy);
+}
+function polyDist(A, B) { // -1 when overlapping
+  if (overlaps(A, B)) return -1;
+  let d = Infinity;
+  for (const [P, Q] of [[A, B], [B, A]]) for (const [x, y] of P) for (let i = 0; i < Q.length; i++) {
+    const [x1, y1] = Q[i], [x2, y2] = Q[(i + 1) % Q.length];
+    d = Math.min(d, segDist(x, y, x1, y1, x2, y2));
+  }
+  return d;
+}
+// Signed distance to a centred rounded rectangle (negative inside).
+function sdRoundRect(x, y, hw, hh, r) {
+  const qx = Math.abs(x) - (hw - r), qy = Math.abs(y) - (hh - r);
+  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+}
+
+function runChecks(cfg, model) {
+  const issues = [];
+  const push = (level, groups, text, code) => issues.push({ level, groups, text, code });
+  const C = cfg.chassis, H = C.height, R = Math.min(C.cornerRadius, Math.min(C.width, C.depth) / 2);
+  const polys = { top: {}, under: {} };
+  for (const p of model.parts) if (p.foot) (polys[p.foot][p.group] ??= []).push(worldPts(p.prof));
+
+  // Containment: visible parts vs. edge margin, envelopes vs. wall thickness.
+  for (const [plane, margin, what] of [['top', C.edgeMargin, 'visible footprint'], ['under', C.wall, 'mechanical envelope']]) {
+    for (const g of GROUPS) {
+      const list = polys[plane][g]; if (!list) continue;
+      let clear = Infinity;
+      for (const poly of list) for (const [x, y] of poly) clear = Math.min(clear, -sdRoundRect(x, y, C.width / 2, C.depth / 2, R));
+      if (clear < 0) push('error', [g], `${GROUP_LABEL[g]} ${what} extends ${fmt(-clear)} mm past the chassis edge`, 'edge');
+      else if (clear < margin - 0.05) push('warn', [g], `${GROUP_LABEL[g]} ${what} is ${fmt(clear)} mm from the chassis edge (min ${fmt(margin)})`, 'edge');
+    }
+  }
+
+  // Group vs. group: visible surfaces need a minimum gap, envelopes must not collide.
+  for (let i = 0; i < GROUPS.length; i++) for (let j = i + 1; j < GROUPS.length; j++) {
+    const a = GROUPS[i], b = GROUPS[j];
+    for (const plane of ['top', 'under']) {
+      const A = polys[plane][a], B = polys[plane][b]; if (!A || !B) continue;
+      let d = Infinity;
+      search: for (const pa of A) for (const pb of B) { const dd = polyDist(pa, pb); if (dd < d) d = dd; if (dd < 0) break search; }
+      if (plane === 'top') {
+        if (d < 0) push('error', [a, b], `${GROUP_LABEL[a]} overlaps ${GROUP_LABEL[b]} on the panel`, 'overlap');
+        else if (d < cfg.rules.minGap - 0.05) push('warn', [a, b], `${GROUP_LABEL[a]} ↔ ${GROUP_LABEL[b]}: ${fmt(d)} mm gap on the panel (min ${fmt(cfg.rules.minGap)})`, 'gap');
+      } else if (d < 0) push('error', [a, b], `${GROUP_LABEL[a]} and ${GROUP_LABEL[b]} mechanical envelopes collide under the panel`, 'collide');
+    }
+  }
+
+  // Depth below the panel vs. chassis height.
+  const depth = { screen: cfg.screen.moduleDepth, pads: cfg.pads.depth, shape: cfg.shape.envDepth, buttons: cfg.buttons.envDepth };
+  const avail = H - C.wall;
+  for (const g of GROUPS) if (depth[g] > avail + 1e-6) {
+    push('error', [g], `${GROUP_LABEL[g]} needs ${fmt(depth[g])} mm below the panel; the chassis offers ${fmt(avail)} mm (height − wall)`, 'depth');
+  }
+
+  // Inside-group rules.
+  const P = cfg.pads, web = P.spacing - 2 * P.clearance;
+  if (web < cfg.rules.minWeb - 1e-6) push('warn', ['pads'], `Panel web between pad openings is ${fmt(web, 2)} mm (min ${fmt(cfg.rules.minWeb)})`, 'web');
+  if (P.spacing < 2 * P.flange - 1e-6) push('info', ['pads'], `Pad footprints merge (spacing < 2 × skirt): plan a one-piece silicone pad mat`, 'mat');
+  const B = cfg.buttons;
+  if (model.labels.length > 1) {
+    const bweb = B.spacing - 2 * B.clearance;
+    if (bweb < cfg.rules.minWeb - 1e-6) push('warn', ['buttons'], `Panel web between button openings is ${fmt(bweb, 2)} mm (min ${fmt(cfg.rules.minWeb)})`, 'web');
+    if (B.spacing < 2 * B.envMargin - 1e-6) push('warn', ['buttons'], `Switch envelopes overlap inside the button group (spacing < 2 × envelope margin)`, 'collide');
+  }
+  const K = cfg.shape;
+  if (K.type === 'strip' && K.envWidth < K.width) push('warn', ['shape'], `Shape sensor envelope (${fmt(K.envWidth)} mm) is narrower than the visible strip (${fmt(K.width)} mm)`, 'env');
+  if (K.type === 'fader' && K.envWidth < K.slotWidth) push('warn', ['shape'], `Fader body envelope is narrower than its slot`, 'env');
+
+  const rank = { error: 0, warn: 1, info: 2 };
+  return issues.sort((a, b) => rank[a.level] - rank[b.level]);
+}
+
+/* =====================================================================
+   5. Rhino .3dm export (rhino3dm.js, loaded on first use)
+   ===================================================================== */
+const LAYER_DEFS = [
+  ['CHASSIS', [196, 196, 192]],
+  ['SCREEN', [29, 30, 33]],
+  ['DRUM_PADS', [128, 128, 124]],
+  ['SHAPE_CONTROL', [92, 94, 98]],
+  ['MODE_BUTTONS', [160, 160, 156]],
+];
+const SUB_LAYER_COLORS = {
+  MECH_ENVELOPE: [61, 123, 214],
+  PANEL_OPENINGS: [232, 102, 28],
+  ACTIVE_AREA: [88, 98, 118],
+  TRAVEL: [120, 120, 116],
+};
+const RHINO_GROUPS = { DRUM_PADS: 'DRUM_PAD_BLOCK_4x2', MODE_BUTTONS: 'MODE_BUTTON_GROUP', SHAPE_CONTROL: 'SHAPE_CONTROL' };
+
+let rhinoPromise = null;
+function loadRhino() {
+  if (!rhinoPromise) rhinoPromise = import(RHINO3DM_URL).then(m => m.default()).catch(e => { rhinoPromise = null; throw e; });
+  return rhinoPromise;
+}
+
+// Exact planar profile: lines + true arcs (or a circle), counter-clockwise so +height extrudes up.
+function rhinoProfile(rh, p, z) {
+  if (isCircle(p)) return rh.ArcCurve.createFromCircle(new rh.Circle([p.cx, p.cy, z], p.w / 2));
+  const hw = p.w / 2, hh = p.h / 2, r = p.r, k = r * Math.SQRT1_2, e = 1e-7;
+  const pc = new rh.PolyCurve();
+  const line = (a, b) => { if (Math.hypot(b[0] - a[0], b[1] - a[1]) > e) pc.appendLine(new rh.Line([a[0], a[1], 0], [b[0], b[1], 0])); };
+  const arc = (s, m, t) => { if (r > e) pc.appendArc(rh.Arc.createFromPoints([s[0], s[1], 0], [m[0], m[1], 0], [t[0], t[1], 0])); };
+  line([-hw + r, -hh], [hw - r, -hh]);
+  arc([hw - r, -hh], [hw - r + k, -hh + r - k], [hw, -hh + r]);
+  line([hw, -hh + r], [hw, hh - r]);
+  arc([hw, hh - r], [hw - r + k, hh - r + k], [hw - r, hh]);
+  line([hw - r, hh], [-hw + r, hh]);
+  arc([-hw + r, hh], [-hw + r - k, hh - r + k], [-hw, hh - r]);
+  line([-hw, hh - r], [-hw, -hh + r]);
+  arc([-hw, -hh + r], [-hw + r - k, -hh + r - k], [-hw + r, -hh]);
+  if (p.angle) pc.rotate(p.angle, [0, 0, 1], [0, 0, 0]);
+  pc.translate([p.cx, p.cy, z]);
+  return pc;
+}
+
+function buildRhinoDoc(rh, cfg, model, opts) {
+  const doc = new rh.File3dm();
+  const st = doc.settings();
+  st.modelUnitSystem = rh.UnitSystem.Millimeters;
+  st.modelAbsoluteTolerance = 0.01;
+  st.modelAngleToleranceDegrees = 1;
+  const color = ([r, g, b]) => ({ r, g, b, a: 255 });
+
+  const layerIdx = {};
+  const layer = (name, sub) => {
+    const key = sub ? `${name}::${sub}` : name;
+    if (key in layerIdx) return layerIdx[key];
+    const L = new rh.Layer();
+    if (sub) {
+      L.name = sub;
+      L.parentLayerId = doc.layers().findIndex(layer(name)).id;
+      L.color = color(SUB_LAYER_COLORS[sub]);
+    } else {
+      L.name = name;
+      L.color = color(LAYER_DEFS.find(d => d[0] === name)[1]);
+    }
+    return (layerIdx[key] = doc.layers().add(L));
+  };
+  LAYER_DEFS.forEach(([n]) => layer(n));
+
+  const groupIdx = {};
+  const group = name => {
+    if (!(name in groupIdx)) { const g = new rh.Group(); g.name = name; doc.groups().add(g); groupIdx[name] = doc.groups().count - 1; }
+    return groupIdx[name];
+  };
+
+  const counts = { solids: 0, curves: 0 };
+  for (const p of model.parts) {
+    if (p.sub === 'MECH_ENVELOPE' && !opts.envelopes) continue;
+    if (p.sub === 'PANEL_OPENINGS' && !opts.cutouts) continue;
+    if ((p.sub === 'TRAVEL' || p.sub === 'ACTIVE_AREA') && !opts.guides) continue;
+    let geom;
+    if (p.kind === 'solid') {
+      const ext = rh.Extrusion.create(rhinoProfile(rh, p.prof, p.z0), p.z1 - p.z0, true);
+      geom = opts.mode === 'extrusion' ? ext : ext.toBrep(true);
+      counts.solids++;
+    } else if (p.kind === 'outline') {
+      geom = rhinoProfile(rh, p.prof, p.z); counts.curves++;
+    } else if (p.kind === 'line') {
+      geom = new rh.LineCurve(p.a, p.b); counts.curves++;
+    }
+    if (!geom) continue;
+    const at = new rh.ObjectAttributes();
+    at.name = p.name;
+    at.layerIndex = layer(p.layer, p.sub);
+    if (!p.sub && RHINO_GROUPS[p.layer]) at.addToGroup(group(RHINO_GROUPS[p.layer]));
+    doc.objects().add(geom, at);
+  }
+  doc.strings().set('DrumBlockStudy.config', JSON.stringify(cfg));
+  doc.strings().set('DrumBlockStudy.units', 'millimeters; X = width, Y = depth (front → back), Z = up; chassis bottom at Z = 0');
+  return { doc, counts };
+}
+
+/* =====================================================================
+   6. App state, persistence, history
+   ===================================================================== */
+const DEFAULT_PREFS = {
+  view: 'iso', ortho: false, xray: false, envelopes: true, cutouts: false, dims: true, labels: true, grid: true, snap: 1,
+  collapsed: { rules: true, export: false }, checksOpen: true,
+  export: { mode: 'brep', version: 7, envelopes: true, cutouts: true, guides: true },
+};
+const storedPrefs = loadJSON(PREFS_KEY) || {};
+const prefs = deepMerge(clone(DEFAULT_PREFS), storedPrefs);
+if (storedPrefs.collapsed && typeof storedPrefs.collapsed === 'object') {
+  for (const [k, v] of Object.entries(storedPrefs.collapsed)) prefs.collapsed[k] = !!v;
+}
+const savePrefs = () => saveJSON(PREFS_KEY, prefs);
+
+let cfg, model, issues; // initialised at boot, once the schema below exists
+let selected = null;
+
+const history = { stack: [], i: -1 };
+function commit() {
+  const s = JSON.stringify(cfg);
+  if (history.stack[history.i] === s) return;
+  history.stack = history.stack.slice(0, history.i + 1);
+  history.stack.push(s);
+  if (history.stack.length > 200) history.stack.shift();
+  history.i = history.stack.length - 1;
+  saveJSON(STORE_KEY, cfg);
+  updateUndo();
+}
+function restore(s) { cfg = JSON.parse(s); saveJSON(STORE_KEY, cfg); requestRebuild(); updateUndo(); }
+function undo() { if (history.i > 0) restore(history.stack[--history.i]); }
+function redo() { if (history.i < history.stack.length - 1) restore(history.stack[++history.i]); }
+function updateUndo() {
+  document.getElementById('btnUndo').disabled = history.i <= 0;
+  document.getElementById('btnRedo').disabled = history.i >= history.stack.length - 1;
+}
+function setConfig(next, msg) { cfg = sanitize(next); selected = null; commit(); requestRebuild(); if (msg) toast(msg); }
+
+/* =====================================================================
+   7. Parameter schema → panel
+   ===================================================================== */
+const ICON = {
+  square: '<svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14"/></svg>',
+  rounded: '<svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="3"/></svg>',
+  soft: '<svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="5.6"/></svg>',
+  circle: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/></svg>',
+  pill: '<svg viewBox="0 0 20 20"><rect x="1.5" y="5.5" width="17" height="9" rx="4.5"/></svg>',
+};
+const CAP_OPTIONS = [
+  { v: 'square', label: 'Square', icon: ICON.square },
+  { v: 'rounded', label: 'Rounded', icon: ICON.rounded },
+  { v: 'soft', label: 'Soft', icon: ICON.soft, title: 'Very soft rounded square' },
+  { v: 'circle', label: 'Circle', icon: ICON.circle },
+  { v: 'pill', label: 'Pill', icon: ICON.pill },
+];
+const usesRadius = s => s === 'rounded' || s === 'soft';
+function pickCap(sec) {
+  return (c, v) => {
+    const o = c[sec], wk = sec === 'pads' ? 'padW' : 'w', hk = sec === 'pads' ? 'padH' : 'h';
+    if (usesRadius(v)) o.cornerRadius = round(CAP_RADIUS_FACTOR[v] * Math.min(o[wk], o[hk]), 0.5);
+  };
+}
+
+const N = (k, label, min, max, step, o = {}) => ({ type: 'num', k, label, min, max, step, ...o });
+const XY = (o = {}) => [N('x', 'Position X', -165, 165, 0.5, o), N('y', 'Position Y', -125, 125, 0.5, o)];
+const centerX = sec => ({ label: 'Center X', run: c => { c[sec].x = 0; } });
+
+function padBlockSize(c) {
+  const P = c.pads, cap = capGeom(P.capShape, P.padW, P.padH, P.cornerRadius);
+  const bw = 4 * cap.w + 3 * P.spacing, bh = 2 * cap.h + P.spacing;
+  return { cap, bw, bh, world: P.orientation === 'portrait' ? [bh, bw] : [bw, bh] };
+}
+
+const SCHEMA = [
+  {
+    id: 'chassis', title: 'Chassis', layer: 'CHASSIS', fields: [
+      N('width', 'Width (X)', 180, 320, 1),
+      N('depth', 'Depth (Y)', 140, 240, 1),
+      N('height', 'Height (Z)', 15, 45, 0.5),
+      N('cornerRadius', 'Corner radius', 0, 40, 0.5, { hint: 'Plan-view corner radius of the block', maxFn: c => Math.min(40, Math.min(c.chassis.width, c.chassis.depth) / 2) }),
+      { type: 'head', label: 'Constraints' },
+      N('wall', 'Wall thickness', 1.5, 4, 0.1, { hint: 'Mechanical envelopes must stay this far inside the outer skin and above the bottom' }),
+      N('edgeMargin', 'Edge margin', 3, 20, 0.5, { hint: 'Minimum distance from any visible part to the chassis edge' }),
+      {
+        type: 'info', text: c => {
+          const C = c.chassis, R = Math.min(C.cornerRadius, Math.min(C.width, C.depth) / 2);
+          const area = C.width * C.depth - (4 - Math.PI) * R * R;
+          return `<b>${fmt(C.width)} × ${fmt(C.depth)} × ${fmt(C.height)} mm</b> · ${fmt(area * C.height / 1e6, 2)} L<br>Internal height for parts: ${fmt(C.height - C.wall)} mm`;
+        },
+      },
+      { type: 'actions', items: [{ label: 'Shrink-wrap chassis to parts', run: fitChassis, title: 'Resize the chassis to the parts + margins and re-centre the layout' }] },
+    ],
+  },
+  {
+    id: 'screen', title: 'Screen', layer: 'SCREEN', fields: [
+      N('size', 'Active area □', 100, 140, 0.5, { hint: 'Visible display area, square. Min 100 mm per brief' }),
+      N('bezel', 'Black bezel', 0, 12, 0.5, { hint: 'Printed border of the cover glass around the active area' }),
+      N('cornerRadius', 'Glass radius', 0, 12, 0.5),
+      ...XY(),
+      N('rise', 'Glass rise', 0.2, 3, 0.1, { hint: 'Cover glass height above the panel' }),
+      { type: 'head', label: 'Mechanical' },
+      N('moduleMargin', 'Module margin', 2, 12, 0.5, { hint: 'Display module outline beyond the active area, per side (TFT + backlight + FPC). Stock 4″ square TFT: ≈ 6–7 mm' }),
+      N('moduleDepth', 'Module depth', 3, 12, 0.5, { hint: 'Display stack below the panel (LCD ≈ 3.8 mm + touch + bonding)' }),
+      {
+        type: 'info', text: c => {
+          const S = c.screen, g = S.size + 2 * S.bezel, m = S.size + 2 * S.moduleMargin;
+          return `Active <b>${fmt(S.size)} □</b> (${fmt(S.size * Math.SQRT2 / 25.4, 1)}″ diag) · glass ${fmt(g)} □<br>Module envelope ${fmt(m)} × ${fmt(m)} × ${fmt(S.moduleDepth)} mm<br><span class="note">Stock square TFTs are mostly ≤ 4″ (≈ 72 mm active); ≥ 100 mm likely needs a custom panel.</span>`;
+        },
+      },
+      { type: 'actions', items: [centerX('screen')] },
+    ],
+  },
+  {
+    id: 'pads', title: 'Drum pads', layer: 'DRUM_PADS', fields: [
+      { type: 'head', label: '4 × 2 block (moves as one)' },
+      ...XY(),
+      { type: 'seg', k: 'orientation', label: 'Block orientation', options: [{ v: 'landscape', label: '4 × 2' }, { v: 'portrait', label: '2 × 4 (rotated 90°)' }] },
+      { type: 'head', label: 'Pad cap (visible surface)' },
+      { type: 'seg', k: 'capShape', label: 'Cap geometry', options: CAP_OPTIONS, onPick: pickCap('pads') },
+      N('padW', 'Pad width', 25, 45, 0.5, { hint: 'Visible cap, along the block’s long axis. MPC-class pads ≈ 30 mm' }),
+      N('padH', 'Pad height', 25, 45, 0.5, { hint: 'Visible cap, along the block’s short axis (plan dimension)', disabled: c => c.pads.capShape === 'circle', display: c => c.pads.padW }),
+      N('cornerRadius', 'Corner radius', 0, 22.5, 0.5, {
+        maxFn: c => Math.min(c.pads.padW, c.pads.padH) / 2,
+        disabled: c => !usesRadius(c.pads.capShape),
+        display: c => capGeom(c.pads.capShape, c.pads.padW, c.pads.padH, c.pads.cornerRadius).r,
+      }),
+      N('spacing', 'Spacing', 3, 10, 0.5, { hint: 'Gap between neighbouring pad caps' }),
+      N('rise', 'Cap rise', 1, 8, 0.5, { hint: 'Pad surface height above the panel' }),
+      { type: 'head', label: 'Mechanical footprint' },
+      N('clearance', 'Panel gap', 0.2, 1.5, 0.05, { hint: 'Gap between the cap and the panel opening, per side' }),
+      N('flange', 'Skirt / sensor', 1, 5, 0.25, { hint: 'Silicone skirt + FSR margin beyond the visible cap, per side (held under the panel)' }),
+      N('depth', 'Footprint depth', 4, 15, 0.5, { hint: 'Silicone + FSR/sensor + PCB below the panel' }),
+      {
+        type: 'info', text: c => {
+          const P = c.pads, { cap, world } = padBlockSize(c), f = P.flange;
+          return `Block <b>${fmt(world[0])} × ${fmt(world[1])} mm</b> (X × Y) · pitch ${fmt(cap.w + P.spacing)} × ${fmt(cap.h + P.spacing)}<br>Footprint per pad ${fmt(cap.w + 2 * f)} × ${fmt(cap.h + 2 * f)} · mat ≈ ${fmt(world[0] + 2 * f)} × ${fmt(world[1] + 2 * f)} mm<br>Panel web ${fmt(P.spacing - 2 * P.clearance, 2)} mm`;
+        },
+      },
+      { type: 'actions', items: [centerX('pads')] },
+    ],
+  },
+  {
+    id: 'shape', title: 'Shape control', layer: 'SHAPE_CONTROL', fields: [
+      {
+        type: 'seg', k: 'type', label: 'Type', options: [{ v: 'strip', label: 'Touch strip' }, { v: 'fader', label: 'Physical slider' }],
+        onPick: (c, v) => Object.assign(c.shape, SHAPE_TYPE_DEFAULTS[v], v === 'strip' ? { envWidth: c.shape.width + 6 } : {}),
+      },
+      ...XY(),
+      N('angle', 'Orientation', -90, 90, 1, { unit: '°', hint: '0° = horizontal (along X), 90° = vertical (along Y)' }),
+      N('length', 'Visible / travel', 40, 100, 1, { hint: 'Touch strip: visible active length. Slider: knob travel' }),
+      N('width', 'Visible width', 8, 20, 0.5, { hint: 'Strip width, or knob width for a slider' }),
+      N('cornerRadius', 'Strip radius', 0, 10, 0.25, { show: c => c.shape.type === 'strip', maxFn: c => c.shape.width / 2 }),
+      N('rise', 'Strip rise', 0.2, 2, 0.1, { show: c => c.shape.type === 'strip' }),
+      N('capLength', 'Knob length', 8, 25, 0.5, { show: c => c.shape.type === 'fader', hint: 'Knob size along the travel' }),
+      N('capHeight', 'Knob height', 4, 15, 0.5, { show: c => c.shape.type === 'fader', hint: 'Knob top above the panel' }),
+      N('slotWidth', 'Slot width', 1.5, 5, 0.25, { show: c => c.shape.type === 'fader' }),
+      N('value', 'Knob position', 0, 1, 0.01, { unit: '', show: c => c.shape.type === 'fader', hint: 'Preview position along the travel (0–1)' }),
+      { type: 'head', label: 'Mechanical envelope (below panel)' },
+      N('envEnd', 'Extra per end', 2, 25, 0.5, { hint: 'Envelope length beyond the visible / travel length, each end. Slide pot: ≈ 7.5 mm (body = travel + 15). Strip: tail + lamination margin' }),
+      N('envWidth', 'Envelope width', 6, 30, 0.5, { hint: 'Slide-pot body ≈ 9–10 mm; strip: sensor width + margin' }),
+      N('envDepth', 'Envelope depth', 1, 30, 0.5, { hint: 'Slide pot: lever + body + PCB ≈ 15–20 mm. Touch strip: ≈ 2–4 mm' }),
+      {
+        type: 'info', text: c => {
+          const K = c.shape, envL = K.length + 2 * K.envEnd;
+          if (K.type === 'fader') {
+            const near = STOCK_FADER_TRAVEL.reduce((a, b) => Math.abs(b - K.length) < Math.abs(a - K.length) ? b : a);
+            return `Travel <b>${fmt(K.length)} mm</b> · knob sweep ${fmt(K.length + K.capLength)} × ${fmt(K.width)}<br>Body envelope ${fmt(envL)} × ${fmt(K.envWidth)} × ${fmt(K.envDepth)} mm<br><span class="note">Nearest stock slide-pot travel: ${near} mm (body ≈ ${near + 15} mm).</span>`;
+          }
+          return `Visible <b>${fmt(K.length)} × ${fmt(K.width)} mm</b><br>Sensor envelope ${fmt(envL)} × ${fmt(K.envWidth)} × ${fmt(K.envDepth)} mm<br><span class="note">Stock membrane pots: 50 / 100 / 200 mm active, ≈ 20 mm wide, + tail.</span>`;
+        },
+      },
+      { type: 'actions', items: [centerX('shape'), { label: 'Horizontal', run: c => { c.shape.angle = 0; } }, { label: 'Vertical', run: c => { c.shape.angle = 90; } }] },
+    ],
+  },
+  {
+    id: 'buttons', title: 'Mode buttons', layer: 'MODE_BUTTONS', fields: [
+      { type: 'text', k: 'labels', label: 'Buttons', hint: 'Comma-separated labels, one button each (1–10)', placeholder: 'PLAY, REC, METRO, UNDO, SHIFT' },
+      { type: 'seg', k: 'arrangement', label: 'Arrangement', options: [{ v: 'row', label: 'Row' }, { v: 'column', label: 'Column' }, { v: 'grid', label: 'Grid' }] },
+      N('columns', 'Grid columns', 2, 5, 1, { unit: '', show: c => c.buttons.arrangement === 'grid' }),
+      ...XY(),
+      { type: 'seg', k: 'capShape', label: 'Cap geometry', options: CAP_OPTIONS, onPick: pickCap('buttons') },
+      N('w', 'Button width', 8, 18, 0.5),
+      N('h', 'Button height', 8, 18, 0.5, { disabled: c => c.buttons.capShape === 'circle', display: c => c.buttons.w }),
+      N('cornerRadius', 'Corner radius', 0, 9, 0.25, {
+        maxFn: c => Math.min(c.buttons.w, c.buttons.h) / 2,
+        disabled: c => !usesRadius(c.buttons.capShape),
+        display: c => capGeom(c.buttons.capShape, c.buttons.w, c.buttons.h, c.buttons.cornerRadius).r,
+      }),
+      N('spacing', 'Spacing', 2, 15, 0.5, { hint: 'Gap between neighbouring button caps' }),
+      N('rise', 'Cap rise', 0.5, 6, 0.25),
+      { type: 'head', label: 'Mechanical' },
+      N('clearance', 'Panel gap', 0.2, 1, 0.05),
+      N('envMargin', 'Switch margin', 0, 5, 0.25, { hint: 'Switch / light-pipe envelope beyond the cap, per side (12 × 12 tact switch under a 12 mm cap → ≈ 2 mm)' }),
+      N('envDepth', 'Switch depth', 3, 12, 0.5),
+      {
+        type: 'info', text: c => {
+          const B = c.buttons, n = parseLabels(B.labels).length, cap = capGeom(B.capShape, B.w, B.h, B.cornerRadius);
+          const offs = buttonOffsets(B, n, cap), xs = offs.map(o => o[0]), ys = offs.map(o => o[1]);
+          const gw = Math.max(...xs) - Math.min(...xs) + cap.w, gh = Math.max(...ys) - Math.min(...ys) + cap.h;
+          return `<b>${n} buttons</b> · group ${fmt(gw)} × ${fmt(gh)} mm · pitch ${fmt(cap.w + B.spacing)}`;
+        },
+      },
+      { type: 'actions', items: [centerX('buttons')] },
+    ],
+  },
+  {
+    id: 'rules', title: 'Checks & tolerances', fields: [
+      N('minGap', 'Min. part gap', 0, 15, 0.5, { hint: 'Minimum distance between visible part groups on the panel' }),
+      N('minWeb', 'Min. panel web', 0.5, 3, 0.1, { hint: 'Minimum material between neighbouring openings inside a group' }),
+    ],
+  },
+];
+
+function sanitize(raw) {
+  const src = raw && typeof raw === 'object' && raw.config && typeof raw.config === 'object' ? raw.config : raw;
+  const c = deepMerge(clone(DEFAULT_CONFIG), src || {});
+  for (const sec of SCHEMA) for (const f of sec.fields) {
+    if (!f.k) continue;
+    const o = c[sec.id], d = DEFAULT_CONFIG[sec.id][f.k];
+    if (f.type === 'num') { const v = Number(o[f.k]); o[f.k] = Number.isFinite(v) ? clamp(v, f.min, f.max) : d; }
+    else if (f.type === 'seg') { if (!f.options.some(op => op.v === o[f.k])) o[f.k] = d; }
+    else if (f.type === 'text') o[f.k] = String(o[f.k] ?? d).slice(0, 240);
+  }
+  c.version = DEFAULT_CONFIG.version; c.units = 'mm';
+  return c;
+}
+
+const panel = document.getElementById('panel');
+const syncers = [];
+function decimals(step) { return step >= 1 ? 0 : step >= 0.1 && Math.abs(step * 10 - Math.round(step * 10)) < 1e-9 ? 1 : 2; }
+
+function sectionShell(id, title, tag) {
+  const el = h('section', 'sec'); el.dataset.sec = id;
+  if (prefs.collapsed[id]) el.classList.add('collapsed');
+  el.innerHTML = `<header><span class="swatch sw-${id}"></span><h2>${esc(title)}</h2>${tag ? `<code>${esc(tag)}</code>` : ''}<span class="chev">▾</span></header><div class="body"></div>`;
+  el.querySelector('header').addEventListener('click', () => {
+    el.classList.toggle('collapsed');
+    prefs.collapsed[id] = el.classList.contains('collapsed');
+    savePrefs();
+  });
+  return el;
+}
+
+function numRow(sec, f) {
+  const row = h('div', 'row');
+  const lab = h('label', null, f.label); if (f.hint) lab.title = f.hint;
+  const rng = h('input'), num = h('input');
+  rng.type = 'range'; num.type = 'number';
+  for (const el of [rng, num]) { el.min = f.min; el.max = f.max; el.step = f.step; }
+  rng.setAttribute('aria-label', f.label); num.setAttribute('aria-label', f.label);
+  row.append(lab, rng, num, h('span', 'unit', f.unit ?? 'mm'));
+  const maxOf = () => f.maxFn ? Math.max(f.min, f.maxFn(cfg)) : f.max;
+  const set = v => { if (!Number.isFinite(v)) return; cfg[sec.id][f.k] = clamp(v, f.min, maxOf()); requestRebuild(); };
+  rng.addEventListener('input', () => { set(parseFloat(rng.value)); num.value = fmt(rng.value, decimals(f.step)); });
+  rng.addEventListener('change', commit);
+  num.addEventListener('input', () => set(parseFloat(num.value)));
+  num.addEventListener('change', () => { commit(); sync(); });
+  num.addEventListener('keydown', e => { if (e.key === 'Enter') num.blur(); });
+  function sync() {
+    row.hidden = f.show ? !f.show(cfg) : false;
+    const dis = f.disabled ? f.disabled(cfg) : false;
+    const max = maxOf(); rng.max = max; num.max = max;
+    const v = dis && f.display ? f.display(cfg) : cfg[sec.id][f.k];
+    if (document.activeElement !== rng) rng.value = v;
+    if (document.activeElement !== num) num.value = fmt(v, Math.max(decimals(f.step), Number.isInteger(v * 10) ? 1 : 2));
+    rng.disabled = num.disabled = dis;
+    row.classList.toggle('disabled', dis);
+  }
+  syncers.push(sync);
+  return row;
+}
+
+function segRow(sec, f) {
+  const row = h('div', 'row seg-row');
+  const lab = h('label', null, f.label); if (f.hint) lab.title = f.hint;
+  const seg = h('div', 'seg');
+  for (const o of f.options) {
+    const b = h('button'); b.type = 'button'; b.dataset.v = o.v; b.title = o.title || o.label;
+    b.innerHTML = (o.icon || '') + `<span>${esc(o.label)}</span>`;
+    b.addEventListener('click', () => {
+      const t = cfg[sec.id]; if (t[f.k] === o.v) return;
+      t[f.k] = o.v; f.onPick?.(cfg, o.v); commit(); requestRebuild();
+    });
+    seg.append(b);
+  }
+  row.append(lab, seg);
+  syncers.push(() => {
+    row.hidden = f.show ? !f.show(cfg) : false;
+    for (const b of seg.children) b.classList.toggle('on', b.dataset.v === String(cfg[sec.id][f.k]));
+  });
+  return row;
+}
+
+function textRow(sec, f) {
+  const row = h('div', 'row wide');
+  const lab = h('label', null, f.label); if (f.hint) lab.title = f.hint;
+  const inp = h('input'); inp.type = 'text'; inp.placeholder = f.placeholder || ''; inp.spellcheck = false;
+  inp.setAttribute('aria-label', f.label);
+  inp.addEventListener('input', () => { cfg[sec.id][f.k] = inp.value; requestRebuild(); });
+  inp.addEventListener('change', commit);
+  row.append(lab, inp);
+  syncers.push(() => { if (document.activeElement !== inp) inp.value = cfg[sec.id][f.k]; });
+  return row;
+}
+
+function actionsRow(items) {
+  const row = h('div', 'actions');
+  for (const it of items) {
+    const b = h('button', null, it.label); b.type = 'button'; if (it.title) b.title = it.title;
+    b.addEventListener('click', () => { it.run(cfg); commit(); requestRebuild(); });
+    row.append(b);
+  }
+  return row;
+}
+
+function buildSection(sec) {
+  const el = sectionShell(sec.id, sec.title, sec.layer), body = el.querySelector('.body');
+  for (const f of sec.fields) {
+    if (f.type === 'num') body.append(numRow(sec, f));
+    else if (f.type === 'seg') body.append(segRow(sec, f));
+    else if (f.type === 'text') body.append(textRow(sec, f));
+    else if (f.type === 'head') body.append(h('div', 'subhead', f.label));
+    else if (f.type === 'actions') body.append(actionsRow(f.items));
+    else if (f.type === 'info') { const d = h('div', 'info'); body.append(d); syncers.push(() => { d.innerHTML = f.text(cfg); }); }
+  }
+  return el;
+}
+
+function thumbSVG(c) {
+  const m = buildModel(c), C = c.chassis, pad = 10;
+  const rect = (p, cls) => `<rect class="${cls}" x="${p.cx - p.w / 2}" y="${p.cy - p.h / 2}" width="${p.w}" height="${p.h}" rx="${p.r}" transform="rotate(${p.angle * 180 / Math.PI} ${p.cx} ${p.cy})"/>`;
+  const cls = { chassis: 't-ch', glass: 't-gl', pad: 't-pad', strip: 't-strip', button: 't-btn', faderCap: 't-cap' };
+  let s = `<svg viewBox="${-C.width / 2 - pad} ${-C.depth / 2 - pad} ${C.width + 2 * pad} ${C.depth + 2 * pad}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><g transform="scale(1,-1)">`;
+  for (const p of m.parts) {
+    if (p.kind === 'solid' && cls[p.style]) s += rect(p.prof, cls[p.style]);
+    if (p.kind === 'outline' && p.name === 'SHAPE_FADER_SLOT') s += rect(p.prof, 't-slot');
+  }
+  return s + '</g></svg>';
+}
+
+function presetModified() {
+  const p = PRESETS.find(q => q.id === cfg.meta.preset); if (!p) return true;
+  const a = clone(cfg), b = presetConfig(p); delete a.meta; delete b.meta;
+  return JSON.stringify(a) !== JSON.stringify(b);
+}
+
+function buildPresetSection() {
+  const el = sectionShell('presets', 'Layout presets'), body = el.querySelector('.body');
+  const grid = h('div', 'presets');
+  for (const p of PRESETS) {
+    const b = h('button', 'preset'); b.type = 'button'; b.dataset.id = p.id; b.title = p.note;
+    b.innerHTML = `<span class="thumb">${thumbSVG(presetConfig(p))}</span><span class="pname">${esc(p.name)}</span>`;
+    b.addEventListener('click', () => setConfig(presetConfig(p), `Preset: ${p.name}`));
+    grid.append(b);
+  }
+  body.append(grid, actionsRow([{ label: 'Mirror layout L ↔ R', run: mirrorX, title: 'Flip every part across the Y axis' }]));
+  syncers.push(() => {
+    const mod = presetModified();
+    for (const b of grid.children) {
+      const on = b.dataset.id === cfg.meta.preset;
+      b.classList.toggle('on', on); b.classList.toggle('mod', on && mod);
+    }
+  });
+  return el;
+}
+
+function buildExportSection() {
+  const el = sectionShell('export', 'Rhino export'), body = el.querySelector('.body');
+  const segs = [];
+  const prefSeg = (label, key, options) => {
+    const row = h('div', 'row seg-row'), seg = h('div', 'seg');
+    for (const [v, text, title] of options) {
+      const b = h('button', null, text); b.type = 'button'; b.dataset.v = String(v); b.title = title;
+      b.addEventListener('click', () => { prefs.export[key] = v; savePrefs(); syncExport(); });
+      seg.append(b);
+    }
+    row.append(h('label', null, label), seg); body.append(row); segs.push([seg, key]);
+  };
+  prefSeg('Solids as', 'mode', [['brep', 'Breps', 'Closed polysurfaces (most editable)'], ['extrusion', 'Extrusions', 'Lightweight Rhino extrusion objects']]);
+  prefSeg('File version', 'version', [[7, 'Rhino 7', 'Opens in Rhino 7 and 8'], [8, 'Rhino 8', 'Rhino 8 only']]);
+  const checks = [
+    ['envelopes', 'Mechanical envelopes', 'Under-panel volumes → <layer>::MECH_ENVELOPE'],
+    ['cutouts', 'Panel cut-out curves', 'Opening outlines on the top surface → <layer>::PANEL_OPENINGS'],
+    ['guides', 'Travel & active-area curves', 'Shape travel axis / sweep and screen active area'],
+  ];
+  const boxes = {};
+  for (const [k, label, title] of checks) {
+    const l = h('label', 'check'); l.title = title;
+    const cb = h('input'); cb.type = 'checkbox';
+    cb.addEventListener('change', () => { prefs.export[k] = cb.checked; savePrefs(); });
+    l.append(cb, document.createTextNode(label));
+    body.append(l); boxes[k] = cb;
+  }
+  const info = h('div', 'info');
+  info.innerHTML = 'Layers <b>CHASSIS · SCREEN · DRUM_PADS · SHAPE_CONTROL · MODE_BUTTONS</b>, each with sub-layers for envelopes, openings and guides. Units mm; every part is a separate named object; pads are grouped as one block. The JSON config is stored in the file’s document user text.';
+  body.append(info);
+  function syncExport() {
+    for (const [seg, key] of segs) for (const b of seg.children) b.classList.toggle('on', b.dataset.v === String(prefs.export[key]));
+    for (const k in boxes) boxes[k].checked = !!prefs.export[k];
+  }
+  syncers.push(syncExport);
+  return el;
+}
+
+function buildPanel() {
+  panel.append(buildPresetSection());
+  for (const sec of SCHEMA) panel.append(buildSection(sec));
+  panel.append(buildExportSection());
+}
+
+function syncPanel() {
+  for (const s of syncers) s();
+  for (const el of panel.querySelectorAll('.sec')) el.classList.toggle('selected', el.dataset.sec === selected);
+}
+
+/* ----- global layout actions ----- */
+function mirrorX(c) {
+  for (const g of GROUPS) c[g].x = -c[g].x;
+  c.shape.angle = -c.shape.angle;
+  c.shape.value = 1 - c.shape.value;
+}
+
+function fitChassis(c) {
+  const C = c.chassis;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of buildModel(c).parts) {
+    if (!p.foot) continue;
+    const m = p.foot === 'top' ? C.edgeMargin : C.wall;
+    for (const [x, y] of worldPts(p.prof)) { x0 = Math.min(x0, x - m); x1 = Math.max(x1, x + m); y0 = Math.min(y0, y - m); y1 = Math.max(y1, y + m); }
+  }
+  const cx = round((x0 + x1) / 2), cy = round((y0 + y1) / 2);
+  for (const g of GROUPS) { c[g].x -= cx; c[g].y -= cy; }
+  let W = Math.ceil(x1 - x0), D = Math.ceil(y1 - y0);
+  for (let k = 0; k < 80; k++) { // grow until corner radii clear the parts too
+    C.width = clamp(W, 180, 320); C.depth = clamp(D, 140, 240);
+    if (!runChecks(c, buildModel(c)).some(i => i.code === 'edge')) break;
+    W++; D++;
+  }
+  toast(`Chassis fitted: ${fmt(C.width)} × ${fmt(C.depth)} mm`);
+}
+
+/* =====================================================================
+   8. Three.js view
+   ===================================================================== */
+const host = document.getElementById('canvasHost');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+host.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.className = 'labels';
+host.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe7e7e5);
+const perspCam = new THREE.PerspectiveCamera(30, 1, 5, 12000);
+const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -6000, 6000);
+let camera = perspCam, controls = null, orthoHalf = 200;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9c9c98, 1.25));
+const sun = new THREE.DirectionalLight(0xffffff, 1.55);
+sun.position.set(-240, -330, 640);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -340, right: 340, top: 340, bottom: -340, near: 100, far: 1800 });
+sun.shadow.bias = -0.0003;
+sun.shadow.normalBias = 0.35;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+fill.position.set(420, 260, 220);
+scene.add(fill);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.ShadowMaterial({ opacity: 0.13 }));
+ground.position.z = -0.05; ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.Group();
+for (const [div, color, z] of [[80, 0xd5d5d1, -0.04], [16, 0xbdbdb8, -0.03]]) {
+  const g = new THREE.GridHelper(800, div, color, color);
+  g.rotation.x = Math.PI / 2; g.position.z = z;
+  grid.add(g);
+}
+scene.add(grid);
+
+const M = {
+  chassis: new THREE.MeshStandardMaterial({ color: 0xcfcfcb, roughness: 0.84, metalness: 0 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x1b1c1f, roughness: 0.26, metalness: 0 }),
+  active: new THREE.MeshStandardMaterial({ color: 0x2e333b, roughness: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+  pad: new THREE.MeshStandardMaterial({ color: 0x8b8b88, roughness: 0.93 }),
+  strip: new THREE.MeshStandardMaterial({ color: 0x5f6164, roughness: 0.45 }),
+  faderCap: new THREE.MeshStandardMaterial({ color: 0x575755, roughness: 0.7 }),
+  button: new THREE.MeshStandardMaterial({ color: 0xb3b3af, roughness: 0.82 }),
+  gap: new THREE.MeshBasicMaterial({ color: 0x353534, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+  env: new THREE.MeshBasicMaterial({ color: 0x3d7bd6, transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide }),
+  proxy: new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), // invisible pick target
+};
+const EDGE = { base: 0x3a3a38, chassis: 0x75756f, env: 0x3d7bd6, sel: 0xff6312, err: 0xd2362c, warn: 0xd18a00, cut: 0xe8661c, guide: 0x5a5a55 };
+const lineMats = new Map();
+function lineMat(color, opacity = 1, dashed = false) {
+  const key = `${color}|${opacity}|${dashed}`;
+  if (!lineMats.has(key)) {
+    const o = { color, transparent: opacity < 1, opacity };
+    lineMats.set(key, dashed ? new THREE.LineDashedMaterial({ ...o, dashSize: 2, gapSize: 1.4 }) : new THREE.LineBasicMaterial(o));
+  }
+  return lineMats.get(key);
+}
+function applyXray() {
+  Object.assign(M.chassis, { transparent: prefs.xray, opacity: prefs.xray ? 0.26 : 1, depthWrite: !prefs.xray });
+  M.chassis.needsUpdate = true;
+}
+
+const modelRoot = new THREE.Group();
+scene.add(modelRoot);
+let pickables = [];
+
+const shapeOf = p => new THREE.Shape(localPts(p.w, p.h, p.r).map(([x, y]) => new THREE.Vector2(x, y)));
+function place(obj, p, z) { obj.position.set(p.cx, p.cy, z); obj.rotation.z = p.angle; return obj; }
+function solidMesh(part, mat, topInset = 0) {
+  const raw = new THREE.ExtrudeGeometry(shapeOf(part.prof), { depth: Math.max(part.z1 - part.z0 - topInset, 0.01), bevelEnabled: false });
+  const geo = toCreasedNormals(raw, Math.PI / 5); raw.dispose();
+  return place(new THREE.Mesh(geo, mat), part.prof, part.z0);
+}
+function outlineObj(p, z, mat) {
+  const geo = new THREE.BufferGeometry().setFromPoints(localPts(p.w, p.h, p.r).map(([x, y]) => new THREE.Vector3(x, y, 0)));
+  const line = new THREE.LineLoop(geo, mat);
+  if (mat.isLineDashedMaterial) line.computeLineDistances();
+  return place(line, p, z);
+}
+function fillObj(p, z, mat) { return place(new THREE.Mesh(new THREE.ShapeGeometry(shapeOf(p)), mat), p, z); }
+function label(text, pos, cls = 'lbl') {
+  const el = h('div', cls, text);
+  const o = new CSS2DObject(el); o.position.set(...pos);
+  modelRoot.add(o); return o;
+}
+function clearRoot() {
+  modelRoot.traverse(o => { o.geometry?.dispose(); if (o.isCSS2DObject) o.element.remove(); });
+  modelRoot.clear();
+}
+
+function renderScene() {
+  clearRoot(); pickables = [];
+  const H = cfg.chassis.height;
+  const flag = new Map();
+  for (const i of issues) for (const g of i.groups) {
+    if (i.level === 'error') flag.set(g, 'err');
+    else if (i.level === 'warn' && flag.get(g) !== 'err') flag.set(g, 'warn');
+  }
+  const edgeColor = g => g === selected ? EDGE.sel : flag.get(g) === 'err' ? EDGE.err : flag.get(g) === 'warn' ? EDGE.warn : g === 'chassis' ? EDGE.chassis : EDGE.base;
+
+  for (const p of model.parts) {
+    if (p.kind === 'solid') {
+      const env = p.style === 'env';
+      if (env && !prefs.envelopes) continue;
+      const mesh = solidMesh(p, M[p.style], env ? 0.06 : 0); // keep envelope tops off the panel plane (no z-fighting)
+      mesh.castShadow = !env; mesh.receiveShadow = !env;
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 24), env ? lineMat(EDGE.env, 0.55) : lineMat(edgeColor(p.group)));
+      mesh.add(edges);
+      modelRoot.add(mesh);
+      if (env) {
+        mesh.renderOrder = 2; edges.renderOrder = 3;
+        modelRoot.add(outlineObj(p.prof, H + 0.07, lineMat(EDGE.env, 0.85, true)));
+      } else {
+        mesh.userData.group = p.group;
+        pickables.push(mesh);
+      }
+      if (prefs.labels && p.label) {
+        const top = [p.prof.cx, p.prof.cy, p.z1 + 0.3];
+        if (p.group === 'buttons') label(p.label.toUpperCase(), top);
+        else if (p.group === 'pads') label(p.label, top, 'lbl num');
+      }
+    } else if (p.kind === 'outline') {
+      if (p.style === 'cut') {
+        modelRoot.add(fillObj(p.prof, H + 0.04, M.gap));
+        if (prefs.cutouts) modelRoot.add(outlineObj(p.prof, H + 0.09, lineMat(EDGE.cut)));
+      } else if (p.style === 'active') modelRoot.add(fillObj(p.prof, p.z + 0.03, M.active));
+      else if (p.style === 'sweep') modelRoot.add(outlineObj(p.prof, H + 0.06, lineMat(EDGE.guide, 0.8, true)));
+    } else if (p.kind === 'line') {
+      const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...p.a), new THREE.Vector3(...p.b)]);
+      geo.translate(0, 0, 0.08);
+      const line = new THREE.Line(geo, lineMat(EDGE.guide, 0.7, true)); line.computeLineDistances();
+      modelRoot.add(line);
+    }
+  }
+  // Invisible pick proxies so the gaps inside the pad block / button group still grab the whole group.
+  const proxy = (g, x0, x1, y0, y1, z1) => {
+    const m = solidMesh({ prof: rrect((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0), z0: H, z1 }, M.proxy);
+    m.userData.group = g; pickables.push(m); modelRoot.add(m);
+  };
+  for (const g of ['pads', 'buttons']) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z1 = H;
+    for (const p of model.parts) if (p.group === g && p.kind === 'solid' && p.style !== 'env') {
+      for (const [x, y] of worldPts(p.prof)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+      z1 = Math.max(z1, p.z1);
+    }
+    if (x1 > x0) proxy(g, x0, x1, y0, y1, z1);
+  }
+  addDecor();
+}
+
+function addDecor() {
+  const C = cfg.chassis, W = C.width, D = C.depth, H = C.height;
+  if (prefs.dims) {
+    const off = 18, pts = [];
+    const seg = (a, b) => pts.push(new THREE.Vector3(...a), new THREE.Vector3(...b));
+    const yF = -D / 2 - off, xR = W / 2 + off;
+    seg([-W / 2, yF, 0], [W / 2, yF, 0]); seg([-W / 2, -D / 2 - 3, 0], [-W / 2, yF - 4, 0]); seg([W / 2, -D / 2 - 3, 0], [W / 2, yF - 4, 0]);
+    seg([xR, -D / 2, 0], [xR, D / 2, 0]); seg([W / 2 + 3, -D / 2, 0], [xR + 4, -D / 2, 0]); seg([W / 2 + 3, D / 2, 0], [xR + 4, D / 2, 0]);
+    seg([xR, yF, 0], [xR, yF, H]); seg([xR - 3, yF, H], [xR + 3, yF, H]); seg([xR - 3, yF, 0], [xR + 3, yF, 0]);
+    modelRoot.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), lineMat(0x6b6b67)));
+    label(`W ${fmt(W)}`, [0, yF, 0], 'dim');
+    label(`D ${fmt(D)}`, [xR, 0, 0], 'dim');
+    label(`H ${fmt(H)}`, [xR, yF, H / 2], 'dim');
+  }
+  if (prefs.labels) {
+    const S = cfg.screen, K = cfg.shape, P = cfg.pads;
+    label(`SCREEN ${fmt(S.size)} □`, [S.x, S.y, H + S.rise + 0.3], 'lbl dark');
+    label(K.type === 'fader' ? `SHAPE · ${fmt(K.length)} travel` : `SHAPE · ${fmt(K.length)}`, [K.x - Math.sin(deg(K.angle)) * (K.width / 2 + 7), K.y + Math.cos(deg(K.angle)) * (K.width / 2 + 7), H + 1]);
+    label(`PADS 4×2 · ${fmt(P.padW)}${P.capShape === 'circle' ? ' ⌀' : ' × ' + fmt(P.padH)}`, [P.x, P.y, H + P.rise + 0.5]);
+  }
+  // Axis triad at the front-left corner: X red, Y green, Z blue (Rhino convention).
+  const o = [-W / 2 - 30, -D / 2 - 30, 0], L = 20;
+  for (const [dir, color, name] of [[[1, 0, 0], 0xc8473b, 'X'], [[0, 1, 0], 0x3f9150, 'Y'], [[0, 0, 1], 0x3f68c8, 'Z']]) {
+    const end = o.map((v, i) => v + dir[i] * L);
+    modelRoot.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...o), new THREE.Vector3(...end)]), lineMat(color)));
+    const el = label(name, end.map((v, i) => v + dir[i] * 4), 'lbl axis');
+    el.element.style.color = '#' + color.toString(16).padStart(6, '0');
+  }
+}
+
+/* ----- cameras & views ----- */
+const VIEW_DIRS = { iso: [0.95, -1.4, 1.05], top: [0, -0.0005, 1], front: [0, -1, 0.0005], right: [1, 0, 0.0005] };
+function viewSize() { const r = host.getBoundingClientRect(); return { w: Math.max(1, r.width), h: Math.max(1, r.height) }; }
+function makeControls(target) {
+  controls?.dispose();
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.copy(target);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.14;
+  controls.screenSpacePanning = true;
+  controls.zoomToCursor = true;
+  controls.minDistance = 30; controls.maxDistance = 4000;
+  controls.minZoom = 0.2; controls.maxZoom = 30;
+  controls.update();
+}
+function setView(name = prefs.view, ortho = prefs.ortho, keepDir = false) {
+  const C = cfg.chassis;
+  const target = new THREE.Vector3(0, 0, C.height * 0.4);
+  const dir = keepDir && controls ? camera.position.clone().sub(controls.target).normalize() : new THREE.Vector3(...VIEW_DIRS[name]).normalize();
+  if (keepDir && controls) target.copy(controls.target);
+  const { w, h: hh } = viewSize(), aspect = w / hh;
+  const span = Math.max(C.width, C.depth) + 70;
+  prefs.view = name; prefs.ortho = ortho; savePrefs();
+  camera = ortho ? orthoCam : perspCam;
+  if (ortho) {
+    orthoHalf = Math.max(span * 0.56, span * 0.56 / aspect);
+    orthoCam.zoom = 1;
+    camera.position.copy(target).addScaledVector(dir, 2000);
+  } else {
+    const half = Math.max(span * 0.56, span * 0.56 / aspect);
+    camera.position.copy(target).addScaledVector(dir, half / Math.tan(deg(perspCam.fov / 2)));
+  }
+  camera.lookAt(target);
+  resize();
+  makeControls(target);
+  for (const b of document.querySelectorAll('#viewBtns button')) b.classList.toggle('on', !keepDir && b.dataset.view === name);
+  document.getElementById('btnProj').textContent = ortho ? 'Ortho' : 'Persp';
+}
+function resize() {
+  const { w, h: hh } = viewSize(), a = w / hh;
+  renderer.setSize(w, hh); labelRenderer.setSize(w, hh);
+  perspCam.aspect = a; perspCam.updateProjectionMatrix();
+  Object.assign(orthoCam, { left: -orthoHalf * a, right: orthoHalf * a, top: orthoHalf, bottom: -orthoHalf });
+  orthoCam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(host);
+
+/* ----- picking, dragging, selection ----- */
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickGroup(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObjects(pickables, false)[0];
+  return hit ? hit.object.userData.group : null;
+}
+function select(g, fromView = false) {
+  selected = g && g !== 'chassis' ? g : null;
+  requestRebuild();
+  if (fromView && selected) {
+    const el = panel.querySelector(`.sec[data-sec="${selected}"]`);
+    if (el) {
+      el.classList.remove('collapsed'); prefs.collapsed[selected] = false; savePrefs();
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    }
+  }
+}
+const snap = v => round(v, prefs.snap);
+let drag = null, down = null;
+host.addEventListener('pointerdown', ev => {
+  if (ev.button !== 0) return;
+  const g = pickGroup(ev);
+  down = { x: ev.clientX, y: ev.clientY, g };
+  if (!g || g === 'chassis') return;
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -cfg.chassis.height);
+  const p = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(plane, p)) return;
+  drag = { g, plane, start: p.clone(), x0: cfg[g].x, y0: cfg[g].y, moved: false };
+  ev.stopPropagation(); ev.preventDefault();
+  host.setPointerCapture(ev.pointerId);
+  select(g, true);
+}, { capture: true });
+host.addEventListener('pointermove', ev => {
+  if (!drag) {
+    if (ev.buttons === 0) { const g = pickGroup(ev); host.style.cursor = g && g !== 'chassis' ? 'move' : ''; }
+    return;
+  }
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(drag.plane, p)) return;
+  const o = cfg[drag.g];
+  const nx = clamp(snap(drag.x0 + p.x - drag.start.x), -165, 165), ny = clamp(snap(drag.y0 + p.y - drag.start.y), -125, 125);
+  if (nx !== o.x || ny !== o.y) { o.x = nx; o.y = ny; drag.moved = true; requestRebuild(); }
+});
+host.addEventListener('pointerup', ev => {
+  if (drag) {
+    if (host.hasPointerCapture(ev.pointerId)) host.releasePointerCapture(ev.pointerId);
+    if (drag.moved) commit();
+    drag = null;
+  } else if (down && !down.g && Math.hypot(ev.clientX - down.x, ev.clientY - down.y) < 4) select(null);
+  down = null;
+});
+
+let nudgeTimer = 0;
+window.addEventListener('keydown', ev => {
+  const t = ev.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (mod && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+  if (mod && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
+  if (ev.key === 'Escape') { select(null); return; }
+  const step = ev.shiftKey ? 10 : 1;
+  const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[ev.key];
+  if (d && selected) {
+    ev.preventDefault();
+    const o = cfg[selected];
+    o.x = clamp(round(o.x + d[0], 0.5), -165, 165); o.y = clamp(round(o.y + d[1], 0.5), -125, 125);
+    requestRebuild();
+    clearTimeout(nudgeTimer); nudgeTimer = setTimeout(commit, 350);
+  }
+});
+
+/* =====================================================================
+   9. Overlays: checks list, status line, toast
+   ===================================================================== */
+const checksEl = document.getElementById('checks'), statusEl = document.getElementById('status');
+function renderChecks() {
+  const ne = issues.filter(i => i.level === 'error').length, nw = issues.filter(i => i.level === 'warn').length;
+  const state = ne ? 'error' : nw ? 'warn' : '';
+  const title = ne ? `${ne} interference${ne > 1 ? 's' : ''}` : nw ? `${nw} clearance warning${nw > 1 ? 's' : ''}` : 'Layout clear';
+  const items = issues.length
+    ? issues.map(i => `<li class="lv-${i.level}" data-group="${i.groups[0] || ''}"><span class="dotc"></span><span>${esc(i.text)}</span></li>`).join('')
+    : '<li><span class="dotc"></span><span>No overlaps, collisions or edge violations.</span></li>';
+  checksEl.classList.toggle('closed', !prefs.checksOpen);
+  checksEl.innerHTML = `<div class="ch-head" role="button" tabindex="0"><span class="dotc ${state}"></span>${title}<span class="count">${issues.length ? issues.length + ' item' + (issues.length > 1 ? 's' : '') : ''} ${prefs.checksOpen ? '▾' : '▸'}</span></div><ul>${items}</ul>`;
+}
+checksEl.addEventListener('click', ev => {
+  if (ev.target.closest('.ch-head')) { prefs.checksOpen = !prefs.checksOpen; savePrefs(); renderChecks(); return; }
+  const li = ev.target.closest('li[data-group]');
+  if (li && li.dataset.group) select(li.dataset.group, true);
+});
+
+function renderStatus() {
+  const C = cfg.chassis, R = Math.min(C.cornerRadius, Math.min(C.width, C.depth) / 2);
+  const area = C.width * C.depth - (4 - Math.PI) * R * R;
+  let used = 0;
+  for (const p of model.parts) if (p.foot === 'top') used += polyArea(worldPts(p.prof));
+  const preset = PRESETS.find(p => p.id === cfg.meta.preset);
+  const edited = presetModified();
+  statusEl.innerHTML = `<b>${esc(preset ? preset.name : 'Custom layout')}</b>${edited ? ' <span class="edited">· edited</span>' : ''}<br>${fmt(C.width)} × ${fmt(C.depth)} × ${fmt(C.height)} mm · ${fmt(area * C.height / 1e6, 2)} L · panel use ${fmt(100 * used / area, 0)} %`;
+}
+
+let toastTimer = 0;
+function toast(msg, kind = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'ov toast show ' + kind;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), kind === 'err' ? 6000 : 2600);
+}
+
+/* =====================================================================
+   10. Rebuild loop
+   ===================================================================== */
+let queued = false;
+function requestRebuild() {
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(() => { queued = false; rebuild(); });
+}
+function rebuild() {
+  model = buildModel(cfg);
+  issues = runChecks(cfg, model);
+  renderScene();
+  renderChecks();
+  renderStatus();
+  syncPanel();
+}
+
+/* =====================================================================
+   11. File actions
+   ===================================================================== */
+function fileBase() {
+  const C = cfg.chassis, p = PRESETS.find(q => q.id === cfg.meta.preset);
+  const tag = p && !presetModified() ? p.id : 'custom';
+  return `drum-block_${tag}_${fmt(C.width)}x${fmt(C.depth)}x${fmt(C.height)}mm`.replace(/[^\w.-]+/g, '-');
+}
+function download(blob, name) {
+  const url = URL.createObjectURL(blob), a = h('a');
+  a.href = url; a.download = name; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+document.getElementById('btnSave').addEventListener('click', () => {
+  const data = { format: FORMAT_ID, version: 1, units: 'mm', savedAt: new Date().toISOString(), config: cfg };
+  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), fileBase() + '.json');
+  toast('Configuration saved');
+});
+const fileInput = document.getElementById('fileInput');
+document.getElementById('btnLoad').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', async () => {
+  const f = fileInput.files[0]; fileInput.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (!data || typeof data !== 'object') throw new Error('not a JSON object');
+    setConfig(data, `Loaded ${f.name}`);
+  } catch (e) { toast(`Could not load ${f.name}: ${e.message}`, 'err'); }
+});
+document.getElementById('btnReset').addEventListener('click', () => setConfig(presetConfig(PRESETS[0]), 'Reset to default layout'));
+document.getElementById('btnUndo').addEventListener('click', undo);
+document.getElementById('btnRedo').addEventListener('click', redo);
+
+const btnExport = document.getElementById('btnExport');
+btnExport.addEventListener('click', async () => {
+  btnExport.disabled = true;
+  const label = btnExport.textContent; btnExport.textContent = 'Exporting…';
+  try {
+    const rh = await loadRhino();
+    const { doc, counts } = buildRhinoDoc(rh, cfg, buildModel(cfg), prefs.export);
+    const wo = new rh.File3dmWriteOptions();
+    wo.version = prefs.export.version === 8 ? 8 : 7;
+    const bytes = doc.toByteArrayOptions(wo);
+    doc.delete();
+    download(new Blob([bytes], { type: 'application/octet-stream' }), fileBase() + '.3dm');
+    const errs = issues.filter(i => i.level === 'error').length;
+    toast(`Exported ${counts.solids} solids + ${counts.curves} curves (${fmt(bytes.length / 1024, 0)} KB)${errs ? ` · note: ${errs} interference${errs > 1 ? 's' : ''} in layout` : ''}`);
+  } catch (e) {
+    console.error(e);
+    toast(`Export failed: ${e.message || e}. rhino3dm.js loads from cdn.jsdelivr.net.`, 'err');
+  } finally {
+    btnExport.disabled = false; btnExport.textContent = label;
+  }
+});
+
+/* ----- view bar ----- */
+for (const b of document.querySelectorAll('#viewBtns button')) b.addEventListener('click', () => setView(b.dataset.view, b.dataset.view !== 'iso'));
+document.getElementById('btnProj').addEventListener('click', () => setView(prefs.view, !prefs.ortho, true));
+document.getElementById('btnFit').addEventListener('click', () => setView(prefs.view, prefs.ortho));
+function syncToggles() {
+  for (const b of document.querySelectorAll('#toggles button')) b.classList.toggle('on', !!prefs[b.dataset.pref]);
+  grid.visible = prefs.grid;
+  applyXray();
+}
+for (const b of document.querySelectorAll('#toggles button')) b.addEventListener('click', () => {
+  const k = b.dataset.pref; prefs[k] = !prefs[k];
+  if (k === 'xray' && prefs.xray) prefs.envelopes = true;
+  savePrefs(); syncToggles(); requestRebuild();
+});
+const snapSel = document.getElementById('snapSel');
+snapSel.value = String(prefs.snap);
+if (!snapSel.value) { prefs.snap = 1; snapSel.value = '1'; }
+snapSel.addEventListener('change', () => { prefs.snap = parseFloat(snapSel.value); savePrefs(); });
+
+/* =====================================================================
+   12. Boot
+   ===================================================================== */
+cfg = sanitize(loadJSON(STORE_KEY) || presetConfig(PRESETS[0]));
+model = buildModel(cfg);
+issues = runChecks(cfg, model);
+buildPanel();
+syncToggles();
+commit();
+setView(prefs.view, prefs.ortho);
+rebuild();
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+window.__dbsBooted = true;
+
+// Small console / test handle.
+window.blockStudy = {
+  get config() { return clone(cfg); },
+  set config(c) { setConfig(c); },
+  presets: PRESETS.map(p => ({ id: p.id, name: p.name })),
+  presetConfig: id => presetConfig(PRESETS.find(p => p.id === id)),
+  buildModel: c => buildModel(sanitize(c ?? cfg)),
+  checks: c => { const s = sanitize(c ?? cfg); return runChecks(s, buildModel(s)); },
+  loadRhino,
+  buildRhinoDoc: (rh, opts = prefs.export) => buildRhinoDoc(rh, cfg, buildModel(cfg), opts),
+};
+</script>
+</body>
+</html>
