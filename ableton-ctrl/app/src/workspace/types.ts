@@ -29,6 +29,7 @@ export type WindowKind =
   | 'shape-view'
   | 'shape-controls'
   | 'shape-rack'
+  | 'sound-controls'
 
 /** Where a window's function ends up in the product. `software` stays on a
     screen (the system display and the Sound Visual); `hardware` becomes a

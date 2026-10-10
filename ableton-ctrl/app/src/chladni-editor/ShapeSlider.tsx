@@ -19,10 +19,13 @@ export function ShapeSlider({
   control,
   value,
   onChange,
+  off,
 }: {
   control: ShapeControl
   value: number
   onChange: (value: number) => void
+  /** Why the control does nothing right now — it is greyed, still movable. */
+  off?: string
 }) {
   const { min, max, step, label, unit } = control
   const trackRef = useRef<HTMLDivElement>(null)
@@ -71,7 +74,7 @@ export function ShapeSlider({
   const pct = pctOf(value)
 
   return (
-    <div className="si-slider ce-slider">
+    <div className={`si-slider ce-slider${off ? ' ce-off' : ''}`} title={off}>
       <div className="si-slider-head">
         <span className="si-slider-label">{label}</span>
         <span className="si-slider-value num">

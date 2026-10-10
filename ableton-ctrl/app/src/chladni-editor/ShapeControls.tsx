@@ -1,5 +1,5 @@
 import type React from 'react'
-import { SHAPE_GROUPS, type ShapeControl } from './shape.ts'
+import { SHAPE_GROUPS, inactiveControls, type ShapeControl } from './shape.ts'
 import { useShapeEditor } from './session.tsx'
 import { ShapeSlider } from './ShapeSlider.tsx'
 import '../sound-intent/sound-intent.css'
@@ -10,17 +10,24 @@ const swallowSpace = (e: React.KeyboardEvent) => {
   if (e.key === ' ') e.preventDefault()
 }
 
-function Steps({
+export function Steps({
   control,
   value,
   onChange,
+  off,
 }: {
   control: ShapeControl
   value: number
   onChange: (value: number) => void
+  off?: string
 }) {
   return (
-    <div className="ce-steps" role="group" aria-label={control.label}>
+    <div
+      className={`ce-steps${off ? ' ce-off' : ''}`}
+      role="group"
+      aria-label={control.label}
+      title={off}
+    >
       <span className="si-slider-label">{control.label}</span>
       <span className="ce-steps-options">
         {control.steps?.map((label, i) => (
@@ -42,11 +49,13 @@ function Steps({
 
 /**
  * Every control of the figure, grouped by what it does — the renderer laid
- * open. RANDOM throws the body and its modes somewhere new to search from;
+ * open. A control that does nothing to the figure as it stands is greyed.
+ * RANDOM throws the body and its modes somewhere new to search from;
  * RESET goes back to a plain (2,1) membrane.
  */
 export function ShapeControls() {
   const { shape, setControl, resetShape, randomize } = useShapeEditor()
+  const off = inactiveControls(shape)
   return (
     <div className="ce-controls" data-no-pinch>
       <div className="ce-controls-head">
@@ -70,6 +79,7 @@ export function ShapeControls() {
                     control={control}
                     value={shape[control.id]}
                     onChange={(v) => setControl(control.id, v)}
+                    off={off.get(control.id)}
                   />
                 ) : (
                   <ShapeSlider
@@ -77,6 +87,7 @@ export function ShapeControls() {
                     control={control}
                     value={shape[control.id]}
                     onChange={(v) => setControl(control.id, v)}
+                    off={off.get(control.id)}
                   />
                 ),
               )}

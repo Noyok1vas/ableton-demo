@@ -194,6 +194,39 @@ export function clampTo(c: ShapeControl, v: number): number {
 
 export const controlOf = (id: string) => CONTROL_BY_ID.get(id)
 
+/**
+ * The controls that do nothing to the figure as the shape stands, each with
+ * the reason — read straight off `buildShape` and the sand renderer, so the
+ * panel can grey them out. They stay movable: a value set now takes effect
+ * the moment whatever gates it comes on.
+ */
+export function inactiveControls(p: ShapeParams): Map<string, string> {
+  const off = new Map<string, string>()
+  const mark = (ids: string[], why: string) => ids.forEach((id) => off.has(id) || off.set(id, why))
+  const body = BODIES[p.body] ?? 'MEMBRANE'
+  const disc = body === 'MEMBRANE' || body === 'PLATE'
+
+  if (body !== 'BAR') mark(['barLength', 'barWidth', 'barK'], 'Bar only')
+  if (body !== 'SAND RING') mark(['ringRadius'], 'Sand ring only')
+  if (!disc) {
+    mark(['m', 'n', 'angle', 'fmIndex', 'fmRatio'], 'Membrane and plate only')
+    mark(['mixB', 'mB', 'nB', 'angleB', 'combine'], 'Membrane and plate only')
+    mark(['texAmount', 'texIndex', 'faintShare', 'alphaFaint'], 'Membrane and plate only')
+  }
+  if (body === 'SAND RING') mark(['outline', 'fillDensity', 'alphaFill'], 'A sand ring has no body')
+
+  if (p.fmIndex === 0) mark(['fmRatio'], 'FM INDEX is 0')
+  if (p.mixB === 0) mark(['mB', 'nB', 'angleB', 'combine'], 'MIX is 0')
+  if (p.texAmount === 0) mark(['texIndex', 'faintShare', 'alphaFaint'], 'AMOUNT is 0')
+  if (p.noise === 0) mark(['noiseBand', 'shakeMax'], 'NOISE is 0')
+  if (p.halo === 0) mark(['haloReach', 'haloDensity', 'alphaHalo'], 'AFTERGLOW is 0')
+  if (p.impact === 0) mark(['impactSharp'], 'CLICK RADIUS is 0')
+  if (p.impact === 0 && p.bell === 0) mark(['solidDensity', 'alphaSolid'], 'No click or bell')
+  if (p.copies === 0) mark(['copyDx', 'copyDy', 'copyRot', 'copyScale', 'copyWeight'], 'One copy only')
+  if (p.fillDensity === 0) mark(['alphaFill'], '|ψ|² FILL is 0')
+  return off
+}
+
 /** Every control at a random place in its range — a starting point to
     search from. The ink and the renderer's own constants are left alone:
     a random grain size is noise, not a figure. */
