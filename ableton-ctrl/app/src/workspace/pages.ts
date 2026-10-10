@@ -11,6 +11,7 @@ export const PAGES: Page[] = [
   { id: 'rhythmic-intent', name: 'Rhythmic intent' },
   { id: 'chladni', name: 'Chladni 1' },
   { id: 'chladni-2', name: 'Chladni 2' },
+  { id: 'chladni-editor', name: 'Chladni Editor' },
 ]
 
 /** Each page owns its windows. */
@@ -44,6 +45,14 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
     { id: 'c2-pads', kind: 'chladni2-pads', title: 'Chladni 2 Pads', x: 1570, y: 64, w: 1300, h: 1360 },
     { id: 'c2-key', kind: 'chladni2-key', title: 'Chladni 2 Key', x: 64, y: 1460, w: 2806, h: 400 },
   ],
+  // The Chladni Editor: find a figure by hand on every control the renderer
+  // has, tap the sound against it, and keep it in that sound's rack slot.
+  // Auditions only — nothing here records into the loop.
+  'chladni-editor': [
+    { id: 'ce-view', kind: 'shape-view', title: 'Figure', x: 64, y: 64, w: 1300, h: 1240 },
+    { id: 'ce-controls', kind: 'shape-controls', title: 'Figure Controls', x: 1400, y: 64, w: 820, h: 1900 },
+    { id: 'ce-rack', kind: 'shape-rack', title: 'Drum Rack', x: 64, y: 1340, w: 1300, h: 624 },
+  ],
 }
 
 /** See WindowTier. Only the two displays stay software. */
@@ -66,6 +75,9 @@ export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
   'chladni2-ring': 'software',
   'chladni2-pads': 'hardware',
   'chladni2-key': 'software',
+  'shape-view': 'software',
+  'shape-controls': 'hardware',
+  'shape-rack': 'hardware',
 }
 
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
@@ -89,4 +101,7 @@ export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   'chladni2-ring': { minW: 600, minH: 600, maxW: 2400, maxH: 2400 },
   'chladni2-pads': { minW: 900, minH: 800, maxW: 2800, maxH: 2000 },
   'chladni2-key': { minW: 800, minH: 300, maxW: 2800, maxH: 1200 },
+  'shape-view': { minW: 600, minH: 600, maxW: 2400, maxH: 2400 },
+  'shape-controls': { minW: 500, minH: 600, maxW: 1600, maxH: 2400 },
+  'shape-rack': { minW: 600, minH: 400, maxW: 2400, maxH: 1600 },
 }

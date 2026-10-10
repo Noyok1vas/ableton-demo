@@ -1,0 +1,303 @@
+/* Chladni Editor — viewport, controls, drum rack. Radius 0, 1px hairlines,
+   state in solid black, like the rest of the GUI. */
+
+.ce-view,
+.ce-controls,
+.ce-rack {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface);
+  touch-action: none;
+}
+
+/* ── Viewport ──────────────────────────────────────── */
+
+.ce-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.ce-view-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.ce-view-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ce-view-tag {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-4);
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.ce-view-unlock {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-4);
+  padding: var(--space-1) var(--space-3);
+  background: var(--ink-pure);
+  color: var(--surface);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ce-view-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--line-fine);
+}
+
+.ce-targets {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.ce-targets .ce-step {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  font-size: 12px;
+}
+
+/* ── Buttons ───────────────────────────────────────── */
+
+.ce-button {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ce-button:hover {
+  background: var(--surface-2);
+}
+
+.ce-button--primary,
+.ce-button--primary:hover {
+  background: var(--ink-pure);
+  color: var(--surface);
+}
+
+.ce-step {
+  min-width: 32px;
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ce-step + .ce-step {
+  margin-left: -1px;
+}
+
+.ce-step--on {
+  background: var(--ink-pure);
+  color: var(--surface);
+}
+
+/* ── Controls ──────────────────────────────────────── */
+
+.ce-controls {
+  display: flex;
+  flex-direction: column;
+}
+
+.ce-controls-head {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.ce-groups {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--space-4) var(--space-4);
+  touch-action: pan-y;
+}
+
+.ce-group {
+  padding-top: var(--space-3);
+}
+
+.ce-group + .ce-group {
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--line-fine);
+}
+
+.ce-group-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ce-group-note {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.ce-group-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.ce-slider {
+  gap: 0;
+}
+
+.ce-slider .si-slider-track,
+.ce-slider .si-slider-handle {
+  height: 20px;
+}
+
+.ce-slider .si-slider-value {
+  font-size: 12px;
+}
+
+.ce-steps {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 32px;
+}
+
+.ce-steps-options {
+  display: flex;
+}
+
+/* ── Rack ──────────────────────────────────────────── */
+
+.ce-rack {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.ce-slot {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ce-slot-pad {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-fine);
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.ce-slot-pad:hover {
+  border-color: var(--text-muted);
+}
+
+.ce-slot-pad--target,
+.ce-slot-pad--target:hover {
+  border: 2px solid var(--ink-pure);
+}
+
+.ce-slot-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ce-slot-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--hw-line);
+}
+
+.ce-slot-name {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.ce-slot-actions {
+  display: flex;
+}
+
+.ce-mini {
+  flex: 1 1 0;
+  min-height: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ce-mini + .ce-mini {
+  margin-left: -1px;
+}
+
+.ce-mini:disabled {
+  border-color: var(--hw-line);
+  color: var(--hw-line);
+  cursor: default;
+}

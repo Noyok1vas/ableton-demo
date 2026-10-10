@@ -80,6 +80,32 @@ export type Figure = {
   grain: number
   /** The whole figure's size, × its body units. */
   size: number
+  /** The renderer's own constants, overridden for this figure — the
+      Chladni Editor puts every one of them on a slider. */
+  tuning?: Partial<SandTuning>
+}
+
+/** Everything the renderer would otherwise hold fixed. */
+export type SandTuning = {
+  /** Grains per px of line, and the line's own half-width in px. */
+  lineGrains: number
+  lineSigma: number
+  /** How much of a full line a faint (TONE) line prints. */
+  faintShare: number
+  /** Where shaken sand lands at the least noise, and at full. */
+  shakeMin: number
+  shakeMax: number
+  /** Grains per px² of afterglow, solid disc and body fill. */
+  haloDensity: number
+  solidDensity: number
+  fillDensity: number
+  /** TWIST at 1: a circle's drop over one turn, and a spoke's inner turn. */
+  spiralDrop: number
+  vortexTurn: number
+  /** SPREAD at 1: how much wider. */
+  spreadStretch: number
+  /** Marching-squares cell, in px. */
+  cellPx: number
 }
 
 /** What a grain is, which sets how it is printed. */
@@ -96,28 +122,23 @@ export type Sand = {
 
 // ── Tuning ───────────────────────────────────────────────────────────────
 
-/** Grains per px of line, and the line's own half-width, in px. */
-const LINE_GRAINS_PER_PX = 1.5
-const LINE_SIGMA_PX = 0.75
-const FAINT_SHARE = 0.5
-/** How far, in body units, a shaken grain lands from its line: the least
-    noise shakes it this far… */
-const SHAKE_MIN = 0.05
-/** …and full noise this far — a cloud the size of the body. */
-const SHAKE_MAX = 0.4
-/** Afterglow: grains per px², at the silhouette, at halo 1. */
-const HALO_DENSITY = 0.05
-/** Solid discs and the fill: grains per px². */
-const SOLID_DENSITY = 0.85
-const FILL_DENSITY = 0.16
-/** TWIST at 1: how far round a circle closes in (a share of its radius) and
-    how far a spoke's inner end turns (radians). */
-const SPIRAL_DROP = 0.32
-const VORTEX_TURN = 1.9
-/** SPREAD at 1: how much wider the figure gets. */
-const SPREAD_STRETCH = 0.45
-/** Marching-squares cell, in px. */
-const CELL_PX = 2.4
+/** The renderer's tuning, as every figure but the editor's uses it. */
+export const SAND_TUNING: SandTuning = {
+  lineGrains: 1.5,
+  lineSigma: 0.75,
+  faintShare: 0.5,
+  // How far, in body units, a shaken grain lands from its line: the least
+  // noise shakes it this far, full noise this far — a cloud the body's size.
+  shakeMin: 0.05,
+  shakeMax: 0.4,
+  haloDensity: 0.05,
+  solidDensity: 0.85,
+  fillDensity: 0.16,
+  spiralDrop: 0.32,
+  vortexTurn: 1.9,
+  spreadStretch: 0.45,
+  cellPx: 2.4,
+}
 
 // ── Randomness ───────────────────────────────────────────────────────────
 
@@ -227,12 +248,13 @@ export type PourOptions = {
 export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
   const rand = makeRng(seed)
   const out = new GrainBuffer()
+  const T: SandTuning = { ...SAND_TUNING, ...fig.tuning }
   const unitPx = px * fig.size
-  const cells = Math.max(60, Math.min(260, Math.round((2 * fig.reach * unitPx) / CELL_PX)))
-  const lineSigma = (LINE_SIGMA_PX / unitPx) * (1 + 1.6 * fig.drive)
-  const perUnit = LINE_GRAINS_PER_PX * unitPx * (1 + 1.2 * fig.drive)
+  const cells = Math.max(60, Math.min(260, Math.round((2 * fig.reach * unitPx) / T.cellPx)))
+  const lineSigma = (T.lineSigma / unitPx) * (1 + 1.6 * fig.drive)
+  const perUnit = T.lineGrains * unitPx * (1 + 1.2 * fig.drive)
   const shakeShare = Math.pow(fig.noise, 0.8)
-  const shakeSigma = SHAKE_MIN + (SHAKE_MAX - SHAKE_MIN) * fig.noise
+  const shakeSigma = T.shakeMin + (T.shakeMax - T.shakeMin) * fig.noise
   const spill = 0.3 * fig.drive
 
   /** One grain off the line at (x, y) with normal (nx, ny). */
@@ -264,7 +286,7 @@ export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
       const segs = traced[l]
       if (!segs) return
       const kind = lines.faint ? Kind.Faint : Kind.Line
-      const rate = perUnit * lines.weight * copy.weight * (lines.faint ? FAINT_SHARE : 1)
+      const rate = perUnit * lines.weight * copy.weight * (lines.faint ? T.faintShare : 1)
       let carry = rand()
       for (let s = 0; s < segs.length; s += 4) {
         const x0 = segs[s]
@@ -299,7 +321,7 @@ export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
 
   // A solid disc of grains: dense inside `radius`, its edge `soft` wide.
   const disc = (radius: number, soft: number) => {
-    const step = 1 / (unitPx * Math.sqrt(SOLID_DENSITY))
+    const step = 1 / (unitPx * Math.sqrt(T.solidDensity))
     const extent = radius * (1 + soft) + step
     for (let y = -extent; y <= extent; y += step) {
       for (let x = -extent; x <= extent; x += step) {
@@ -318,7 +340,7 @@ export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
   if (fig.halo > 0) {
     const lambda = fig.haloReach * (0.08 + 0.92 * fig.halo) * 0.33
     const base = 0.55 * Math.sqrt(fig.halo)
-    const step = 1 / (unitPx * Math.sqrt(HALO_DENSITY))
+    const step = 1 / (unitPx * Math.sqrt(T.haloDensity))
     const extent = fig.reach + 4 * lambda
     for (let y = -extent; y <= extent; y += step) {
       for (let x = -extent; x <= extent; x += step) {
@@ -334,7 +356,7 @@ export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
   // The body itself, faint: |ψ|² as a stipple, for its volume.
   if (fill && fig.body) {
     const { psi, inside } = fig.body
-    const step = 1 / (unitPx * Math.sqrt(FILL_DENSITY))
+    const step = 1 / (unitPx * Math.sqrt(T.fillDensity))
     for (let y = -fig.reach; y <= fig.reach; y += step) {
       for (let x = -fig.reach; x <= fig.reach; x += step) {
         const jx = x + (rand() - 0.5) * step
@@ -348,7 +370,7 @@ export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
 
   // TWIST, SPREAD and size: every grain moved, whatever it is.
   const twist = fig.twist
-  const stretch = 1 + SPREAD_STRETCH * fig.spread
+  const stretch = 1 + T.spreadStretch * fig.spread
   for (let i = 0; i < out.count; i++) {
     let x = out.xs[i]
     let y = out.ys[i]
@@ -358,8 +380,8 @@ export function pour(fig: Figure, { seed, px, fill }: PourOptions): Sand {
       // Share of a clockwise turn from 12 o'clock (y is down, so clockwise
       // is increasing angle).
       const u = (((theta + Math.PI / 2) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (2 * Math.PI)
-      const r2 = r * (1 - SPIRAL_DROP * twist * u)
-      const t2 = theta + VORTEX_TURN * twist * Math.max(0, 1 - r2)
+      const r2 = r * (1 - T.spiralDrop * twist * u)
+      const t2 = theta + T.vortexTurn * twist * Math.max(0, 1 - r2)
       x = Math.cos(t2) * r2
       y = Math.sin(t2) * r2
     }
@@ -398,12 +420,14 @@ export function printSand(
   px: number,
   grainPx = GRAIN_PX,
   alpha = 1,
+  /** Per-kind print strength, overriding the defaults (the editor's). */
+  kindAlpha?: Partial<Record<Kind, number>>,
 ): void {
   const g = grainPx * sand.grain
   const half = g / 2
   ctx.fillStyle = '#000000'
   for (const kind of KINDS) {
-    ctx.globalAlpha = KIND_ALPHA[kind] * alpha
+    ctx.globalAlpha = (kindAlpha?.[kind] ?? KIND_ALPHA[kind]) * alpha
     for (let i = 0; i < sand.count; i++) {
       if (sand.kinds[i] !== kind) continue
       ctx.fillRect(cx + sand.xs[i] * px - half, cy + sand.ys[i] * px - half, g, g)

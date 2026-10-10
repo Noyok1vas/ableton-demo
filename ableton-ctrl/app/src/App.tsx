@@ -11,6 +11,7 @@ import { GuideSession } from './guide/session.tsx'
 import { HintLayer } from './guide/HintLayer.tsx'
 import { ModSession } from './mod/session.tsx'
 import { DrumSession } from './chladni2/session.tsx'
+import { ShapeSession } from './chladni-editor/session.tsx'
 
 export default function App() {
   return (
@@ -42,7 +43,11 @@ export default function App() {
                         innermost, with its one layer of hints beside the
                         canvas rather than inside it. */}
                     <GuideSession>
-                      <Workspace />
+                      {/* The Chladni Editor's figure and rack — page state,
+                          kept above the windows so switching pages keeps it. */}
+                      <ShapeSession>
+                        <Workspace />
+                      </ShapeSession>
                       <HintLayer />
                     </GuideSession>
                   </MarchSession>
