@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useSession } from './session.tsx'
 import type { CollectionEntry, CollectionKind, SavedPattern, Tap } from './types.ts'
+import { formatMeter } from '../transport/meter.ts'
 import { IconRemove, IconSave } from '../main-screen/icons.tsx'
 import './rhythmic-intent.css'
 
@@ -76,7 +77,12 @@ function EntryRow({
         onKeyUp={swallowSpace}
         data-hint="Load this pattern — it plays in place of the current one"
       >
-        <span className="collection-name num">{title}</span>
+        <span className="collection-name num">
+          {title}
+          <span className="collection-tempo">
+            {entry.bpm} · {formatMeter(entry.meter)}
+          </span>
+        </span>
         <MiniPattern taps={entry.taps} loopDuration={entry.duration} />
       </button>
       {action}

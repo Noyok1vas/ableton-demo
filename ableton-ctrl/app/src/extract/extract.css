@@ -1,6 +1,6 @@
-/* Rhythm Extract — the rest of the GUI's black/white/grey, but drawn by hand:
-   every frame, rule and mark is a pen stroke (see sketch.ts), and nothing has
-   a CSS border. Text keeps the GUI's own type, uppercase on the controls. */
+/* Rhythm Extract — the instrument's own vocabulary, the transport bar's in
+   particular: 1px hairline squares, radius 0, the chosen state filled black,
+   disabled controls fading to a fine grey line. Uppercase on the controls. */
 
 .xp-screen {
   flex: 1 1 auto;
@@ -16,59 +16,39 @@
   gap: var(--space-5);
 }
 
-/* ── Ink ─────────────────────────────────────────────── */
-
 .xp-screen svg {
   display: block;
-  overflow: visible;
 }
 
 .xp-screen svg path {
   fill: none;
   stroke: var(--text);
-  stroke-width: 1.3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.xp-screen svg path.xp-line-fine {
+  stroke: var(--line-fine);
 }
 
 .xp-screen svg path.xp-ink-thin {
-  stroke-width: 0.9;
   stroke: var(--text-muted);
 }
 
-.xp-screen svg path.xp-ink-faint {
+.xp-screen svg path.xp-ink-wave {
+  stroke: var(--text);
+}
+
+.xp-screen svg path.xp-ink-wave--out {
   stroke: #c3c7ca;
 }
 
 .xp-screen svg path.xp-ink-bold {
-  stroke-width: 1.9;
-}
-
-.xp-screen svg path.xp-ink-hatch {
-  stroke-width: 0.9;
-  stroke: var(--text-muted);
-}
-
-.xp-screen svg path.xp-ink-dashed {
-  stroke-dasharray: 7 6;
-  stroke: var(--text-muted);
-}
-
-.xp-screen svg path.xp-ink-fill,
-.xp-screen svg path.xp-ink-blot {
-  stroke-width: 2.4;
-}
-
-.xp-screen svg path.xp-ink-wave {
-  stroke-width: 1;
-}
-
-.xp-screen svg path.xp-ink-wave--out {
-  stroke: #b9bec2;
+  stroke-width: 2;
 }
 
 .xp-screen svg path.xp-ink-cursor {
-  stroke-width: 2.2;
+  stroke-width: 2;
 }
 
 .xp-screen svg path.xp-ink-mark {
@@ -102,7 +82,6 @@
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
   background: var(--text);
   color: var(--surface);
   font-size: 13px;
@@ -117,7 +96,6 @@
 
 .xp-tabs {
   display: flex;
-  gap: var(--space-2);
   margin-left: auto;
 }
 
@@ -131,45 +109,42 @@
 /* ── Buttons ─────────────────────────────────────────── */
 
 .xp-btn {
-  position: relative;
-  min-height: 40px;
+  min-height: 52px;
   padding: 0 var(--space-3);
-  background: none;
-  border: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 900;
   letter-spacing: 0.4px;
   cursor: pointer;
   white-space: nowrap;
+  touch-action: manipulation;
+  user-select: none;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
 }
 
-.xp-btn .xp-ink {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+.xp-btn:hover:not(:disabled) {
+  background: var(--surface-2);
 }
 
-.xp-btn-label {
-  position: relative;
-}
-
-.xp-btn:hover:not(:disabled) .xp-ink path {
-  stroke-width: 2;
+.xp-btn--on,
+.xp-btn--on:hover:not(:disabled) {
+  background: var(--ink-pure);
+  color: var(--surface);
 }
 
 .xp-btn:disabled {
+  border-color: var(--line-fine);
+  color: var(--text-muted);
   cursor: default;
-  color: #b9bec2;
-}
-
-.xp-btn:disabled .xp-ink path {
-  stroke: #ccd0d3;
 }
 
 .xp-btn--big {
-  min-height: 56px;
   padding: 0 var(--space-5);
   font-size: 15px;
 }
@@ -177,6 +152,11 @@
 .xp-btn--play {
   margin-left: auto;
   min-width: 112px;
+}
+
+.xp-tabs .xp-btn + .xp-btn,
+.xp-presets .xp-btn + .xp-btn {
+  margin-left: -1px;
 }
 
 /* ── Source ──────────────────────────────────────────── */
@@ -189,12 +169,7 @@
   gap: var(--space-3);
   min-height: 84px;
   padding: var(--space-3) var(--space-4);
-}
-
-.xp-frame {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+  border: 1px dashed var(--text-muted);
 }
 
 .xp-drop-text {
@@ -222,31 +197,68 @@
   max-width: 420px;
 }
 
+.xp-record-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-1);
+  width: 88px;
+}
+
 .xp-record {
-  position: relative;
-  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   width: 88px;
   height: 88px;
   padding: 0;
-  background: none;
-  border: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
   cursor: pointer;
 }
 
+.xp-record:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
 .xp-record:disabled {
-  opacity: 0.35;
+  border-color: var(--line-fine);
+  opacity: 0.4;
   cursor: default;
 }
 
+.xp-record-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ink-pure);
+}
+
+.xp-record-stop {
+  width: 24px;
+  height: 24px;
+  background: var(--ink-pure);
+}
+
 .xp-record-time {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -20px;
-  font-size: 11px;
+  position: relative;
+  height: 18px;
+  border: 1px solid var(--line-fine);
+  font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.4px;
   text-align: center;
+  line-height: 16px;
+}
+
+.xp-record-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--surface-2);
+}
+
+.xp-record-time span {
+  position: relative;
 }
 
 /* ── Waveform ────────────────────────────────────────── */
@@ -264,6 +276,10 @@
 
 .xp-wave-svg rect {
   fill: transparent;
+}
+
+.xp-wave-svg rect.xp-sel-fill {
+  fill: var(--surface-2);
 }
 
 .xp-wave-hit {
@@ -435,7 +451,29 @@
 }
 
 .xp-cell:hover {
-  background: rgba(23, 26, 29, 0.05);
+  background: rgba(23, 26, 29, 0.06);
+}
+
+.xp-step {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.xp-step--now {
+  fill: var(--surface-2);
+}
+
+.xp-hit {
+  fill: var(--ink-pure);
+  shape-rendering: crispEdges;
+}
+
+.xp-hit--open {
+  fill: var(--surface);
+  stroke: var(--ink-pure);
+  stroke-width: 3;
 }
 
 /* ── Listen ──────────────────────────────────────────── */
@@ -461,7 +499,21 @@
 
 .xp-fader-track {
   position: relative;
-  height: 44px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+}
+
+.xp-fader-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink-pure);
+}
+
+.xp-fader-handle {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 0;
 }
 
 .xp-fader-track input {
@@ -489,7 +541,6 @@
 
 .xp-presets {
   display: flex;
-  gap: var(--space-2);
   padding-left: calc(96px + var(--space-3));
 }
 

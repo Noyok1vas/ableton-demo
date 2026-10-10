@@ -1,6 +1,5 @@
 import { useMemo, useRef } from 'react'
-import { useSize } from './SketchParts.tsx'
-import { blot, hatch, line2, loop, seedOf } from './sketch.ts'
+import { useSize } from './Controls.tsx'
 import { DRUM_LABEL, DRUM_TO_VOICE, DRUM_TYPES, type DrumType, type ExtractionResult } from './types.ts'
 import { SoundPreview } from '../selector/SoundPreview.tsx'
 import { PATTERNS } from '../selector/patterns.ts'
@@ -27,8 +26,8 @@ type Cell = { ids: string[]; velocity: number; open: boolean }
  * second view of the SAME pattern, not a copy — a step set here appears on the
  * ring, a mark dragged on the ring moves here.
  *
- * Ink density is confidence: a hit the analysis was sure of is solid, a guess
- * is faint. Steps added by hand are always solid.
+ * Fill strength is confidence: a hit the analysis was sure of is solid black,
+ * a guess is grey; an open hat is drawn as an outline. Steps added by hand are always solid.
  */
 export function StepLanes({ result }: { result: ExtractionResult | null }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -70,49 +69,32 @@ export function StepLanes({ result }: { result: ExtractionResult | null }) {
     return out
   }, [result, steps])
 
-  // The ruled grid: bar lines, beat lines and a dot on every step.
-  const grid = useMemo(() => {
-    if (cw === 0) return { bold: '', thin: '', dots: '' }
-    let bold = ''
-    let thin = ''
-    let dots = ''
-    for (let s = 0; s <= steps; s++) {
-      const x = LABEL_W + s * cw
-      if (s % 16 === 0) bold += line2(x, 2, x, height - 2, 100 + s, 0.9)
-      else if (s % 4 === 0) thin += line2(x, HEAD_H - 4, x, height - 4, 200 + s, 0.7)
-    }
-    DRUM_TYPES.forEach((_, row) => {
-      const y = HEAD_H + row * ROW_H
-      thin += line2(LABEL_W - 6, y, w - 2, y, 300 + row, 0.8)
-      for (let s = 0; s < steps; s++) {
-        dots += blot(LABEL_W + (s + 0.5) * cw, y + ROW_H / 2, s % 4 === 0 ? 1.8 : 1.1, 400 + row * 64 + s)
-      }
-    })
-    thin += line2(LABEL_W - 6, height - 1, w - 2, height - 1, 399, 0.8)
-    return { bold, thin, dots }
-  }, [cw, steps, height, w])
+  // One hairline square per step, the same square the transport's buttons
+  // are; a gap after every beat so the bar reads in fours.
+  const box = (s: number, row: number) => {
+    const gap = 3
+    const beatGap = 6
+    const unit = (cw * steps - beatGap * (steps / 4 - 1)) / steps
+    const x = LABEL_W + s * unit + Math.floor(s / 4) * beatGap
+    const y = HEAD_H + row * ROW_H + (ROW_H - Math.min(ROW_H - 10, unit - gap)) / 2
+    const size = Math.min(ROW_H - 10, unit - gap)
+    return { x: x + (unit - gap - size) / 2, y, size }
+  }
 
   const hits = useMemo(() => {
     if (cw === 0) return []
-    const out: { key: string; d: string; ring: string; opacity: number }[] = []
+    const out: { key: string; x: number; y: number; size: number; open: boolean; opacity: number }[] = []
     DRUM_TYPES.forEach((drum, row) => {
       for (let s = 0; s < steps; s++) {
         const key = `${drum}:${s}`
         const cell = cells.get(key)
         if (!cell) continue
-        const cx = LABEL_W + (s + 0.5) * cw
-        const cy = HEAD_H + row * ROW_H + ROW_H / 2
-        const r = Math.min(cw * 0.46, 5 + 9 * cell.velocity)
-        const seed = seedOf(key)
-        out.push({
-          key,
-          d: blot(cx, cy, cell.open ? r * 0.45 : r, seed),
-          ring: cell.open ? loop(cx, cy, r, r, seed + 1) : '',
-          opacity: 0.3 + 0.7 * (confidence.get(key) ?? 1),
-        })
+        out.push({ key, ...box(s, row), open: cell.open, opacity: 0.25 + 0.75 * (confidence.get(key) ?? 1) })
       }
     })
     return out
+    // `box` is derived from cw and steps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cells, confidence, cw, steps])
 
   const toggle = (drum: DrumType, step: number) => {
@@ -132,31 +114,41 @@ export function StepLanes({ result }: { result: ExtractionResult | null }) {
       <div ref={ref} className="xp-lanes-grid" style={{ height }} data-no-pinch>
         {cw > 0 && (
           <svg width={w} height={height} className="xp-lanes-svg">
-            {nowStep !== null && (
-              <path
-                className="xp-ink-hatch xp-lanes-now"
-                d={hatch(LABEL_W + nowStep * cw + 1, HEAD_H, cw - 2, height - HEAD_H, 5, nowStep + 1)}
-              />
+            {DRUM_TYPES.map((_, row) =>
+              Array.from({ length: steps }, (_, s) => {
+                const b = box(s, row)
+                return (
+                  <rect
+                    key={`${row}:${s}`}
+                    className={`xp-step${s === nowStep ? ' xp-step--now' : ''}${s % 16 === 0 ? ' xp-step--bar' : ''}`}
+                    x={b.x + 0.5}
+                    y={b.y + 0.5}
+                    width={b.size - 1}
+                    height={b.size - 1}
+                  />
+                )
+              }),
             )}
-            <path className="xp-ink-bold" d={grid.bold} />
-            <path className="xp-ink-thin" d={grid.thin} />
-            <path className="xp-ink-fill xp-ink-faint" d={grid.dots} />
             {Array.from({ length: steps / 4 }, (_, beat) => (
-              <text
-                key={beat}
-                className="xp-lanes-beat num"
-                x={LABEL_W + beat * 4 * cw + 5}
-                y={HEAD_H - 9}
-              >
+              <text key={beat} className="xp-lanes-beat num" x={box(beat * 4, 0).x} y={HEAD_H - 9}>
                 {beat % 4 === 0 ? `${beat / 4 + 1}.1` : `${(beat % 4) + 1}`}
               </text>
             ))}
-            {hits.map((h) => (
-              <g key={h.key} style={{ opacity: h.opacity }}>
-                <path className="xp-ink-blot" d={h.d} />
-                {h.ring && <path className="xp-ink-bold" d={h.ring} />}
-              </g>
-            ))}
+            {hits.map((h) =>
+              h.open ? (
+                <rect
+                  key={h.key}
+                  className="xp-hit xp-hit--open"
+                  x={h.x + 2}
+                  y={h.y + 2}
+                  width={h.size - 4}
+                  height={h.size - 4}
+                  style={{ opacity: h.opacity }}
+                />
+              ) : (
+                <rect key={h.key} className="xp-hit" x={h.x} y={h.y} width={h.size} height={h.size} style={{ opacity: h.opacity }} />
+              ),
+            )}
           </svg>
         )}
         {cw > 0 &&
@@ -177,7 +169,7 @@ export function StepLanes({ result }: { result: ExtractionResult | null }) {
                   key={s}
                   type="button"
                   className="xp-cell"
-                  style={{ left: LABEL_W + s * cw, width: cw }}
+                  style={{ left: box(s, row).x, width: box(s, row).size }}
                   aria-label={`${DRUM_LABEL[drum]} step ${s + 1}`}
                   aria-pressed={cells.has(`${drum}:${s}`)}
                   onClick={() => toggle(drum, s)}

@@ -6,8 +6,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { useSize } from './SketchParts.tsx'
-import { hatch, line, line2, scribble, seeded, seedOf } from './sketch.ts'
+import { useSize } from './Controls.tsx'
 import { RECORD_MAX_S } from './audio.ts'
 import type { Selection, SourceAudio } from './session.tsx'
 
@@ -21,8 +20,8 @@ type Drag =
   | null
 
 /**
- * The source, drawn as one pen scribble, with the part being studied hatched
- * in and bracketed. Drag a bracket to resize, the hatching to move, or press
+ * The source as a bar waveform, the part being studied shaded and edged
+ * with handles. Drag a handle to resize, the shading to move, or press
  * anywhere else to put the selection there. While a take is being recorded it
  * draws the input as it arrives instead.
  *
@@ -42,7 +41,7 @@ export function Waveform({
   onSelect: (next: Selection) => void
   recording: { elapsed: number; levels: number[] } | null
   cursor: number | null
-  /** The span the backing clip was cut from, marked on the scribble. */
+  /** The span the backing clip was cut from, marked under the waveform. */
   extracted: { start: number; end: number } | null
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -53,14 +52,13 @@ export function Waveform({
   const [drag, setDrag] = useState<Drag>(null)
 
   const wave = useMemo(
-    () => (source && w > 0 ? scribble(source.peaks, 0, WAVE_TOP, w, WAVE_H, seedOf(source.name)) : ''),
+    () => (source && w > 0 ? bars(source.peaks, 0, WAVE_TOP, w, WAVE_H) : ''),
     [source, w],
   )
 
   // Ruler ticks: every second, a longer one every five (every ten past a minute).
   const ruler = useMemo(() => {
     if (!source || w === 0) return { d: '', labels: [] as { x: number; t: number }[] }
-    const rand = seeded(7)
     const major = duration > 60 ? 10 : 5
     const minor = duration > 120 ? 5 : 1
     let d = ''
@@ -68,7 +66,7 @@ export function Waveform({
     for (let t = 0; t <= duration + 1e-6; t += minor) {
       const isMajor = Math.round(t) % major === 0
       const px = (t / duration) * w
-      d += line(px, HEIGHT - RULER, px, HEIGHT - RULER + (isMajor ? 8 : 4), rand, 0.4)
+      d += `M${px} ${HEIGHT - RULER}v${isMajor ? 8 : 4}`
       if (isMajor) labels.push({ x: px, t: Math.round(t) })
     }
     return { d, labels }
@@ -86,7 +84,7 @@ export function Waveform({
       const b = Math.min(buckets - 1, Math.floor((i / n) * buckets))
       peaks[b] = Math.max(peaks[b], recording.levels[i])
     }
-    return scribble(peaks, 0, WAVE_TOP, span, WAVE_H, 11)
+    return bars(peaks, 0, WAVE_TOP, span, WAVE_H)
   }, [recording, w])
 
   const pxPerSecond = () => {
@@ -138,7 +136,6 @@ export function Waveform({
 
   const sx = x(selection.start)
   const ex = x(selection.end)
-  const seed = seedOf(source?.name ?? 'empty')
 
   useEffect(() => {
     if (!drag) return
@@ -164,8 +161,7 @@ export function Waveform({
               <rect x={sx} y={0} width={Math.max(0, ex - sx)} height={HEIGHT} />
             </clipPath>
           </defs>
-          {/* The baseline the scribble swings about. */}
-          <path className="xp-ink-faint" d={line2(0, WAVE_TOP + WAVE_H / 2, w, WAVE_TOP + WAVE_H / 2, 3, 0.6)} />
+          <path className="xp-line-fine" d={`M0 ${WAVE_TOP + WAVE_H / 2}H${w}`} />
           {recording ? (
             <path className="xp-ink-wave" d={live} />
           ) : source ? (
@@ -183,15 +179,15 @@ export function Waveform({
                 height={HEIGHT - RULER}
                 onPointerDown={onBackground}
               />
-              <path className="xp-ink-hatch xp-sel-hatch" d={hatch(sx, WAVE_TOP - 4, ex - sx, WAVE_H + 8, 9, seed)} />
+              <rect className="xp-sel-fill" x={sx} y={0} width={Math.max(0, ex - sx)} height={HEIGHT - RULER} />
               <path className="xp-ink-wave" d={wave} clipPath="url(#xp-sel-clip)" />
               {extracted && (
                 <path
                   className="xp-ink-mark"
-                  d={line2(x(extracted.start), HEIGHT - RULER - 4, x(extracted.end), HEIGHT - RULER - 4, seed + 3, 0.8)}
+                  d={`M${x(extracted.start)} ${HEIGHT - RULER - 2}H${x(extracted.end)}`}
                 />
               )}
-              {/* Brackets: an upright with a short foot top and bottom. */}
+              {/* Handles: the selection's two edges. */}
               {[
                 { at: sx, dir: 1, kind: 'start' as const },
                 { at: ex, dir: -1, kind: 'end' as const },
@@ -199,11 +195,7 @@ export function Waveform({
                 <g key={kind}>
                   <path
                     className="xp-ink-bold"
-                    d={
-                      line2(at, WAVE_TOP - 6, at, WAVE_TOP + WAVE_H + 6, seed + (dir > 0 ? 1 : 2), 0.8) +
-                      line2(at, WAVE_TOP - 6, at + 9 * dir, WAVE_TOP - 6, seed + 5, 0.5) +
-                      line2(at, WAVE_TOP + WAVE_H + 6, at + 9 * dir, WAVE_TOP + WAVE_H + 6, seed + 6, 0.5)
-                    }
+                    d={`M${at} 0V${HEIGHT - RULER}M${at} 0h${10 * dir}v10h${-10 * dir}`}
                   />
                   <rect
                     className="xp-wave-handle"
@@ -226,7 +218,7 @@ export function Waveform({
               {cursor !== null && (
                 <path
                   className="xp-ink-cursor"
-                  d={line2(x(cursor), WAVE_TOP - 8, x(cursor), WAVE_TOP + WAVE_H + 8, 21, 0.4)}
+                  d={`M${x(cursor)} 0V${HEIGHT - RULER}`}
                 />
               )}
               <path className="xp-ink-thin" d={ruler.d} />
@@ -254,4 +246,17 @@ export function Waveform({
       )}
     </div>
   )
+}
+
+/** A waveform as bars: one hairline column per bucket, top to bottom of its
+    peak, symmetric about the middle. */
+function bars(peaks: ArrayLike<number>, x: number, y: number, w: number, h: number): string {
+  const mid = y + h / 2
+  let d = ''
+  for (let i = 0; i < peaks.length; i++) {
+    const px = (x + ((i + 0.5) / peaks.length) * w).toFixed(1)
+    const a = Math.max(0.5, peaks[i] * (h / 2))
+    d += `M${px} ${(mid - a).toFixed(1)}V${(mid + a).toFixed(1)}`
+  }
+  return d
 }

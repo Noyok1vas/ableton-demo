@@ -420,6 +420,13 @@
   text-overflow: ellipsis;
 }
 
+/* The tempo and meter it was played in — what loading it brings back. */
+.collection-tempo {
+  margin-left: var(--space-2);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .collection-mini {
   display: block;
   width: 100%;

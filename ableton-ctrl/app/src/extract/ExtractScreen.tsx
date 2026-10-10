@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useExtract, type MixPreset } from './session.tsx'
-import { SketchButton, SketchFader, SketchFrame, swallowSpace } from './SketchParts.tsx'
+import { Button, Fader, swallowSpace } from './Controls.tsx'
 import { StepLanes } from './StepLanes.tsx'
 import { Waveform } from './Waveform.tsx'
-import { blot, loop, seedOf } from './sketch.ts'
 import { RECORD_MAX_S } from './audio.ts'
 import { DRUM_LABEL, DRUM_TYPES } from './types.ts'
 import { useSession } from '../rhythmic-intent/session.tsx'
@@ -137,24 +136,22 @@ export function ExtractScreen() {
           <span className="xp-num">1</span>
           <h3>Source</h3>
           <div className="xp-tabs" role="group" aria-label="Source">
-            <SketchButton
-              ink="tab-upload"
+            <Button
               on={mode === 'upload'}
               onClick={() => setMode('upload')}
               disabled={x.phase === 'recording'}
               data-hint="Upload — a song file; then choose 5–15 seconds of it"
             >
               UPLOAD
-            </SketchButton>
-            <SketchButton
-              ink="tab-record"
+            </Button>
+            <Button
               on={mode === 'record'}
               onClick={() => setMode('record')}
               disabled={!x.micSupported || x.phase === 'recording'}
               data-hint="Record — up to 15 seconds from the microphone"
             >
               RECORD
-            </SketchButton>
+            </Button>
           </div>
         </header>
 
@@ -168,18 +165,16 @@ export function ExtractScreen() {
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
           >
-            <SketchFrame ink="drop" dashed />
             <span className="xp-drop-text">
               {x.source?.kind === 'file' ? x.source.name : 'Drop a song here'}
             </span>
-            <SketchButton
-              ink="choose"
+            <Button
               onClick={() => fileRef.current?.click()}
               disabled={busy}
               data-hint="Choose an audio file — MP3, WAV, M4A, OGG…"
             >
               CHOOSE FILE
-            </SketchButton>
+            </Button>
             <input
               ref={fileRef}
               type="file"
@@ -216,15 +211,14 @@ export function ExtractScreen() {
           <span className="xp-meta num">
             {x.source ? `${fmt(x.selection.start)} – ${fmt(x.selection.end)} · ${fmt(selLength)}` : '—'}
           </span>
-          <SketchButton
-            ink="preview"
+          <Button
             on={x.previewing}
             onClick={x.togglePreview}
             disabled={!x.source || busy}
             data-hint="Preview — hear the selected part on its own"
           >
             {x.previewing ? 'STOP' : 'PREVIEW'}
-          </SketchButton>
+          </Button>
         </header>
         <Waveform
           source={x.source}
@@ -239,8 +233,7 @@ export function ExtractScreen() {
       {/* ── 3. Extract ──────────────────────────────────── */}
       <section className="xp-section">
         <div className="xp-extract-row">
-          <SketchButton
-            ink="extract"
+          <Button
             className="xp-btn--big"
             on={x.phase === 'analyzing'}
             onClick={() => x.extract()}
@@ -248,7 +241,7 @@ export function ExtractScreen() {
             data-hint="Extract — find the drums in the selection and put the pattern on the ring"
           >
             {x.phase === 'analyzing' ? 'LISTENING…' : 'EXTRACT RHYTHM'}
-          </SketchButton>
+          </Button>
           <p className={`xp-status${x.phase === 'error' ? ' xp-status--error' : ''}`} role="status">
             {status}
           </p>
@@ -270,22 +263,20 @@ export function ExtractScreen() {
                   {x.result.bpm.toFixed(1)} · sure {Math.round(x.result.tempoConfidence * 100)}%
                 </small>
               </span>
-              <SketchButton
-                ink="half"
+              <Button
                 onClick={() => x.extract(x.result!.bpm / 2)}
                 disabled={busy || x.result.bpm / 2 < BPM_MIN}
                 data-hint="Half — the beat is counted twice too fast; re-extract at half the tempo"
               >
                 ½×
-              </SketchButton>
-              <SketchButton
-                ink="double"
+              </Button>
+              <Button
                 onClick={() => x.extract(x.result!.bpm * 2)}
                 disabled={busy || x.result.bpm * 2 > BPM_MAX}
                 data-hint="Double — the beat is counted twice too slow; re-extract at double the tempo"
               >
                 2×
-              </SketchButton>
+              </Button>
             </div>
           )}
         </header>
@@ -310,8 +301,7 @@ export function ExtractScreen() {
         <header className="xp-head">
           <span className="xp-num">4</span>
           <h3>Listen</h3>
-          <SketchButton
-            ink="play"
+          <Button
             className="xp-btn--play"
             on={playing}
             onClick={togglePlay}
@@ -319,19 +309,17 @@ export function ExtractScreen() {
             data-hint="Play — the original and the extracted pattern together, on one grid"
           >
             {playing ? '■ STOP' : '▶ PLAY'}
-          </SketchButton>
+          </Button>
         </header>
         <div className="xp-mix">
-          <SketchFader
-            ink="fader-original"
+          <Fader
             label="ORIGINAL"
             value={trackLevel.backing}
             onChange={(v) => setTrackLevel('backing', v)}
             disabled={!x.extracted || engineSource !== 'builtin'}
             hint="Original — the level of the selected audio, looping under the pattern"
           />
-          <SketchFader
-            ink="fader-kit"
+          <Fader
             label="YOUR KIT"
             value={trackLevel.main}
             onChange={(v) => setTrackLevel('main', v)}
@@ -339,15 +327,14 @@ export function ExtractScreen() {
           />
           <div className="xp-presets" role="group" aria-label="Mix">
             {MIXES.map((m) => (
-              <SketchButton
+              <Button
                 key={m.id}
-                ink={`mix-${m.id}`}
                 onClick={() => x.applyMix(m.id)}
                 disabled={!x.extracted}
                 data-hint={m.hint}
               >
                 {m.label}
-              </SketchButton>
+              </Button>
             ))}
           </div>
         </div>
@@ -363,23 +350,21 @@ export function ExtractScreen() {
         <header className="xp-head">
           <span className="xp-num">5</span>
           <h3>Data</h3>
-          <SketchButton
-            ink="show-data"
+          <Button
             on={showData}
             onClick={() => setShowData((s) => !s)}
             disabled={!x.result}
             data-hint="Show the result as structured data"
           >
             {showData ? 'HIDE' : 'SHOW'}
-          </SketchButton>
-          <SketchButton
-            ink="copy"
+          </Button>
+          <Button
             onClick={copy}
             disabled={!x.result}
             data-hint="Copy the result as JSON"
           >
             {copied ? 'COPIED' : 'COPY JSON'}
-          </SketchButton>
+          </Button>
         </header>
         {showData && x.result && (
           <pre className="xp-json" onKeyUp={swallowSpace}>
@@ -391,8 +376,8 @@ export function ExtractScreen() {
   )
 }
 
-/** The record button: a pen loop with a blot in it, and the time running out
-    drawn around it as a second, growing loop. */
+/** The record button: a black dot in a hairline square, turning into a stop
+    square while recording, with the time left as a bar under it. */
 function RecordButton({
   recording,
   elapsed,
@@ -404,46 +389,24 @@ function RecordButton({
   disabled: boolean
   onPress: () => void
 }) {
-  const size = 88
-  const c = size / 2
-  const seed = seedOf('record')
-  const left = 1 - elapsed / RECORD_MAX_S
   return (
-    <button
-      type="button"
-      className={`xp-record${recording ? ' xp-record--on' : ''}`}
-      aria-label={recording ? 'Stop recording' : 'Record'}
-      aria-pressed={recording}
-      disabled={disabled}
-      onClick={onPress}
-      onKeyUp={swallowSpace}
-      data-hint={recording ? 'Stop recording' : 'Record — up to 15 seconds from the microphone'}
-    >
-      <svg width={size} height={size} aria-hidden>
-        <path d={loop(c, c, c - 6, c - 6, seed)} />
-        {recording ? (
-          <>
-            <path className="xp-ink-fill" d={blot(c, c, 13, seed + 2)} />
-            <path
-              className="xp-ink-bold"
-              d={arc(c, c, c - 1.5, -Math.PI / 2, -Math.PI / 2 + left * Math.PI * 2)}
-            />
-          </>
-        ) : (
-          <path className="xp-ink-fill" d={blot(c, c, 20, seed + 1)} />
-        )}
-      </svg>
-      <span className="xp-record-time num">{recording ? `${elapsed.toFixed(1)}s` : 'REC'}</span>
-    </button>
+    <div className="xp-record-wrap">
+      <button
+        type="button"
+        className={`xp-record${recording ? ' xp-record--on' : ''}`}
+        aria-label={recording ? 'Stop recording' : 'Record'}
+        aria-pressed={recording}
+        disabled={disabled}
+        onClick={onPress}
+        onKeyUp={swallowSpace}
+        data-hint={recording ? 'Stop recording' : 'Record — up to 15 seconds from the microphone'}
+      >
+        <span className={recording ? 'xp-record-stop' : 'xp-record-dot'} />
+      </button>
+      <div className="xp-record-time">
+        <div className="xp-record-bar" style={{ width: `${(elapsed / RECORD_MAX_S) * 100}%` }} />
+        <span className="num">{recording ? `${elapsed.toFixed(1)} s` : 'REC'}</span>
+      </div>
+    </div>
   )
-}
-
-function arc(cx: number, cy: number, r: number, from: number, to: number): string {
-  const steps = Math.max(2, Math.ceil(((to - from) / (Math.PI * 2)) * 48))
-  let d = ''
-  for (let i = 0; i <= steps; i++) {
-    const a = from + ((to - from) * i) / steps
-    d += `${i === 0 ? 'M' : 'L'}${(cx + Math.cos(a) * r).toFixed(1)} ${(cy + Math.sin(a) * r).toFixed(1)}`
-  }
-  return d
 }

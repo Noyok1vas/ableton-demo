@@ -11,6 +11,7 @@ import {
 import { transformPattern } from './transform.ts'
 import { useTapCapture, type TapCapture } from './useTapCapture.ts'
 import {
+  BARS_PER_LOOP,
   beatsPerLoopFor,
   gridDivisionsFor,
   loopDurationFor,
@@ -33,7 +34,8 @@ import {
   type LoopEvent,
   type SoundVoiceId,
 } from '../transport/engine.ts'
-import { DEFAULT_METER, parseMeter, type Meter } from '../transport/meter.ts'
+import { DEFAULT_METER, parseMeter, quartersPerBar, type Meter } from '../transport/meter.ts'
+import { BPM_MAX, BPM_MIN } from '../transport/session.tsx'
 import { finiteIn, isRecord, loadSaved, mergeNumbers, useSaved } from '../persist.ts'
 
 // ── What is remembered between visits ─────────────────────────────────────
@@ -85,11 +87,17 @@ function parseEntry(raw: unknown): CollectionEntry | null {
   if (duration === null) return null
   const taps = parseTaps(raw.taps, duration, duration)
   if (taps.length === 0) return null
+  const meter = parseMeter(raw.meter) ?? DEFAULT_METER
+  // Entries stored before the tempo was kept: it follows from the loop's
+  // length and meter (BARS_PER_LOOP bars).
+  const derived = (quartersPerBar(meter) * BARS_PER_LOOP * 60) / duration
+  const bpm = finiteIn(raw.bpm, BPM_MIN, BPM_MAX) ?? Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(derived)))
   return {
     id: raw.id,
     taps,
     duration,
-    meter: parseMeter(raw.meter) ?? DEFAULT_METER,
+    meter,
+    bpm,
     createdAt: finiteIn(raw.createdAt, 0, Number.MAX_SAFE_INTEGER) ?? Date.now(),
   }
 }
@@ -273,6 +281,9 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   } = engine
   // The tempo and meter are the transport's; the loop's length follows.
   const meter = engine.meter
+  const { setBpm, setMeter } = engine
+  const bpmRef = useRef(engine.bpm)
+  bpmRef.current = engine.bpm
   const loopDuration = loopDurationFor(engine.bpm, meter)
   const gridDivisions = gridDivisionsFor(meter)
   const beatsPerLoop = beatsPerLoopFor(meter)
@@ -305,6 +316,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
         taps: [...taps],
         duration: loopDurationRef.current,
         meter: meterRef.current,
+        bpm: bpmRef.current,
         createdAt: Date.now(),
       }
       setTemporary((prev) => [entry, ...prev])
@@ -358,7 +370,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setTemporary((prev) =>
       prev.map((e) =>
         e.id === selection.id
-          ? { ...e, taps: [...captureTaps], duration: loopDuration, meter }
+          ? { ...e, taps: [...captureTaps], duration: loopDuration, meter, bpm: engine.bpm }
           : e,
       ),
     )
@@ -529,15 +541,19 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     (kind: CollectionKind, id: string) => {
       const entry = (kind === 'saved' ? saved : temporary).find((e) => e.id === id)
       if (!entry) return
-      // Re-timed from the loop it was played in to the one running now.
+      // Handed over at the loop's CURRENT length, then the transport is put
+      // back at the entry's own tempo and meter: the capture re-times the
+      // taps with the loop, so they land where they were played.
       const factor = loopDuration / entry.duration
       captureLoad(
         entry.taps.map((t) => ({ ...t, time: Math.min(t.time * factor, loopDuration * 0.999999) })),
       )
+      setBpm(entry.bpm)
+      setMeter(() => entry.meter)
       setSelection({ kind, id })
       // If the loop is running it keeps running — with the loaded pattern.
     },
-    [saved, temporary, captureLoad, loopDuration, setSelection],
+    [saved, temporary, captureLoad, loopDuration, setSelection, setBpm, setMeter],
   )
 
   const savePattern = useCallback(
@@ -572,6 +588,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
         taps: kept.taps,
         duration: kept.duration,
         meter: kept.meter,
+        bpm: kept.bpm,
         createdAt: kept.createdAt,
       }
       setSaved((prev) => prev.filter((e) => e.id !== id))

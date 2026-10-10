@@ -87,6 +87,9 @@ export type CollectionEntry = {
   taps: readonly Tap[]
   duration: number
   meter: Meter
+  /** The tempo it was played at. Loading the entry puts the transport back
+      at this tempo and meter, so a pattern comes back as it was. */
+  bpm: number
   createdAt: number
 }
 
