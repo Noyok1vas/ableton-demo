@@ -1,0 +1,139 @@
+/* Chladni page — the eight marks, hand-drawn and modal side by side, each
+   with its character slider. Same geometry as the rest of the GUI: radius 0,
+   1px hairlines, state in solid black. */
+
+.ch-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  touch-action: none;
+}
+
+.ch-controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--line-fine);
+}
+
+.ch-seg {
+  display: flex;
+  align-items: center;
+}
+
+.ch-seg-label {
+  margin-right: var(--space-2);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+}
+
+.ch-seg-option {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ch-seg-option + .ch-seg-option {
+  margin-left: -1px;
+}
+
+.ch-seg-option--on {
+  background: var(--ink-pure);
+  color: var(--surface);
+}
+
+.ch-velocity {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.ch-unlock {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--ink-pure);
+  color: var(--surface);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ch-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: start;
+  gap: var(--space-5) var(--space-4);
+  padding: var(--space-4);
+}
+
+.ch-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Two squares across: hand on the left, modal on the right. One view alone
+   keeps its square, centred. */
+.ch-pad {
+  aspect-ratio: 2 / 1;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-fine);
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+
+.ch-pad:hover {
+  border-color: var(--text-muted);
+}
+
+.ch-pad--flash .ch-glyph {
+  filter: invert(1);
+}
+
+.ch-glyph {
+  position: relative;
+  flex: 0 0 50%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ch-glyph + .ch-glyph {
+  border-left: 1px solid var(--line-fine);
+}
+
+.ch-tag {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.ch-fixed {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}

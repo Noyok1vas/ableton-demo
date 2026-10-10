@@ -9,13 +9,10 @@ import type {
 
 export const PAGES: Page[] = [
   { id: 'rhythmic-intent', name: 'Rhythmic intent' },
-  { id: 'untitled-2', name: 'Untitled 2' },
-  { id: 'untitled-3', name: 'Untitled 3' },
-  { id: 'untitled-4', name: 'Untitled 4' },
-  { id: 'untitled-5', name: 'Untitled 5' },
+  { id: 'chladni', name: 'Chladni' },
 ]
 
-/** Each page owns its windows. Only the first page has content in this pass. */
+/** Each page owns its windows. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
   // Demo build, laid out as the drum synth it is becoming. The two SOFTWARE
   // windows are the screens — Sound Source (the small system display) and the
@@ -33,10 +30,11 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
     { id: 'mod-1', kind: 'mod-strips', title: 'Mod Strip', x: 64, y: 1520, w: 700, h: 836 },
     { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 800, y: 1520, w: 1470, h: 836 },
   ],
-  'untitled-2': [],
-  'untitled-3': [],
-  'untitled-4': [],
-  'untitled-5': [],
+  // The Chladni marks beside the hand-drawn ones, for comparison only — not
+  // part of the instrument, so nothing on this page records.
+  chladni: [
+    { id: 'ch-1', kind: 'chladni', title: 'Chladni Marks', x: 64, y: 64, w: 2000, h: 1120 },
+  ],
 }
 
 /** See WindowTier. Only the two displays stay software. */
@@ -55,6 +53,7 @@ export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
   ripple: 'hardware',
   'march-intent': 'hardware',
   'march-family': 'hardware',
+  chladni: 'software',
 }
 
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
@@ -74,4 +73,5 @@ export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   ripple: { minW: 300, minH: 380, maxW: 1000, maxH: 1100 },
   'march-intent': { minW: 420, minH: 420, maxW: 1400, maxH: 900 },
   'march-family': { minW: 520, minH: 400, maxW: 1400, maxH: 2000 },
+  chladni: { minW: 800, minH: 600, maxW: 2800, maxH: 2000 },
 }

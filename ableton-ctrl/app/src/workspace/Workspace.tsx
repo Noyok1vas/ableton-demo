@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { CanvasSurface } from './CanvasSurface.tsx'
 import { DraggableWindow } from './DraggableWindow.tsx'
 import { ZoomControl } from './ZoomControl.tsx'
-import { INITIAL_WINDOWS } from './pages.ts'
+import { PageMenu } from './PageMenu.tsx'
+import { INITIAL_WINDOWS, PAGES } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
 import { MAX_SCALE } from './types.ts'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
@@ -19,6 +20,7 @@ import { SelectorScreen } from '../selector/SelectorScreen.tsx'
 import { RippleScreen } from '../ripple/RippleScreen.tsx'
 import { MarchIntentScreen } from '../march/MarchIntentScreen.tsx'
 import { MarchFamilyScreen } from '../march/MarchFamilyScreen.tsx'
+import { ChladniScreen } from '../chladni/ChladniScreen.tsx'
 import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
@@ -60,6 +62,8 @@ function windowContent(kind: WindowKind) {
       return <MarchIntentScreen />
     case 'march-family':
       return <MarchFamilyScreen />
+    case 'chladni':
+      return <ChladniScreen />
   }
 }
 
@@ -112,8 +116,7 @@ function surfaceSize() {
 }
 
 export function Workspace() {
-  // No page menu in the demo, so the page never changes.
-  const pageId: PageId = 'rhythmic-intent'
+  const [pageId, setPageId] = useState<PageId>('rhythmic-intent')
   const [view, setView] = useState<View>(INITIAL_VIEW)
   const [windowsByPage, setWindowsByPage] =
     useState<Record<PageId, WindowState[]>>(INITIAL_WINDOWS)
@@ -147,9 +150,11 @@ export function Workspace() {
     applyFit()
   }, [applyFit])
 
+  // A new page is a new layout, so it is framed afresh.
   useLayoutEffect(() => {
+    userAdjusted.current = false
     applyFit()
-  }, [applyFit])
+  }, [applyFit, pageId])
 
   useEffect(() => {
     const onResize = () => {
@@ -205,6 +210,7 @@ export function Workspace() {
       </CanvasSurface>
 
       <ZoomControl view={view} onViewChange={onViewChange} onReset={onReset} />
+      <PageMenu pages={PAGES} currentId={pageId} onSelect={setPageId} />
 
       {windows.length === 0 && <div className="workspace-empty">This page is empty</div>}
     </div>

@@ -1,9 +1,4 @@
-export type PageId =
-  | 'rhythmic-intent'
-  | 'untitled-2'
-  | 'untitled-3'
-  | 'untitled-4'
-  | 'untitled-5'
+export type PageId = 'rhythmic-intent' | 'chladni'
 
 export type Page = { id: PageId; name: string }
 
@@ -27,6 +22,7 @@ export type WindowKind =
   | 'ripple'
   | 'march-intent'
   | 'march-family'
+  | 'chladni'
 
 /** Where a window's function ends up in the product. `software` stays on a
     screen (the system display and the Sound Visual); `hardware` becomes a

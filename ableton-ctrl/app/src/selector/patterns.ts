@@ -364,10 +364,15 @@ function rideBody(x: number, y: number, c: number): number {
   return clamp01(1.05 * edge(r - RIDE_RADIUS, RIDE_EDGE) * hole(r, rideHole(c), RIDE_EDGE))
 }
 
-function rideField(x: number, y: number, c: number): number {
+/** The ride's trace as its pad draws it, without the body — the Chladni page
+    draws the body as a mode and keeps this trace unchanged. */
+export function rideTrace(x: number, y: number): number {
   // On the pad the trace runs straight up: `along` is up, `across` is x.
-  const trace = rideTrail(-y, x, RIDE_TRACE_LENGTH, RIDE_TRACE_WIDTH)
-  return Math.max(rideBody(x, y, c), clamp01(1.05 * trace))
+  return clamp01(1.05 * rideTrail(-y, x, RIDE_TRACE_LENGTH, RIDE_TRACE_WIDTH))
+}
+
+function rideField(x: number, y: number, c: number): number {
+  return Math.max(rideBody(x, y, c), rideTrace(x, y))
 }
 
 // ── 8. FX — a ring setting into teeth ⚙, DRUM ←→ ELECTRIC ────────────────
