@@ -10,6 +10,7 @@ import { MarchSession } from './march/session.tsx'
 import { GuideSession } from './guide/session.tsx'
 import { HintLayer } from './guide/HintLayer.tsx'
 import { ModSession } from './mod/session.tsx'
+import { DrumSession } from './chladni2/session.tsx'
 
 export default function App() {
   return (
@@ -28,6 +29,9 @@ export default function App() {
                   they sit between what a tap is and the trigger that fires it. */}
               <ModSession>
               <RippleSession>
+                {/* Chladni 2's knobs: stamped onto a tap like the character,
+                    so they sit above the trigger too. */}
+                <DrumSession>
                 {/* The shared tap trigger — needs every session above it. */}
                 <TapSession>
                   {/* March reads only the transport's tempo and plays its own
@@ -43,6 +47,7 @@ export default function App() {
                     </GuideSession>
                   </MarchSession>
                 </TapSession>
+                </DrumSession>
               </RippleSession>
               </ModSession>
             </SelectorSession>

@@ -29,6 +29,7 @@ import {
 import { useSoundEngine } from '../transport/session.tsx'
 import {
   parseVoice,
+  type DrumParams,
   type EngineStatus,
   type LoopEvent,
   type SoundVoiceId,
@@ -63,7 +64,19 @@ function parseTap(raw: unknown): Tap | null {
   // A sound that has since been removed (SCATTER) takes its taps with it.
   if (voice === null) return null
   const character = finiteIn(raw.character, 0, 1) ?? undefined
-  return { id: raw.id, time, velocity, voice, character }
+  return { id: raw.id, time, velocity, voice, character, drum: parseDrum(raw.drum) }
+}
+
+/** A Chladni 2 tap's knobs: whatever numbers are there. Ranges are each
+    sound's own, so they are clamped where they are read (chladni2/params.ts). */
+function parseDrum(raw: unknown): DrumParams | undefined {
+  if (!isRecord(raw)) return undefined
+  const drum: DrumParams = {}
+  for (const [key, value] of Object.entries(raw)) {
+    const v = finiteIn(value, -100, 100)
+    if (v !== null) drum[key] = v
+  }
+  return Object.keys(drum).length > 0 ? drum : undefined
 }
 
 /** A saved list of taps, re-timed from the loop they were played in to
@@ -161,7 +174,13 @@ function nameFor(date: Date, taken: readonly SavedPattern[]): string {
 const loopEvents = (rendered: readonly RenderedTap[]): LoopEvent[] =>
   rendered
     .filter((t) => t.kept)
-    .map((t) => ({ pos: t.finalPos, velocity: t.velocity, voice: t.voice, character: t.character }))
+    .map((t) => ({
+      pos: t.finalPos,
+      velocity: t.velocity,
+      voice: t.voice,
+      character: t.character,
+      drum: t.drum,
+    }))
 
 export type Session = {
   capture: TapCapture
@@ -185,9 +204,15 @@ export type Session = {
   /** Record a tap into the GUI and sound the note on the engine, played with
       the sound identity `voice` at character `character` and at `velocity`
       (0..1) — all stored on the tap, so the loop replays it as itself and no
-      later slider move can edit it. Returns the new tap's id, so whoever fired
-      it can attach its own record to that tap. */
-  handleTap: (voice?: SoundVoiceId, character?: number, velocity?: number) => string
+      later slider move can edit it. `drum` is a Chladni 2 tap's knobs, stored
+      the same way. Returns the new tap's id, so whoever fired it can attach
+      its own record to that tap. */
+  handleTap: (
+    voice?: SoundVoiceId,
+    character?: number,
+    velocity?: number,
+    drum?: DrumParams,
+  ) => string
   /** Drop one tap by id — the Sound Visual's double-click on a mark. */
   removeTap: (id: string) => void
   /** Put one tap at `pos` (0..1) of the loop — the Sound Visual's drag on a
@@ -460,12 +485,18 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   // loop is started (anchoring the clock) before the tap is filed, so it lands
   // at the top rather than wherever the stopped clock happened to be.
   const applyTap = useCallback(
-    (velocity: number, sound: boolean, voice?: SoundVoiceId, character?: number) => {
+    (
+      velocity: number,
+      sound: boolean,
+      voice?: SoundVoiceId,
+      character?: number,
+      drum?: DrumParams,
+    ) => {
       forkRef.current()
       const restart = !playingRef.current && renderedRef.current.length > 0
       if (restart) startLoop()
-      const id = captureTap(velocity, voice, character)
-      if (sound) noteOn(velocity, voice, character)
+      const id = captureTap(velocity, voice, character, drum)
+      if (sound) noteOn(velocity, voice, character, drum)
       if (!playingRef.current) startLoop()
       return id
     },
@@ -482,8 +513,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   // GUI pad / Space: the Selector's velocity (or its accent), and the engine
   // plays the note.
   const handleTap = useCallback(
-    (voice?: SoundVoiceId, character?: number, velocity = 1) =>
-      applyTap(Math.min(1, Math.max(0, velocity)), true, voice, character),
+    (voice?: SoundVoiceId, character?: number, velocity = 1, drum?: DrumParams) =>
+      applyTap(Math.min(1, Math.max(0, velocity)), true, voice, character, drum),
     [applyTap],
   )
 

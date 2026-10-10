@@ -104,6 +104,7 @@ export function transformPattern(
       velocity: tap.velocity,
       voice: tap.voice,
       character: tap.character,
+      drum: tap.drum,
       kept: keptIndices.has(index),
     }
   })

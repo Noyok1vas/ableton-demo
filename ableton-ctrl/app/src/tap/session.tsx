@@ -13,6 +13,7 @@ import { useSelector } from '../selector/session.tsx'
 import { characterOf } from '../selector/character.ts'
 import { useRipple } from '../ripple/session.tsx'
 import { useMod } from '../mod/session.tsx'
+import { useDrum } from '../chladni2/session.tsx'
 import type { PatternId } from '../selector/patterns.ts'
 
 export type TapSessionValue = {
@@ -85,6 +86,11 @@ export function TapSession({ children }: { children: ReactNode }) {
   gestureRef.current = selectedGesture
   const repeatsRef = useRef(repeats)
   repeatsRef.current = repeats
+  // While the Chladni 2 page is up, a tap also carries that page's knobs for
+  // its sound — read through a ref, like everything else the press copies.
+  const drum = useDrum()
+  const drumRef = useRef(drum)
+  drumRef.current = drum
   // The selected identity's live character, and a lookup for any identity —
   // the Selector fires a mark in the same press that selects it, so it needs
   // the character of a mark the session has not been told about yet.
@@ -114,7 +120,8 @@ export function TapSession({ children }: { children: ReactNode }) {
     // not as whatever is selected by the time the loop comes round again.
     // Velocity is read at the same instant, for the same reason.
     const velocity = currentVelocityRef.current(accented)
-    const id = handleTap(sound, character ?? undefined, velocity)
+    const knobs = drumRef.current.isActive() ? drumRef.current.snapshot(sound) : undefined
+    const id = handleTap(sound, character ?? undefined, velocity, knobs)
     emitTap(id, sound, repeatsRef.current, character)
   }, [handleTap, emitTap])
 

@@ -68,6 +68,14 @@ export function parseVoice(raw: unknown): SoundVoiceId | null | undefined {
 }
 
 /**
+ * The Chladni 2 page's parameter snapshot for one sound: its 909 / Drum Synth
+ * knobs (TUNE, DECAY, SNAPPY…) keyed by name, each 0..1 or a step index — see
+ * chladni2/params.ts for which sound has which. A note that carries one is
+ * played from these instead of from its character.
+ */
+export type DrumParams = Record<string, number>
+
+/**
  * One scheduled loop event: `pos` is 0..1 within the bar. `voice` is the sound
  * identity the tap was played with (absent means the selected pad), and
  * `character` is that identity's one axis at the moment of input, 0..1 —
@@ -83,6 +91,9 @@ export type LoopEvent = {
   velocity: number
   voice?: SoundVoiceId
   character?: number
+  /** A Chladni 2 tap's parameters; when present they, not `character`, say
+      what the note sounds like. */
+  drum?: DrumParams
 }
 
 /** The three fixed voices of the March instrument. They are named here rather
@@ -138,8 +149,9 @@ export interface SoundEngine {
 
   /** Play one note now. `velocity` is 0..1; `voice` is the sound identity it
       was played with (or absent for the selected pad) and `character` that
-      identity's axis at the moment of input. */
-  noteOn(velocity: number, voice?: SoundVoiceId, character?: number): void
+      identity's axis at the moment of input — or `drum`, a Chladni 2 tap's
+      full parameter snapshot, which takes over from it. */
+  noteOn(velocity: number, voice?: SoundVoiceId, character?: number, drum?: DrumParams): void
 
   /** Start looping, or swap the pattern of a running loop. The *engine* owns
       the scheduling: browser timers throttle when the tab is backgrounded, so

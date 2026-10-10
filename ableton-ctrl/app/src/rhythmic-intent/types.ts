@@ -1,4 +1,4 @@
-import type { SoundVoiceId } from '../transport/engine.ts'
+import type { DrumParams, SoundVoiceId } from '../transport/engine.ts'
 import { barSecondsFor, sixteenthsPerBar, type Meter } from '../transport/meter.ts'
 
 /** One captured tap. `time` is seconds from the first tap of the loop. `id` is
@@ -26,6 +26,10 @@ export type Tap = {
    * the identity has no axis (RIM — the spec's `characterValue: null`) or
    * the tap came from hardware. */
   character?: number
+  /** Every knob of the sound at the instant it fired, for a tap played on the
+      Chladni 2 page — a copy, for the same reason `character` is one. The
+      engine plays such a tap from these rather than from its character. */
+  drum?: DrumParams
 }
 
 export type CaptureState = 'ready' | 'recording' | 'complete'
@@ -118,6 +122,7 @@ export type RenderedTap = {
       what it sounded like. */
   voice?: SoundVoiceId
   character?: number
+  drum?: DrumParams
   /** False when removed by the density control. */
   kept: boolean
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { SoundVoiceId } from '../transport/engine.ts'
+import type { DrumParams, SoundVoiceId } from '../transport/engine.ts'
 import type { CaptureState, Tap } from './types.ts'
 
 export type TapCapture = {
@@ -10,9 +10,15 @@ export type TapCapture = {
       always somewhere, not just while recording or playing. */
   progress: number
   /** Record one tap where the loop clock stands, played with the sound
-      identity `voice` at character `character` — both copied onto the tap and
-      never read again from wherever they came from. Returns the new tap's id. */
-  tap: (velocity?: number, voice?: SoundVoiceId, character?: number) => string
+      identity `voice` at character `character` (and, from Chladni 2, with
+      the knobs `drum`) — all copied onto the tap and never read again from
+      wherever they came from. Returns the new tap's id. */
+  tap: (
+    velocity?: number,
+    voice?: SoundVoiceId,
+    character?: number,
+    drum?: DrumParams,
+  ) => string
   /** Drop one tap by id — a double-click on its mark in the Sound Visual. */
   remove: (id: string) => void
   /** Put one tap at a different point in the loop, in seconds from its zero —
@@ -143,8 +149,8 @@ export function useTapCapture(
   }, [clearFinalize, setCaptureState])
 
   const startRecording = useCallback(
-    (velocity: number, voice?: SoundVoiceId, character?: number) => {
-      const tap: Tap = { id: nextId(), time: 0, velocity, voice, character }
+    (velocity: number, voice?: SoundVoiceId, character?: number, drum?: DrumParams) => {
+      const tap: Tap = { id: nextId(), time: 0, velocity, voice, character, drum }
       startRef.current = performance.now()
       setCaptureState('recording')
       setAllTaps([tap])
@@ -158,8 +164,8 @@ export function useTapCapture(
   )
 
   const tap = useCallback(
-    (velocity = 1, voice?: SoundVoiceId, character?: number): string => {
-      if (stateRef.current === 'ready') return startRecording(velocity, voice, character)
+    (velocity = 1, voice?: SoundVoiceId, character?: number, drum?: DrumParams): string => {
+      if (stateRef.current === 'ready') return startRecording(velocity, voice, character, drum)
 
       const duration = durationRef.current
       const elapsed = (performance.now() - startRef.current) / 1000
@@ -170,7 +176,7 @@ export function useTapCapture(
       // Timer race: the first pass has run out but its timeout has not fired
       // yet. Close it here so the tap is an addition, not part of the take.
       if (stateRef.current === 'recording' && elapsed >= duration) finalize()
-      const record: Tap = { id: nextId(), time, velocity, voice, character }
+      const record: Tap = { id: nextId(), time, velocity, voice, character, drum }
       setAllTaps([...tapsRef.current, record])
       return record.id
     },

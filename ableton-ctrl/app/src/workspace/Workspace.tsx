@@ -21,6 +21,9 @@ import { RippleScreen } from '../ripple/RippleScreen.tsx'
 import { MarchIntentScreen } from '../march/MarchIntentScreen.tsx'
 import { MarchFamilyScreen } from '../march/MarchFamilyScreen.tsx'
 import { ChladniScreen } from '../chladni/ChladniScreen.tsx'
+import { Chladni2Ring } from '../chladni2/Chladni2Ring.tsx'
+import { Chladni2Pads } from '../chladni2/Chladni2Pads.tsx'
+import { Chladni2Key } from '../chladni2/Chladni2Key.tsx'
 import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
@@ -64,6 +67,12 @@ function windowContent(kind: WindowKind) {
       return <MarchFamilyScreen />
     case 'chladni':
       return <ChladniScreen />
+    case 'chladni2-ring':
+      return <Chladni2Ring />
+    case 'chladni2-pads':
+      return <Chladni2Pads />
+    case 'chladni2-key':
+      return <Chladni2Key />
   }
 }
 

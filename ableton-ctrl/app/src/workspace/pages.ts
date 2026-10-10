@@ -9,7 +9,8 @@ import type {
 
 export const PAGES: Page[] = [
   { id: 'rhythmic-intent', name: 'Rhythmic intent' },
-  { id: 'chladni', name: 'Chladni' },
+  { id: 'chladni', name: 'Chladni 1' },
+  { id: 'chladni-2', name: 'Chladni 2' },
 ]
 
 /** Each page owns its windows. */
@@ -35,6 +36,14 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
   chladni: [
     { id: 'ch-1', kind: 'chladni', title: 'Chladni Marks', x: 64, y: 64, w: 2000, h: 1120 },
   ],
+  // Chladni 2: the figures rebuilt from the 909 / Drum Synth knobs. Unlike
+  // Chladni 1 this page plays into the loop — the ring is the Main Screen's,
+  // drawn with these figures, and the pads record with every knob copied on.
+  'chladni-2': [
+    { id: 'c2-ring', kind: 'chladni2-ring', title: 'Chladni 2 Ring', x: 64, y: 64, w: 1470, h: 1360 },
+    { id: 'c2-pads', kind: 'chladni2-pads', title: 'Chladni 2 Pads', x: 1570, y: 64, w: 1300, h: 1360 },
+    { id: 'c2-key', kind: 'chladni2-key', title: 'Chladni 2 Key', x: 64, y: 1460, w: 2806, h: 400 },
+  ],
 }
 
 /** See WindowTier. Only the two displays stay software. */
@@ -54,6 +63,9 @@ export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
   'march-intent': 'hardware',
   'march-family': 'hardware',
   chladni: 'software',
+  'chladni2-ring': 'software',
+  'chladni2-pads': 'hardware',
+  'chladni2-key': 'software',
 }
 
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
@@ -74,4 +86,7 @@ export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   'march-intent': { minW: 420, minH: 420, maxW: 1400, maxH: 900 },
   'march-family': { minW: 520, minH: 400, maxW: 1400, maxH: 2000 },
   chladni: { minW: 800, minH: 600, maxW: 2800, maxH: 2000 },
+  'chladni2-ring': { minW: 600, minH: 600, maxW: 2400, maxH: 2400 },
+  'chladni2-pads': { minW: 900, minH: 800, maxW: 2800, maxH: 2000 },
+  'chladni2-key': { minW: 800, minH: 300, maxW: 2800, maxH: 1200 },
 }
