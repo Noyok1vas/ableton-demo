@@ -1,0 +1,513 @@
+/* Rhythm Extract — the rest of the GUI's black/white/grey, but drawn by hand:
+   every frame, rule and mark is a pen stroke (see sketch.ts), and nothing has
+   a CSS border. Text keeps the GUI's own type, uppercase on the controls. */
+
+.xp-screen {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ── Ink ─────────────────────────────────────────────── */
+
+.xp-screen svg {
+  display: block;
+  overflow: visible;
+}
+
+.xp-screen svg path {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.xp-screen svg path.xp-ink-thin {
+  stroke-width: 0.9;
+  stroke: var(--text-muted);
+}
+
+.xp-screen svg path.xp-ink-faint {
+  stroke: #c3c7ca;
+}
+
+.xp-screen svg path.xp-ink-bold {
+  stroke-width: 1.9;
+}
+
+.xp-screen svg path.xp-ink-hatch {
+  stroke-width: 0.9;
+  stroke: var(--text-muted);
+}
+
+.xp-screen svg path.xp-ink-dashed {
+  stroke-dasharray: 7 6;
+  stroke: var(--text-muted);
+}
+
+.xp-screen svg path.xp-ink-fill,
+.xp-screen svg path.xp-ink-blot {
+  stroke-width: 2.4;
+}
+
+.xp-screen svg path.xp-ink-wave {
+  stroke-width: 1;
+}
+
+.xp-screen svg path.xp-ink-wave--out {
+  stroke: #b9bec2;
+}
+
+.xp-screen svg path.xp-ink-cursor {
+  stroke-width: 2.2;
+}
+
+.xp-screen svg path.xp-ink-mark {
+  stroke-width: 3;
+}
+
+/* ── Section heads ───────────────────────────────────── */
+
+.xp-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.xp-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+
+.xp-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.xp-num {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.xp-meta {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.xp-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.xp-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* ── Buttons ─────────────────────────────────────────── */
+
+.xp-btn {
+  position: relative;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.xp-btn .xp-ink {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.xp-btn-label {
+  position: relative;
+}
+
+.xp-btn:hover:not(:disabled) .xp-ink path {
+  stroke-width: 2;
+}
+
+.xp-btn:disabled {
+  cursor: default;
+  color: #b9bec2;
+}
+
+.xp-btn:disabled .xp-ink path {
+  stroke: #ccd0d3;
+}
+
+.xp-btn--big {
+  min-height: 56px;
+  padding: 0 var(--space-5);
+  font-size: 15px;
+}
+
+.xp-btn--play {
+  margin-left: auto;
+  min-width: 112px;
+}
+
+/* ── Source ──────────────────────────────────────────── */
+
+.xp-drop {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 84px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.xp-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.xp-drop-text {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xp-drop--over {
+  background: var(--surface-2);
+}
+
+.xp-rec {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 96px;
+}
+
+.xp-rec-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 420px;
+}
+
+.xp-record {
+  position: relative;
+  flex: 0 0 auto;
+  width: 88px;
+  height: 88px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.xp-record:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.xp-record-time {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -20px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  text-align: center;
+}
+
+/* ── Waveform ────────────────────────────────────────── */
+
+.xp-wave {
+  position: relative;
+  width: 100%;
+  touch-action: none;
+  user-select: none;
+}
+
+.xp-wave--empty {
+  opacity: 0.6;
+}
+
+.xp-wave-svg rect {
+  fill: transparent;
+}
+
+.xp-wave-hit {
+  cursor: crosshair;
+}
+
+.xp-wave-handle {
+  cursor: ew-resize;
+}
+
+.xp-wave-body {
+  cursor: grab;
+}
+
+.xp-wave-body:active {
+  cursor: grabbing;
+}
+
+.xp-wave-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.xp-wave-focus {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.xp-wave-focus:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Extract ─────────────────────────────────────────── */
+
+.xp-extract-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.xp-status {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.xp-status--error {
+  font-weight: 600;
+}
+
+/* ── Pattern ─────────────────────────────────────────── */
+
+.xp-tempo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.xp-bpm {
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.xp-bpm-unit {
+  display: flex;
+  flex-direction: column;
+  margin-right: var(--space-2);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.xp-bpm-unit small {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.xp-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.xp-counts .num {
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+.xp-count--none {
+  color: #b9bec2;
+}
+
+.xp-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.xp-lanes-grid {
+  position: relative;
+  width: 100%;
+}
+
+.xp-lanes-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.xp-lanes-beat {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+.xp-lane {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.xp-lane-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.xp-lane-mark {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+
+.xp-lane-mark canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.xp-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.xp-cell:hover {
+  background: rgba(23, 26, 29, 0.05);
+}
+
+/* ── Listen ──────────────────────────────────────────── */
+
+.xp-mix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.xp-fader {
+  display: grid;
+  grid-template-columns: 96px 1fr 40px;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.xp-fader-label {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.xp-fader-track {
+  position: relative;
+  height: 44px;
+}
+
+.xp-fader-track input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.xp-fader-value {
+  font-size: 15px;
+  text-align: right;
+}
+
+.xp-fader--off {
+  opacity: 0.4;
+}
+
+.xp-fader--off input {
+  cursor: default;
+}
+
+.xp-presets {
+  display: flex;
+  gap: var(--space-2);
+  padding-left: calc(96px + var(--space-3));
+}
+
+/* ── Data ────────────────────────────────────────────── */
+
+.xp-section--last .xp-head > :nth-child(3) {
+  margin-left: auto;
+}
+
+.xp-json {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  user-select: text;
+}

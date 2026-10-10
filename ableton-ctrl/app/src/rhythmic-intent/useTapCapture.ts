@@ -13,6 +13,9 @@ export type TapCapture = {
       identity `voice` at character `character` — both copied onto the tap and
       never read again from wherever they came from. Returns the new tap's id. */
   tap: (velocity?: number, voice?: SoundVoiceId, character?: number) => string
+  /** Add a tap at `time` seconds into the loop rather than where the clock
+      stands — a step set by hand on a grid, not played. Returns its id. */
+  place: (time: number, velocity: number, voice?: SoundVoiceId, character?: number) => string
   /** Drop one tap by id — a double-click on its mark in the Sound Visual. */
   remove: (id: string) => void
   /** Put one tap at a different point in the loop, in seconds from its zero —
@@ -177,6 +180,28 @@ export function useTapCapture(
     [finalize, setAllTaps, startRecording],
   )
 
+  const place = useCallback(
+    (time: number, velocity: number, voice?: SoundVoiceId, character?: number): string => {
+      const duration = durationRef.current
+      const record: Tap = {
+        id: nextId(),
+        time: ((time % duration) + duration) % duration,
+        velocity,
+        voice,
+        character,
+      }
+      // Nothing is being recorded by hand, so there is no first pass to wait
+      // for: a placed step makes the pattern complete at once.
+      if (stateRef.current !== 'complete') {
+        clearFinalize()
+        setCaptureState('complete')
+      }
+      setAllTaps([...tapsRef.current, record])
+      return record.id
+    },
+    [clearFinalize, setAllTaps, setCaptureState],
+  )
+
   /** Emptying the pattern returns the loop to 'ready', so the next tap opens a
       fresh one rather than landing at some position of a loop nobody can see. */
   const dropTo = useCallback(
@@ -256,5 +281,5 @@ export function useTapCapture(
 
   useEffect(() => stopTimers, [stopTimers])
 
-  return { state, taps, progress, tap, remove, move, undo, anchor, reset, load }
+  return { state, taps, progress, tap, place, remove, move, undo, anchor, reset, load }
 }

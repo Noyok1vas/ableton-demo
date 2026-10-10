@@ -188,6 +188,15 @@ export type Session = {
       later slider move can edit it. Returns the new tap's id, so whoever fired
       it can attach its own record to that tap. */
   handleTap: (voice?: SoundVoiceId, character?: number, velocity?: number) => string
+  /** Add one tap at `pos` (0..1) of the loop without playing it — a step set
+      by hand on a grid. Returns its id. */
+  placeTap: (pos: number, voice: SoundVoiceId, character?: number, velocity?: number) => string
+  /** Replace the working pattern with one made elsewhere — an extracted
+      rhythm — given as positions in the loop. Stops playback (the pattern
+      brings its own downbeat), puts PHASE back to 0 and DENSITY to 100 so
+      every hit sits exactly where it was found, and files the pattern in the
+      Collection as a temporary entry so it can be saved. */
+  importPattern: (hits: readonly ImportedHit[]) => void
   /** Drop one tap by id — the Sound Visual's double-click on a mark. */
   removeTap: (id: string) => void
   /** Put one tap at `pos` (0..1) of the loop — the Sound Visual's drag on a
@@ -229,6 +238,14 @@ export type Session = {
       temporary half rather than vanishing, so it is only really gone once the
       page is reloaded. */
   deleteSaved: (id: string) => void
+}
+
+/** One hit of a pattern made elsewhere, as importPattern takes it. */
+export type ImportedHit = {
+  pos: number
+  velocity: number
+  voice: SoundVoiceId
+  character?: number
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -428,7 +445,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   }, [startLoop, stopLoop])
 
   // ── Actions ───────────────────────────────────────────────────────
-  const { tap: captureTap, reset: captureReset, load: captureLoad } = capture
+  const { tap: captureTap, reset: captureReset, load: captureLoad, place: capturePlace } = capture
   const { remove: captureRemove, move: captureMove, undo: captureUndo } = capture
 
   const removeTap = useCallback(
@@ -567,6 +584,35 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     [saved, setSelection],
   )
 
+  const placeTap = useCallback(
+    (pos: number, voice: SoundVoiceId, character?: number, velocity = 0.8) => {
+      forkRef.current()
+      return capturePlace(pos * loopDurationRef.current, velocity, voice, character)
+    },
+    [capturePlace],
+  )
+
+  const importPattern = useCallback(
+    (hits: readonly ImportedHit[]) => {
+      stopLoop()
+      // Measured against the loop as it is NOW. If the caller moves the tempo
+      // or meter in the same breath, the capture re-times these taps with the
+      // loop, so they keep their places in it.
+      const duration = loopDurationRef.current
+      const taps: Tap[] = hits.map((h) => ({
+        id: newId('tap'),
+        time: Math.min(Math.max(0, h.pos) * duration, duration * 0.999999),
+        velocity: Math.min(1, Math.max(0, h.velocity)),
+        voice: h.voice,
+        character: h.character,
+      }))
+      captureLoad(taps)
+      setParams((prev) => ({ ...prev, phase: 0, density: 100 }))
+      recordTemporary(taps)
+    },
+    [stopLoop, captureLoad, recordTemporary],
+  )
+
   const moveTap = useCallback(
     (id: string, pos: number) => {
       forkRef.current()
@@ -608,6 +654,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     pitch,
     setPitch,
     handleTap,
+    placeTap,
+    importPattern,
     removeTap,
     moveTap,
     undoTap,

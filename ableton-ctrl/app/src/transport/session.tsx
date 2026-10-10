@@ -14,6 +14,7 @@ import {
   SOUND_VOICES,
   type EngineStatus,
   type LoopEvent,
+  type BackingClip,
   type MacroScope,
   type MarchEvent,
   type SoundEngine,
@@ -45,7 +46,7 @@ export const BPM_MAX = 200
  * arguing with it. Both are free to move — the default is a starting balance,
  * not a rule. */
 export const TRACK_LEVEL_MAX = 100
-export const DEFAULT_TRACK_LEVEL: Record<TrackId, number> = { main: 100, march: 60 }
+export const DEFAULT_TRACK_LEVEL: Record<TrackId, number> = { main: 100, march: 60, backing: 80 }
 
 /** One mixer channel: a fader (0..100, like the track faders) and the two
     switches. Mute and solo are kept as switches rather than folded into the
@@ -197,6 +198,9 @@ export type SoundEngineSessionValue = {
   /** Subscribe to taps the source originates (a hardware pad); returns an
       unsubscribe. Stable identity. */
   onExternalTap: (listener: (velocity: number) => void) => () => void
+  /** Put a recorded clip under the main loop, on its grid, or remove it. Its
+      level is `trackLevel.backing`. Kept here and handed to every new engine. */
+  setBacking: (clip: BackingClip | null) => void
 }
 
 const SoundEngineContext = createContext<SoundEngineSessionValue | null>(null)
@@ -348,7 +352,7 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
   // faders whenever a new engine is installed, for the same reason Rhythmic
   // Intent re-sends its pitch.
   useEffect(() => {
-    for (const track of ['main', 'march'] as const) {
+    for (const track of ['main', 'march', 'backing'] as const) {
       engineRef.current?.setTrackGain(track, trackLevel[track] / TRACK_LEVEL_MAX)
     }
     // Only on a swap: every deliberate move already went straight to the engine.
@@ -389,6 +393,16 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     )
   }, [metronome, metronomeSuspended, meter, bpm, engineId])
 
+  // The clip outlives an engine swap the way the faders do.
+  const backingRef = useRef<BackingClip | null>(null)
+  const setBacking = useCallback((clip: BackingClip | null) => {
+    backingRef.current = clip
+    engineRef.current?.setBacking(clip)
+  }, [])
+  useEffect(() => {
+    if (backingRef.current) engineRef.current?.setBacking(backingRef.current)
+  }, [engineId])
+
   const onExternalTap = useCallback((listener: (velocity: number) => void) => {
     // The engine outlives individual renders; guard in case it's mid-teardown.
     return engineRef.current?.onExternalTap(listener) ?? (() => {})
@@ -424,6 +438,7 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     setPitch,
     setMacro,
     onExternalTap,
+    setBacking,
   }
 
   return <SoundEngineContext.Provider value={value}>{children}</SoundEngineContext.Provider>

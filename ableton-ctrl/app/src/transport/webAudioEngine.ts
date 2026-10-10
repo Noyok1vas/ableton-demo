@@ -33,6 +33,11 @@
  * Each of the eight identities has its own channel fader (`voiceGain`) in
  * front of MAIN — the mixer's level, mute and solo, already resolved to one
  * number by the session. A tap with no identity goes straight to MAIN.
+ *
+ * A third track, BACKING, is a recorded clip under the loop (see BackingClip).
+ * It is someone else's finished music, so it skips the room, the saturation
+ * and the high-pass and meets the rest only at the safety limiter — FX shapes
+ * this instrument, not the song it is being played against.
  */
 
 import {
@@ -40,6 +45,7 @@ import {
   type EngineStatus,
   type LoopEvent,
   type MacroScope,
+  type BackingClip,
   type MarchEvent,
   type SoundEngine,
   type SoundVoiceId,
@@ -235,6 +241,7 @@ export class WebAudioEngine implements SoundEngine {
   // never touched again, so it is a local there rather than a field.
   private mainGain: GainNode | null = null
   private marchGain: GainNode | null = null
+  private backingGain: GainNode | null = null
   private voiceGains: Partial<Record<SoundVoiceId, GainNode>> = {}
   private reverbSend: GainNode | null = null
   private saturator: WaveShaperNode | null = null
@@ -250,7 +257,7 @@ export class WebAudioEngine implements SoundEngine {
   private length = 0.5
   /** Fader positions, held here as well as on the nodes so they survive being
       set before the context exists. */
-  private gains: Record<TrackId, number> = { main: 1, march: 0.6 }
+  private gains: Record<TrackId, number> = { main: 1, march: 0.6, backing: 0.8 }
   /** Channel levels, for the same reason. Absent means unity. */
   private voiceLevels: Partial<Record<SoundVoiceId, number>> = {}
 
@@ -270,6 +277,10 @@ export class WebAudioEngine implements SoundEngine {
       grid rather than wherever the gesture happened to end. */
   private marchBar = 1
   private ticker: ReturnType<typeof setInterval> | null = null
+
+  // ── Backing clip ──────────────────────────────────────────────────
+  private backing: BackingClip | null = null
+  private backingSource: AudioBufferSourceNode | null = null
 
   private disposed = false
   private detachGesture: (() => void) | null = null
@@ -336,6 +347,12 @@ export class WebAudioEngine implements SoundEngine {
     limiter.attack.value = 0.002
     limiter.release.value = 0.12
     limiter.connect(master)
+
+    // The backing clip meets the instrument only here — see the header.
+    const backingGain = ctx.createGain()
+    backingGain.gain.value = this.gains.backing
+    backingGain.connect(limiter)
+    this.backingGain = backingGain
 
     const highpass = ctx.createBiquadFilter()
     highpass.type = 'highpass'
@@ -433,6 +450,7 @@ export class WebAudioEngine implements SoundEngine {
     barDuration: number,
   ): void {
     const wasRunning = this.main.running
+    const previousPeriod = this.main.period
     this.main.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_LOOP_EVENTS)
     this.main.period = clamp(barDuration, 0.25, 30)
     this.main.running = true
@@ -449,11 +467,18 @@ export class WebAudioEngine implements SoundEngine {
     this.main.top = this.gridTop
 
     // Take back everything still queued and re-queue from now, so the new
-    // pattern is heard at once rather than after the lookahead drains.
+    // pattern is heard at once rather than after the lookahead drains. A loop
+    // that has just laid down its grid includes the notes ON the downbeat:
+    // PLAY on a stopped pattern opens with its "one" — and a backing clip's
+    // first hit has the kit's under it. A tap that starts the loop is not in
+    // `events` yet (it sounds its own note), so nothing is doubled.
     this.main.cancel(ctx.currentTime)
-    this.main.seek(ctx.currentTime)
+    this.main.seek(wasRunning ? ctx.currentTime : this.gridTop - 1e-6)
     this.syncClick()
     this.ensureTicker()
+    // The clip starts with the loop and is re-rated when the tempo moves; a
+    // pattern swap at the same tempo leaves it playing untouched.
+    if (!wasRunning || previousPeriod !== this.main.period || !this.backingSource) this.startBacking()
   }
 
   stopLoop(): void {
@@ -463,8 +488,65 @@ export class WebAudioEngine implements SoundEngine {
     this.main.cancel(this.ctx?.currentTime ?? 0)
     this.main.events = []
     this.main.running = false
+    this.stopBacking()
     this.syncClick()
     this.stopTickerIfIdle()
+  }
+
+  setBacking(clip: BackingClip | null): void {
+    this.backing = clip && clip.loops > 0 && clip.buffer.duration > 0 ? clip : null
+    this.startBacking()
+  }
+
+  /**
+   * (Re)start the clip at the point it should be at now: the grid's downbeat is
+   * where it begins, and it spans `loops` passes of the loop. Its rate is what
+   * stretches its own length onto that span, so it holds the grid at any tempo.
+   * Looping is the buffer source's own, which is sample-accurate.
+   */
+  private startBacking(): void {
+    this.stopBacking()
+    const ctx = this.ctx
+    const clip = this.backing
+    const out = this.backingGain
+    if (!ctx || !clip || !out || !this.main.running) return
+    const period = this.main.period
+    const span = clip.loops * period
+    const source = ctx.createBufferSource()
+    source.buffer = clip.buffer
+    source.loop = true
+    source.playbackRate.value = clip.buffer.duration / span
+    source.connect(out)
+    // On the downbeat itself when the grid was just laid down — the clip's
+    // first hit lands with the loop's first note — otherwise a hair from now,
+    // at the matching place in the clip.
+    const now = ctx.currentTime
+    const at = this.gridTop >= now - 0.005 ? Math.max(this.gridTop, now) : now + 0.02
+    const into = ((((at - this.gridTop) / span) % 1) + 1) % 1
+    source.start(at, into * clip.buffer.duration)
+    this.backingSource = source
+  }
+
+  private stopBacking(): void {
+    const source = this.backingSource
+    this.backingSource = null
+    if (!source) return
+    const ctx = this.ctx
+    // A short fade, not a cut: stopping a song mid-waveform clicks.
+    try {
+      if (ctx && this.backingGain) {
+        const fade = ctx.createGain()
+        source.disconnect()
+        source.connect(fade).connect(this.backingGain)
+        fade.gain.setValueAtTime(1, ctx.currentTime)
+        fade.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.03)
+        source.stop(ctx.currentTime + 0.035)
+      } else {
+        source.stop()
+      }
+    } catch {
+      /* already stopped */
+    }
   }
 
   setMetronome(on: boolean, beatsPerLoop: number, beatsPerBar: number, loopSeconds: number): void {
@@ -576,7 +658,8 @@ export class WebAudioEngine implements SoundEngine {
   setTrackGain(track: TrackId, gain: number): void {
     const value = clamp(gain, 0, 1)
     this.gains[track] = value
-    this.setRamp((track === 'march' ? this.marchGain : this.mainGain)?.gain, value)
+    const node = { main: this.mainGain, march: this.marchGain, backing: this.backingGain }[track]
+    this.setRamp(node?.gain, value)
   }
 
   setVoiceGain(voice: SoundVoiceId, gain: number): void {
@@ -652,8 +735,11 @@ export class WebAudioEngine implements SoundEngine {
     this.listeners.clear()
     void this.ctx?.close()
     this.ctx = null
+    this.backing = null
+    this.backingSource = null
     this.mainGain = null
     this.marchGain = null
+    this.backingGain = null
     this.clickOut = null
     this.voiceGains = {}
     this.reverbSend = null

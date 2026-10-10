@@ -19,6 +19,7 @@ import { SelectorScreen } from '../selector/SelectorScreen.tsx'
 import { RippleScreen } from '../ripple/RippleScreen.tsx'
 import { MarchIntentScreen } from '../march/MarchIntentScreen.tsx'
 import { MarchFamilyScreen } from '../march/MarchFamilyScreen.tsx'
+import { ExtractScreen } from '../extract/ExtractScreen.tsx'
 import './workspace.css'
 
 const INITIAL_VIEW: View = { x: 0, y: 0, scale: 1 }
@@ -60,6 +61,8 @@ function windowContent(kind: WindowKind) {
       return <MarchIntentScreen />
     case 'march-family':
       return <MarchFamilyScreen />
+    case 'extract':
+      return <ExtractScreen />
   }
 }
 

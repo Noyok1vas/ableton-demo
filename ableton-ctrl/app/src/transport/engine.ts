@@ -94,10 +94,25 @@ export type MarchVoiceId = 'low' | 'high' | 'tick'
     a bar, so a five-bar phrase is one loop rather than five. */
 export type MarchEvent = { voice: MarchVoiceId; pos: number }
 
-/** The two tracks the mixer knows about. `'main'` is everything a tap plays —
+/** The tracks the mixer knows about. `'main'` is everything a tap plays —
     Rhythmic Intent's loop and the instrument Sound Intent shapes; `'march'` is
-    the March layer, which is why it can sit under the other one. */
-export type TrackId = 'main' | 'march'
+    the March layer, which is why it can sit under the other one; `'backing'`
+    is a recorded clip playing under the loop — the music a pattern was
+    extracted from (see BackingClip). */
+export type TrackId = 'main' | 'march' | 'backing'
+
+/**
+ * A recorded clip that plays under the main loop: the original music a
+ * pattern was extracted from, kept so the pattern can be heard against it.
+ *
+ * It was cut to begin on a downbeat and to last exactly `loops` passes of the
+ * main loop at the tempo it was detected at. The engine starts it with the
+ * loop, on the loop's own downbeat and on the same clock, and repeats it every
+ * `loops` passes; when the transport's tempo is not the one the clip was cut
+ * at, it plays the clip faster or slower to match — so it stays on the grid
+ * whatever the tempo, and turning the tempo down slows the song for study.
+ */
+export type BackingClip = { buffer: AudioBuffer; loops: number }
 
 /** Which tracks a macro write lands on. `'selected'` is an instrument property
     (Sound Intent); `'all'` is a property of the room (FX). */
@@ -178,6 +193,12 @@ export interface SoundEngine {
       (a hardware pad's) bypass it. Sources that cannot address a single voice
       (Live, through the bridge) ignore it. */
   setVoiceGain(voice: SoundVoiceId, gain: number): void
+
+  /** Put a clip under the main loop, or take it away (null). See BackingClip.
+      Its level is the `'backing'` track's. Sources that keep their loop on
+      another clock (Live, through the bridge) cannot hold it on the grid and
+      ignore it. */
+  setBacking(clip: BackingClip | null): void
 
   /** The metronome: while `on`, a click on every beat, the first beat of each
       bar accented. With the tapped loop playing it follows the loop's grid;

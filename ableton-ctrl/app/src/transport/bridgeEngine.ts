@@ -187,7 +187,7 @@ export class BridgeEngine implements SoundEngine {
       an audio context. */
   private march: WebAudioEngine | null = null
   private mainRunning = false
-  private gains: Record<TrackId, number> = { main: 1, march: 0.6 }
+  private gains: Record<TrackId, number> = { main: 1, march: 0.6, backing: 0.8 }
 
   constructor(url: string = BRIDGE_URL) {
     this.url = url
@@ -301,6 +301,10 @@ export class BridgeEngine implements SoundEngine {
   /** Live's own mixer owns the per-voice balance; the bridge addresses one
       selected instrument and has no channel per identity to set. */
   setVoiceGain(): void {}
+
+  /** Live keeps the loop on its own clock, which this page cannot share a
+      sample-accurate downbeat with, so a backing clip is not played here. */
+  setBacking(): void {}
 
   /** Not over the bridge yet: Live has its own metronome, and the loop's
       clock is Live's there, not this tab's. (Arguments ignored.) */

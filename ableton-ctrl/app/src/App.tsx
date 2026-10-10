@@ -10,6 +10,7 @@ import { MarchSession } from './march/session.tsx'
 import { GuideSession } from './guide/session.tsx'
 import { HintLayer } from './guide/HintLayer.tsx'
 import { ModSession } from './mod/session.tsx'
+import { ExtractSession } from './extract/session.tsx'
 
 export default function App() {
   return (
@@ -38,7 +39,11 @@ export default function App() {
                         innermost, with its one layer of hints beside the
                         canvas rather than inside it. */}
                     <GuideSession>
-                      <Workspace />
+                      {/* Extract hands its result to the ring, the transport
+                          and the Selector's kit, so it needs all of them. */}
+                      <ExtractSession>
+                        <Workspace />
+                      </ExtractSession>
                       <HintLayer />
                     </GuideSession>
                   </MarchSession>

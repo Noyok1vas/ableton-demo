@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "ableton-ctrl/app", "--", "--port", "5173", "--strictPort"],
       "port": 5173
+    },
+    {
+      "name": "rhythm-extract",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "ableton-ctrl/app", "--", "--port", "5174", "--strictPort"],
+      "port": 5174
     }
   ]
 }

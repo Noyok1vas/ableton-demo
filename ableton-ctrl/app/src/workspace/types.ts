@@ -27,6 +27,7 @@ export type WindowKind =
   | 'ripple'
   | 'march-intent'
   | 'march-family'
+  | 'extract'
 
 /** Where a window's function ends up in the product. `software` stays on a
     screen (the system display and the Sound Visual); `hardware` becomes a

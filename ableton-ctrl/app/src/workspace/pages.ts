@@ -32,6 +32,9 @@ export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
     { id: 'ms-1', kind: 'main-screen', title: 'Main Screen', x: 800, y: 64, w: 1470, h: 1440 },
     { id: 'mod-1', kind: 'mod-strips', title: 'Mod Strip', x: 64, y: 1520, w: 700, h: 836 },
     { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 800, y: 1520, w: 1470, h: 836 },
+    // Rhythm Extract sits to the right of the Main Screen it feeds: what it
+    // finds in a song lands on that ring.
+    { id: 'xp-1', kind: 'extract', title: 'Rhythm Extract', x: 2306, y: 64, w: 900, h: 1440 },
   ],
   'untitled-2': [],
   'untitled-3': [],
@@ -55,6 +58,7 @@ export const WINDOW_TIER: Record<WindowKind, WindowTier> = {
   ripple: 'hardware',
   'march-intent': 'hardware',
   'march-family': 'hardware',
+  extract: 'software',
 }
 
 export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
@@ -74,4 +78,5 @@ export const WINDOW_LIMITS: Record<WindowKind, WindowLimits> = {
   ripple: { minW: 300, minH: 380, maxW: 1000, maxH: 1100 },
   'march-intent': { minW: 420, minH: 420, maxW: 1400, maxH: 900 },
   'march-family': { minW: 520, minH: 400, maxW: 1400, maxH: 2000 },
+  extract: { minW: 640, minH: 600, maxW: 1400, maxH: 2600 },
 }
