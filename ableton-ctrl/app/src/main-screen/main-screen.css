@@ -12,7 +12,8 @@
   height: 100%;
   min-height: 0;
   display: flex;
-  background: var(--surface);
+  /* No surface of its own: the glass in the hardware render is the screen. */
+  background: none;
   /* The band the rows leave free: panels and the audition strips fill it. */
   --ms-band: calc(var(--edge) + var(--pill-h) + var(--space-4));
 }
@@ -139,9 +140,19 @@
   right: var(--edge);
 }
 
-/* Auditioning owns the screen: the panel steps aside (and comes back). */
+/* Auditioning owns the screen: the panel steps aside (and comes back), and
+   the ring fades out under the rack preview, which has no surface to hide
+   it with. */
 .ms-overlay--audition .ms-panel {
   display: none;
+}
+
+.ms-screen .sv-canvas {
+  transition: opacity 220ms ease;
+}
+
+.ms-screen--audition .sv-canvas {
+  opacity: 0;
 }
 
 @keyframes ms-panel-in {

@@ -5,7 +5,8 @@
   position: absolute;
   inset: 0;
   container-type: size;
-  background: var(--surface);
+  /* On the glass; the ring under it fades out instead (main-screen.css). */
+  background: none;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;

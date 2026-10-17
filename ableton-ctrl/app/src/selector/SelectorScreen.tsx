@@ -1,24 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
+import type { CSSProperties } from 'react'
 import { SoundPreview } from './SoundPreview.tsx'
 import { PATTERNS, type PatternId } from './patterns.ts'
 import { useSelector } from './session.tsx'
 import { useTap } from '../tap/session.tsx'
 import { useMod } from '../mod/session.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
+import { PAD_SCREEN_MM, padRect, u } from '../device/geometry.ts'
 import './selector.css'
 
 const FLASH_MS = 90
 /** How long a pad is held before it turns from a hit into an audition.
     Mirrored as --long-press in design/tokens.css. */
 const LONG_PRESS_MS = 400
+/** The pad's round screen, in device units, and how much of it a mark may
+    fill: at full velocity a mark is drawn VELOCITY_MAX_SIZE (1.3) of its
+    tile, so the tile is held to 1/1.3 of the circle and the mark's widest
+    reaches the edge of the glass and no further. */
+const PAD_SCREEN = u(PAD_SCREEN_MM)
+const PAD_SCREEN_FIT = 1 / 1.3
 
 /** One finger on one pad. `holding` once it counts as held for audition. */
 type Press = { timer: ReturnType<typeof setTimeout> | null; holding: boolean }
 
 /**
  * The deck — the eight pads, 4×2, the hardware half of the device. They are
- * always the same pads in the same places; only the screen above changes.
+ * the pads in the rendered hardware: each button sits exactly over its pad in
+ * the picture (geometry.ts), invisible itself, and draws its mark on the
+ * round screen set into the pad. Only the screens change.
  *
  * A press selects the pad and plays it, in one of two ways:
  *
@@ -109,13 +119,20 @@ export function SelectorScreen() {
 
   return (
     <div className={`sel-screen${auditioning ? ' sel-screen--audition' : ''}`}>
-      <div className="sel-grid">
-        {PATTERNS.map((pattern) => {
+      {PATTERNS.map((pattern, index) => {
           const isSelected = gesture === pattern.id
+          const rect = padRect(index)
           return (
             <button
               key={pattern.id}
               type="button"
+              style={{
+                left: rect.x,
+                top: rect.y,
+                width: rect.size,
+                height: rect.size,
+                '--pad-screen': `${PAD_SCREEN}px`,
+              } as CSSProperties}
               className={[
                 'sel-button',
                 isSelected ? 'sel-button--selected' : '',
@@ -148,12 +165,12 @@ export function SelectorScreen() {
                   pattern={pattern}
                   character={character[pattern.id]}
                   velocity={velocity}
+                  fit={PAD_SCREEN_FIT}
                 />
               </span>
             </button>
           )
         })}
-      </div>
     </div>
   )
 }

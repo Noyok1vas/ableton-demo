@@ -7,24 +7,31 @@ rules.
 
 ## 1. The device
 
+The hardware is a photograph: the CAD (140 × 210 mm) rendered straight down
+in Blender (`tools/render/render.py`), the body's edges on the image's
+edges, saved as `public/device.webp` at 2048 × 3072. The UI is laid over it
+where the CAD puts the screens (`device/geometry.ts`, in millimetres).
+
 ```
-┌──────────── 1024u ────────────┐
-│                               │
-│   Screen   1024 × 1024u       │  software: black frame
-│                               │
-├───────────────────────────────┤
-│ pad │ pad │ pad │ pad │ 512u  │  hardware: grey frame
-│ pad │ pad │ pad │ pad │       │  pads 224u, square
-└───────────────────────────────┘
+┌──────────── 1024u ────────────┐  140 mm
+│ ┌───────────────────────────┐ │
+│ │  Screen  128 mm square    │ │  dark glass, the UI drawn on it
+│ │  6 mm in from top/sides   │ │
+│ └───────────────────────────┘ │
+│ ▢  ▢  ▢  ▢   pads 30 mm      │  silicone, a 17 mm round screen in each
+│ ▢  ▢  ▢  ▢                   │
+└───────────────────────────────┘  210 mm
 ```
 
-- **Device units (u):** CSS px on the 1024×1536 device. `DeviceShell` scales
-  the whole device as one piece to fit the viewport inside the safe area, and
-  centres it.
+- **Device units (u):** CSS px on the 1024×1536 device; 1 mm = 7.31u.
+  `DeviceShell` scales the whole device as one piece to fit the viewport
+  inside the safe area, and centres it on a dark radial gradient.
 - **Scale:** 11" iPad Pro ≈ 0.78 (1u ≈ 0.78pt). 13" ≈ 0.89. 10th-gen iPad ≈ 0.77.
+- **Screens are transparent UI.** Nothing paints a background over the
+  glass; the ring, pills and marks sit on the render. A mark on a pad is
+  clipped to its round screen and scaled so full velocity just fills it.
 - **Portrait only.** On a touch device in landscape the device is hidden and a
-  "turn upright" note shows instead. A desktop browser always sees the device,
-  fitted.
+  "turn upright" note shows instead.
 - **No canvas.** Nothing pans, zooms or drags. Pinch and double-tap zoom are
   blocked.
 
@@ -71,7 +78,7 @@ or auditioning. Muted = disabled. Nothing is coloured.
 | `Segmented` | joined squares, one on | — |
 | `ScreenPanel` (`.ms-panel`) | 400u wide, 40u radius, floats in the screen | one open at a time |
 | `TouchStrip` (`.mod-track`) | 72u wide pill, filled from the bottom | disabled when the sound has no axis |
-| `Pad` (`.sel-button`) | 224u square, grey hairline | selected · flash (inverted) · recording · audition (grey) |
+| `Pad` (`.sel-button`) | invisible button over the pad in the render; a 124u round screen | selected (muted ring) · flash (glass lights) · recording (white ring) · audition (others dim) |
 | `Toast` (`.ms-toast`) | small inverted bar on the screen | — |
 
 ## 5. How the screen changes

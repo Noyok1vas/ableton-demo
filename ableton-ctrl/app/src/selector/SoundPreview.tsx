@@ -49,11 +49,15 @@ export function SoundPreview({
   character,
   velocity = 1,
   resolution,
+  fit = 1,
 }: {
   pattern: Pattern
   character: number
   velocity?: number
   resolution?: number
+  /** Scales the whole drawing: the pads' round screens use 1/1.3 so a mark
+      at full velocity just reaches the glass's edge. */
+  fit?: number
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // The latest requested values, read at paint time rather than closed over,
@@ -62,6 +66,8 @@ export function SoundPreview({
   wantedRef.current = character
   const velocityRef = useRef(velocity)
   velocityRef.current = velocity
+  const fitRef = useRef(fit)
+  fitRef.current = fit
   // The painter's own "something changed", published out of the effect so a
   // change can wake it without tearing it down.
   const changedRef = useRef<(() => void) | null>(null)
@@ -161,7 +167,7 @@ export function SoundPreview({
         canvas.height = h
       }
       const v = Math.min(1, Math.max(0, velocityRef.current))
-      const size = lerp(VELOCITY_MIN_SIZE, VELOCITY_MAX_SIZE, v)
+      const size = lerp(VELOCITY_MIN_SIZE, VELOCITY_MAX_SIZE, v) * fitRef.current
       const dw = w * size
       const dh = h * size
       ctx.clearRect(0, 0, w, h)
@@ -201,7 +207,7 @@ export function SoundPreview({
 
   useEffect(() => {
     changedRef.current?.()
-  }, [character, velocity])
+  }, [character, velocity, fit])
 
   return <canvas ref={canvasRef} className="sound-preview" />
 }

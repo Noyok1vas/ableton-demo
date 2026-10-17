@@ -4,14 +4,15 @@
    outside, 1px hairlines.
 
    Every length below is in DEVICE UNITS: CSS px on the fixed 1024×1536
-   device (device/DeviceShell), which is scaled as one piece to fit the iPad.
+   device (device/DeviceShell — the rendered hardware with the UI on its
+   screens), which is scaled as one piece to fit the iPad.
    At the iPad Pro 11" portrait scale (≈0.78) 1u ≈ 0.78pt, so 56u is the
    44pt touch minimum. */
 
 :root {
   /* Color */
   color-scheme: dark;
-  --canvas: #000000; /* the page around the device */
+  --canvas: #4a4a4c; /* the room around the device (device.css draws the gradient) */
   --surface: #000000; /* screen, panel and pad surface */
   --surface-2: #1b1d1f; /* subtle dark-grey fill (selected pads, audition, tracks) */
   --line-fine: #2b2e31; /* 1px hairline dividers / grid */
@@ -26,12 +27,8 @@
   --hw-line: #5a5f63;
   --hw-title: #26292b;
 
-  /* Device: a square screen over a 4×2 deck of square pads, heights 2:1 */
-  --device-w: 1024px;
-  --device-h: 1536px;
-  --screen-h: 1024px;
-  --deck-h: 512px;
-  --pad: 224px;
+  /* Device sizes (body, screen, pads) come from the CAD: device/geometry.ts
+     sets them as custom properties on .device. */
 
   /* Touch: nothing pressable smaller than --hit-min, and at least --hit-gap
      between neighbours that are not joined */

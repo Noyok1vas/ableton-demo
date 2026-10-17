@@ -94,7 +94,11 @@ export function MainScreen() {
   }, [panel])
 
   return (
-    <div className="ms-screen" onPointerDownCapture={onCanvasPress} onPointerUpCapture={onCanvasPress}>
+    <div
+      className={`ms-screen${auditioning ? ' ms-screen--audition' : ''}`}
+      onPointerDownCapture={onCanvasPress}
+      onPointerUpCapture={onCanvasPress}
+    >
       <SoundVisualScreen controls={false} />
       <RackPreview />
 

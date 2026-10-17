@@ -109,7 +109,8 @@
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
-  background: var(--surface);
+  /* Transparent on the device: the ring is drawn on the hardware's glass. */
+  background: none;
 }
 
 .sv-canvas {
