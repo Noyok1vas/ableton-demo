@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { BPM_MAX, BPM_MIN, useSoundEngine } from './session.tsx'
 import { METER_PRESETS, METER_UNITS, formatMeter, sameMeter, type Meter } from './meter.ts'
 import { useSession } from '../rhythmic-intent/session.tsx'
@@ -68,8 +68,38 @@ export function TransportBar() {
   const freeRunning = metronome && beat === null
   const beatSeconds = (60 / bpm) * (4 / meter.unit)
 
+  // The pill lights while a finger is on it (or focus is in it), and stays
+  // lit a moment after, so a quick tap reads as more than a flicker.
+  const [active, setActive] = useState(false)
+  const activeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touch = () => {
+    if (activeTimer.current !== null) clearTimeout(activeTimer.current)
+    activeTimer.current = null
+    setActive(true)
+  }
+  const release = () => {
+    if (activeTimer.current !== null) clearTimeout(activeTimer.current)
+    activeTimer.current = setTimeout(() => setActive(false), 600)
+  }
+  useEffect(
+    () => () => {
+      if (activeTimer.current !== null) clearTimeout(activeTimer.current)
+    },
+    [],
+  )
+
   return (
-    <div className="tp-bar" role="toolbar" aria-label="Transport">
+    <div
+      className={`tp-bar${active ? ' tp-bar--active' : ''}`}
+      role="toolbar"
+      aria-label="Transport"
+      onPointerDownCapture={touch}
+      onPointerUpCapture={release}
+      onPointerCancelCapture={release}
+      onFocusCapture={touch}
+      onBlurCapture={release}
+    >
+      <div className="tp-scroll">
       <div className="tp-group">
         <button
           type="button"
@@ -197,6 +227,7 @@ export function TransportBar() {
             )
           })}
         </div>
+      </div>
       </div>
     </div>
   )

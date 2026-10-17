@@ -1,6 +1,7 @@
 /* Mod strips — two tall touch strips, filled from the bottom, standing in the
    audition view at the screen's left and right edges, in line with the
-   circle buttons above and below them. Pill-shaped; black fill, ink frame. */
+   circle buttons above and below them. The same translucent bar as the
+   transport pill, lit while held; the level fills it in white. */
 
 .mod-screen {
   position: absolute;
@@ -29,9 +30,10 @@
   width: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--surface-2);
-  border: var(--stroke-strong) solid var(--ink-pure);
+  background: var(--bar-fill);
   border-radius: var(--radius-pill);
+  opacity: var(--bar-opacity);
+  transition: opacity var(--motion-fast);
   cursor: ns-resize;
   touch-action: none;
   user-select: none;
@@ -64,10 +66,14 @@
   transition: bottom 60ms linear;
 }
 
+.mod-strip--active .mod-track,
+.mod-track:focus-visible {
+  opacity: var(--bar-opacity-active);
+}
+
 /* A sound with no character axis: the strip still switches the pads into
    audition, but has nothing to set. */
 .mod-strip--disabled .mod-track {
-  border-color: var(--hw-line);
   cursor: pointer;
 }
 

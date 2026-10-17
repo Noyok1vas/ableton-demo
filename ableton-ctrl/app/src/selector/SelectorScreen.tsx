@@ -8,6 +8,7 @@ import { useTap } from '../tap/session.tsx'
 import { useMod } from '../mod/session.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
 import { PAD_SCREEN_MM, padRect, u } from '../device/geometry.ts'
+import { haptic } from '../device/haptics.ts'
 import './selector.css'
 
 const FLASH_MS = 90
@@ -85,6 +86,7 @@ export function SelectorScreen() {
     // own view of the selection is still the previous mark.
     setGesture(id)
     flash(id)
+    haptic()
 
     // Already auditioning: this press auditions too, and holding it keeps
     // the view up.

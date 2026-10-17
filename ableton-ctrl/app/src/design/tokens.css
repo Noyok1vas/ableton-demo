@@ -38,6 +38,12 @@
   --pill-h: 80px;
   --edge: 24px; /* screen controls' inset from the screen frame */
 
+  /* Bars (the transport pill, the strips): a translucent grey fill on the
+     glass, no frame. Brighter while a finger is on it. */
+  --bar-fill: rgba(217, 217, 217, 0.2);
+  --bar-opacity: 0.4;
+  --bar-opacity-active: 0.7;
+
   /* Strokes and radii */
   --stroke: 1px;
   --stroke-strong: 1.5px;

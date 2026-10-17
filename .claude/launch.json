@@ -26,11 +26,11 @@
         "ableton-ctrl/app",
         "--",
         "--port",
-        "5174",
+        "5173",
         "--strictPort",
         "--host"
       ],
-      "port": 5174
+      "port": 5173
     }
   ]
 }

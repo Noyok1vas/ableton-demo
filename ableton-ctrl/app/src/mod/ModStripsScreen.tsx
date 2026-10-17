@@ -1,5 +1,6 @@
 import {
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -32,6 +33,7 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
   const { beginTouch, endTouch, poke } = useMod()
   const trackRef = useRef<HTMLDivElement>(null)
   const held = useRef<number | null>(null)
+  const [active, setActive] = useState(false)
 
   const valueAt = (clientY: number) => {
     const rect = trackRef.current?.getBoundingClientRect()
@@ -43,6 +45,7 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
     if (held.current !== null) return
     e.preventDefault()
     held.current = e.pointerId
+    setActive(true)
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
@@ -59,6 +62,7 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
   const release = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (held.current !== e.pointerId) return
     held.current = null
+    setActive(false)
     endTouch()
   }
 
@@ -77,7 +81,10 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
 
   const pct = `${clamp01(value) * 100}%`
   return (
-    <div className={`mod-strip${disabled ? ' mod-strip--disabled' : ''}`} data-hint={hint}>
+    <div
+      className={`mod-strip${disabled ? ' mod-strip--disabled' : ''}${active ? ' mod-strip--active' : ''}`}
+      data-hint={hint}
+    >
       <div
         ref={trackRef}
         className="mod-track"

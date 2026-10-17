@@ -1,21 +1,50 @@
-/* Transport pill + Mixer. The pill is the Main Screen's top bar: rounded
-   outside (it floats over the canvas), square inside — every control in it is
-   the same hairline square the rest of the instrument uses. Sized for touch:
-   every square is --hit-min, joined groups share their borders, and the
-   three groups spread across the pill with no dividers between them. */
+/* Transport pill + Mixer. The pill is the screen's top bar: a translucent
+   grey bar on the glass, square inside — every control in it is the same
+   hairline square the rest of the instrument uses. Sized for touch: every
+   square is --hit-min and joined groups share their borders. The controls
+   are wider than the pill, so they scroll sideways inside it; the pill
+   lights while a finger is on it. */
 
 .tp-bar {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
   height: var(--pill-h);
-  padding: 0 20px;
-  background: var(--surface);
-  border: var(--stroke-strong) solid var(--ink-pure);
+  overflow: hidden;
+  background: var(--bar-fill);
   border-radius: var(--radius-pill);
+  opacity: var(--bar-opacity);
+  transition: opacity var(--motion-fast);
+}
+
+.tp-bar--active {
+  opacity: var(--bar-opacity-active);
+}
+
+/* The controls, in one row that scrolls sideways; no scrollbar, the pill's
+   rounded ends are the hint. Fingers pan it, buttons still press. */
+.tp-scroll {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: 0 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+.tp-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tp-scroll > * {
+  flex: 0 0 auto;
 }
 
 .tp-group {
