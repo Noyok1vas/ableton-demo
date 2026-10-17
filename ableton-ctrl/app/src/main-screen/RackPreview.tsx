@@ -3,20 +3,20 @@ import { useMod } from '../mod/session.tsx'
 import { useSelector } from '../selector/session.tsx'
 import { PATTERNS, type PatternId } from '../selector/patterns.ts'
 import { SoundPreview } from '../selector/SoundPreview.tsx'
+import { ModStripsScreen } from '../mod/ModStripsScreen.tsx'
 import './rack-preview.css'
 
 /** How long a sound takes to grow out of its cell into the large preview. */
 const GROW_MS = 420
+/** The large view's mark is rasterized at this many pixels square. */
+const FOCUS_RESOLUTION = 2000
 
 /**
- * What the Main Screen shows while a mod strip is in use, in place of the
- * circular sequencer:
- *
- *   strip only        the whole rack at half strength, cell for cell the pads
- *                     below — the hint that a pad is the other half of the move
- *   strip + a pad     that pad's sound, grown out of its cell to fill the
- *                     screen, solid, named, and redrawn live as velocity and
- *                     character move on the strips
+ * What the screen shows in audition mode, in place of the circular sequencer:
+ * the held pad's sound, grown out of its cell in the rack to fill the screen,
+ * solid, and redrawn live as velocity and character move on the two
+ * strips either side of it. With no sound in focus the whole rack shows at
+ * half strength, cell for cell the pads below.
  *
  * Nothing here records; it is the audition's picture. It fades out with
  * audition mode, and the sequencer is there again underneath.
@@ -86,13 +86,13 @@ export function RackPreview() {
               pattern={focused}
               character={character[focused.id]}
               velocity={velocity}
+              resolution={FOCUS_RESOLUTION}
             />
-            {/* The one place a sound is named: when it is up close to be
-                shaped. The rack and the pads show marks only. */}
-            <span className="rp-focus-label">{focused.label.toUpperCase()}</span>
           </div>
         </div>
       )}
+
+      <ModStripsScreen />
     </div>
   )
 }

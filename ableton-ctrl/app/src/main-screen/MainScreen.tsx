@@ -2,12 +2,14 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import { TransportBar } from '../transport/TransportBar.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundVisualScreen } from '../sound-intent/SoundVisualScreen.tsx'
-import { AgentBar } from '../agent/AgentBar.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
 import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useGuide } from '../guide/session.tsx'
+import { useMod } from '../mod/session.tsx'
+import { useSoundEngine } from '../transport/session.tsx'
+import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { loadSaved, useSaved } from '../persist.ts'
-import { IconList, IconPlus, IconSparkle, IconUndo } from './icons.tsx'
+import { IconList, IconPlus, IconSliders, IconSparkle, IconUndo } from './icons.tsx'
 import { RackPreview } from './RackPreview.tsx'
 import './main-screen.css'
 
@@ -22,25 +24,38 @@ const swallowSpace = (e: KeyboardEvent) => {
     the playing stops. */
 const QUIET_MS = 2200
 
+/** The screen's panels — at most one is open. */
+type Panel = 'collection' | 'settings'
+
+function restorePanel(): Panel | null {
+  const saved = loadSaved('ui.panel')
+  return saved === 'collection' || saved === 'settings' ? saved : null
+}
+
 /**
- * The Main Screen — the big display. The Sound Visual fills all of it, and
- * the controls float over the canvas in two rows, all icons:
+ * The screen — the device's one display, and the only part of it that
+ * changes (see design/system.md). The Sound Visual fills all of it, and the
+ * controls float over it in two rows, all icons:
  *
  *   top     +  new pattern · [transport pill] · ↶ undo
- *   bottom  ≡  Collection  · [agent bar]      · ✦ guiding mode
+ *   bottom  ≡  Collection                     · ⚙ Settings · ✦ guiding mode
  *
- * The Collection opens as a window floating over the left of the canvas,
- * between the + and the ≡. Guiding mode is the words the icons leave out:
+ * Collection floats over the left of the screen, Settings over the right;
+ * only one is open at a time. Guiding mode is the words the icons leave out:
  * while it is on, pointing at any control explains it.
  *
- * While a mod strip is in use the sequencer gives way to the rack preview
- * (see RackPreview); the two rows stay on top of it.
+ * While a pad is held long (audition) the sequencer gives way to the rack
+ * preview (see RackPreview), and the panels step aside for it.
  */
 export function MainScreen() {
   const { clearPattern, undoTap, canUndo, hasPattern } = useSession()
   const { on: guiding, setOn: setGuiding } = useGuide()
   const { onTap } = useSoundIntent()
-  const [libraryOpen, setLibraryOpen] = useState(() => loadSaved('ui.collectionOpen') === true)
+  const { active: auditioning } = useMod()
+  const { status, source } = useSoundEngine()
+  const needsUnlock = source === 'builtin' && !status.ready
+  const [panel, setPanel] = useState<Panel | null>(restorePanel)
+  const toggle = (which: Panel) => setPanel((open) => (open === which ? null : which))
 
   // While you are playing into the ring — tapping, or dragging a mark — the
   // two bars step back to 20% so the picture is all there is. They return
@@ -66,24 +81,28 @@ export function MainScreen() {
   const onCanvasPress = (e: PointerEvent) => {
     if (e.target instanceof HTMLCanvasElement) poke()
   }
-  useSaved('ui.collectionOpen', libraryOpen)
+  useSaved('ui.panel', panel)
 
-  // Escape closes the library, as it would any floating window.
+  // Escape closes the open panel, as it would any floating window.
   useEffect(() => {
-    if (!libraryOpen) return
+    if (!panel) return
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setLibraryOpen(false)
+      if (e.key === 'Escape') setPanel(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [libraryOpen])
+  }, [panel])
 
   return (
     <div className="ms-screen" onPointerDownCapture={onCanvasPress} onPointerUpCapture={onCanvasPress}>
       <SoundVisualScreen controls={false} />
       <RackPreview />
 
-      <div className={`ms-overlay${quiet ? ' ms-overlay--quiet' : ''}`}>
+      <div
+        className={`ms-overlay${quiet ? ' ms-overlay--quiet' : ''}${
+          auditioning ? ' ms-overlay--audition' : ''
+        }`}
+      >
         <div className="ms-row ms-row--top">
           <button
             type="button"
@@ -110,25 +129,47 @@ export function MainScreen() {
           </button>
         </div>
 
-        {libraryOpen && (
-          <div className="ms-library" role="dialog" aria-label="Collection">
+        {panel === 'collection' && (
+          <div className="ms-panel ms-panel--left" role="dialog" aria-label="Collection">
             <CollectionPanel />
           </div>
+        )}
+        {panel === 'settings' && (
+          <div className="ms-panel ms-panel--right" role="dialog" aria-label="Settings">
+            <SoundSourceScreen />
+          </div>
+        )}
+
+        {needsUnlock && (
+          <p className="ms-toast" role="status">
+            Tap any pad once to start sound
+          </p>
         )}
 
         <div className="ms-row ms-row--bottom">
           <button
             type="button"
-            className={`ms-circle${libraryOpen ? ' ms-circle--on' : ''}`}
+            className={`ms-circle${panel === 'collection' ? ' ms-circle--on' : ''}`}
             aria-label="Collection"
-            aria-expanded={libraryOpen}
-            onClick={() => setLibraryOpen((o) => !o)}
+            aria-expanded={panel === 'collection'}
+            onClick={() => toggle('collection')}
             onKeyUp={swallowSpace}
             data-hint="Collection — your saved and temporary patterns"
           >
             <IconList />
           </button>
-          <AgentBar />
+          <span className="ms-spacer" aria-hidden />
+          <button
+            type="button"
+            className={`ms-circle${panel === 'settings' ? ' ms-circle--on' : ''}`}
+            aria-label="Settings"
+            aria-expanded={panel === 'settings'}
+            onClick={() => toggle('settings')}
+            onKeyUp={swallowSpace}
+            data-hint="Settings — which source plays the sounds, and what it can reach"
+          >
+            <IconSliders />
+          </button>
           <button
             type="button"
             className={`ms-circle${guiding ? ' ms-circle--on' : ''}`}

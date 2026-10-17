@@ -103,16 +103,16 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
 }
 
 /**
- * The Mod Strip section: two strips beside the pads, unlabelled like the pads
- * (guiding mode names them, and the Main Screen names the sound up close).
+ * The two strips of the audition view, either side of the sound shown large
+ * on the screen. Unlabelled like the pads (guiding mode names them).
+ * screen names the sound up close).
  *
  *   left   velocity — how hard every pad plays, recorded or auditioned
  *   right  character — the selected sound's one axis (SOFT↔HARD for KICK,
  *          CLOSED↔OPEN for HAT, …); sounds without one leave it idle
  *
- * Hold either strip and press a pad: the pad auditions instead of recording,
- * and the Main Screen shows that sound large, changing as the strips move.
- * Let go and, a moment later, the pads record again.
+ * They appear while a pad is held long, and touching one keeps the view up.
+ * Let go of everything and, a moment later, the pads record again.
  */
 export function ModStripsScreen() {
   const { gesture, character, setSelectedCharacter, velocity, setVelocity } = useSelector()
@@ -122,20 +122,18 @@ export function ModStripsScreen() {
   const velocityValue = (velocity - VELOCITY_MIN) / (VELOCITY_MAX - VELOCITY_MIN)
 
   return (
-    // Instrument controls: two fingers here (strip + pad) are playing, not a
-    // pinch of the canvas.
-    <div className="mod-screen" data-no-pinch>
+    <div className="mod-screen">
       <Strip
         value={velocityValue}
         onChange={(v) => setVelocity(VELOCITY_MIN + v * (VELOCITY_MAX - VELOCITY_MIN))}
         label="Velocity"
-        hint="Velocity — how hard the pads play. Hold it and press a pad to audition without recording"
+        hint="Velocity — how hard the pads play"
       />
       <Strip
         value={axis ? character[gesture] : 0}
         onChange={setSelectedCharacter}
         label={`${name} character`}
-        hint={`${name}: ${CHARACTER_NOTE[gesture]} Hold it and press a pad to audition.`}
+        hint={`${name}: ${CHARACTER_NOTE[gesture]}`}
         disabled={!axis}
       />
     </div>

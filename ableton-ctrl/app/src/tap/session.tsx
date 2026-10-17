@@ -22,9 +22,11 @@ export type TapSessionValue = {
       because pressing a mark selects and fires in the same press, before React
       has re-rendered with the new selection. `accented` plays this one tap at
       full velocity whatever the Selector's velocity says — Shift+Space.
-      While a mod strip is in use (see mod/session) the press auditions
-      instead: heard and shown, never recorded. */
-  fireTap: (gesture?: PatternId, accented?: boolean) => void
+      While audition mode is on (see mod/session) the press auditions
+      instead: heard and shown, never recorded. Returns the id of the tap it
+      filed — null when it auditioned — so a pad held into a long press can
+      take its own note back out. */
+  fireTap: (gesture?: PatternId, accented?: boolean) => string | null
   /** True while Rhythmic Intent is capturing a bar. */
   recording: boolean
 }
@@ -98,11 +100,11 @@ export function TapSession({ children }: { children: ReactNode }) {
   // event carries that id instead of a position: the Sound Visual looks the
   // position up in the transformed pattern, so a knob move or an edit moves the
   // mark it drew for that tap.
-  const fireTap = useCallback((gesture?: PatternId, accented = false) => {
+  const fireTap = useCallback((gesture?: PatternId, accented = false): string | null => {
     const sound = gesture ?? gestureRef.current
     if (modRef.current.isActive()) {
       modRef.current.audition(sound, accented)
-      return
+      return null
     }
     // The character is read HERE, once, at the instant of the press — this is
     // the "capture" step of the model. Everything downstream receives a copy.
@@ -116,6 +118,7 @@ export function TapSession({ children }: { children: ReactNode }) {
     const velocity = currentVelocityRef.current(accented)
     const id = handleTap(sound, character ?? undefined, velocity)
     emitTap(id, sound, repeatsRef.current, character)
+    return id
   }, [handleTap, emitTap])
 
   // Global keys, unless focus is in a text input: Space taps (Shift accents

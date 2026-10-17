@@ -1,21 +1,21 @@
-/* Mod strips — two tall touch strips, filled from the bottom. Rounded like the
-   physical strips they stand in for; black fill, hairline frame. */
+/* Mod strips — two tall touch strips, filled from the bottom, standing in the
+   audition view at the screen's left and right edges, in line with the
+   circle buttons above and below them. Pill-shaped; black fill, ink frame. */
 
 .mod-screen {
-  flex: 1 1 auto;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: var(--ms-band) var(--edge);
   display: flex;
   align-items: stretch;
-  justify-content: space-evenly;
-  padding: var(--space-4) var(--space-4) var(--space-3);
-  background: var(--surface);
+  justify-content: space-between;
+  pointer-events: none;
   touch-action: none;
 }
 
 .mod-strip {
   flex: 0 0 auto;
-  width: 200px;
+  width: var(--circle);
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -30,8 +30,8 @@
   min-height: 0;
   overflow: hidden;
   background: var(--surface-2);
-  border: 1.5px solid var(--ink-pure);
-  border-radius: 28px;
+  border: var(--stroke-strong) solid var(--ink-pure);
+  border-radius: var(--radius-pill);
   cursor: ns-resize;
   touch-action: none;
   user-select: none;
@@ -51,14 +51,15 @@
   transition: height 60ms linear;
 }
 
-/* The finger's line: a white rule across the top of the fill. */
+/* The finger's line: a rule across the top of the fill that always contrasts
+   with what is under it (dark on the white fill, white on the dark track). */
 .mod-level {
   position: absolute;
   left: 18%;
   right: 18%;
   height: 3px;
   margin-bottom: -1.5px;
-  background: var(--surface);
+  background: var(--ink-pure);
   mix-blend-mode: difference;
   transition: bottom 60ms linear;
 }

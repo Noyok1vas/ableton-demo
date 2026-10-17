@@ -107,8 +107,6 @@ export function TransportBar() {
         </button>
       </div>
 
-      <span className="tp-divider" aria-hidden />
-
       <div className="tp-stepper">
         <button
           type="button"
@@ -148,8 +146,6 @@ export function TransportBar() {
           <IconPlus size={18} />
         </button>
       </div>
-
-      <span className="tp-divider" aria-hidden />
 
       <div className="tp-group">
         <div className="tp-stepper">

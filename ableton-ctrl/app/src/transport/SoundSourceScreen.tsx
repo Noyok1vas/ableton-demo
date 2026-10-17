@@ -26,11 +26,10 @@ function bridgeLine(addressable: boolean, reachable: boolean): string {
 }
 
 /**
- * The system screen — one of the two displays that stay in software (the other
- * is the Sound Visual). It shows the instrument's state and holds its main
- * menu, and nothing here is a performance control: tempo, meter and PLAY are
- * set on the Transport hardware and only READ here, the way a drum machine's
- * small screen shows what its knobs are doing.
+ * Settings — the screen's right-hand panel. It shows the instrument's state
+ * and which source sounds, and nothing here is a performance control: tempo,
+ * meter and PLAY are set on the transport pill and only READ here, the way a
+ * drum machine's small screen shows what its knobs are doing.
  *
  *   top      — transport state and where the loop is: PLAY/STOP, bar.beat
  *   readouts — tempo and meter

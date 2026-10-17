@@ -23,14 +23,15 @@
 }
 
 /* ── The display: transport state + readouts ────────── */
-/* The screen's own voice: inverted, like a small LCD, so what the instrument
-   is doing reads first and from across a table. */
+/* The screen's own voice: a small LCD panel, so what the instrument is doing
+   reads first and from across a table. */
 
 .ss-display {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr));
-  background: var(--ink-pure);
-  color: var(--surface);
+  background: var(--surface-2);
+  border: 1px solid var(--line-fine);
+  color: var(--text);
 }
 
 .ss-state,
@@ -44,7 +45,7 @@
 }
 
 .ss-readout {
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
+  border-left: 1px solid var(--line-fine);
 }
 
 .ss-state {
@@ -55,11 +56,11 @@
   font-size: 16px;
   font-weight: 900;
   letter-spacing: 0.4px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-muted);
 }
 
 .ss-state--on {
-  color: var(--surface);
+  color: var(--text);
 }
 
 .ss-readout-value {
@@ -72,7 +73,7 @@
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.4px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-muted);
 }
 
 /* ── Source choice ──────────────────────────────────── */

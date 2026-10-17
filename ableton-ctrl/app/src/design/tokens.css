@@ -1,29 +1,62 @@
-/* Design tokens — light black/white/light-gray theme.
-   Per user direction (2026-07-17): black/white/light-gray only, white canvas,
-   no colour accent. Keeps design.md's structure — radius 0, 1px hairlines,
-   8px spacing grid, sentence case, medium-weight titles / heavy small labels.
-   These are the light values from design.md §4.1 [Observed], with the red
-   accent replaced by ink so "state" reads as black on white. */
+/* Design tokens — the instrument's design system (see design/system.md).
+   Black/white/gray only, no colour accent: white on black, and "state" reads
+   as a white fill with black on it. Radius 0 inside, pills and circles
+   outside, 1px hairlines.
+
+   Every length below is in DEVICE UNITS: CSS px on the fixed 1024×1536
+   device (device/DeviceShell), which is scaled as one piece to fit the iPad.
+   At the iPad Pro 11" portrait scale (≈0.78) 1u ≈ 0.78pt, so 56u is the
+   44pt touch minimum. */
 
 :root {
   /* Color */
-  --canvas: #ffffff; /* the infinite workspace surface */
-  --surface: #ffffff; /* window / panel surface */
-  --surface-2: #f3f4f5; /* subtle light-grey fill (title bars, knob bodies) */
-  --line-fine: #eceded; /* 1px hairline dividers / grid */
-  --line-strong: #171a1d; /* 1px strong borders, outlines */
-  --text: #171a1d; /* primary text & filled marks */
+  color-scheme: dark;
+  --canvas: #000000; /* the page around the device */
+  --surface: #000000; /* screen, panel and pad surface */
+  --surface-2: #1b1d1f; /* subtle dark-grey fill (selected pads, audition, tracks) */
+  --line-fine: #2b2e31; /* 1px hairline dividers / grid */
+  --line-strong: #f2f3f4; /* 1px strong borders, outlines */
+  --text: #f2f3f4; /* primary text & filled marks */
   --text-muted: #8a8f93; /* muted metadata */
-  --ink-pure: #000000;
-  /* "accent" is state, not colour: black instead of the reference red. */
-  --accent: #171a1d;
-  /* Hardware-tier windows (see WindowTier): a grey frame and title bar, so
-     what becomes a physical control reads apart from what stays a screen. */
-  --hw-line: #aeb3b7;
-  --hw-title: #e3e5e7;
+  --ink-pure: #ffffff; /* the brightest mark: frames and filled "on" states */
+  /* "accent" is state, not colour. */
+  --accent: #f2f3f4;
+  /* Hardware: the pad deck is framed in grey, the screen in black, so what
+     stays a display reads apart from what becomes a physical control. */
+  --hw-line: #5a5f63;
+  --hw-title: #26292b;
+
+  /* Device: a square screen over a 4×2 deck of square pads, heights 2:1 */
+  --device-w: 1024px;
+  --device-h: 1536px;
+  --screen-h: 1024px;
+  --deck-h: 512px;
+  --pad: 224px;
+
+  /* Touch: nothing pressable smaller than --hit-min, and at least --hit-gap
+     between neighbours that are not joined */
+  --hit-min: 56px;
+  --hit-gap: 12px;
+  --circle: 72px;
+  --pill-h: 80px;
+  --edge: 24px; /* screen controls' inset from the screen frame */
+
+  /* Strokes and radii */
+  --stroke: 1px;
+  --stroke-strong: 1.5px;
+  --radius-pill: 40px;
+  --radius-panel: 40px;
 
   /* Typography */
-  --font-ui: Inter, 'Helvetica Neue', -apple-system, system-ui, sans-serif;
+  /* Geist Mono (free, self-hosted via @fontsource, imported in main.tsx): a
+     neutral grotesque mono, the closest free match to Söhne Mono. Swap this
+     one line to change every font in the UI. */
+  --font-ui: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --type-xs: 18px; /* the smallest text on the device (≈14pt) */
+  --type-s: 22px;
+  --type-m: 28px;
+  --type-l: 40px;
+  --type-xl: 72px;
 
   /* Spacing (8px grid) */
   --space-1: 4px;
@@ -36,8 +69,11 @@
   --space-8: 64px;
 
   /* Motion */
-  --motion-fast: 0.2s ease-in-out;
-  --motion-base: 0.3s ease-out;
+  --motion-press: 90ms; /* pad flash */
+  --motion-fast: 0.15s ease-in-out;
+  --motion-base: 0.25s ease-out;
+  --motion-quiet: 400ms ease; /* the bars stepping back while you play */
+  --long-press: 400ms; /* mirrored in selector/SelectorScreen LONG_PRESS_MS */
 }
 
 * {
@@ -61,8 +97,16 @@ body {
   font-weight: 400;
   line-height: 1.4;
   -webkit-font-smoothing: antialiased;
-  overflow: hidden; /* the canvas owns scrolling/panning */
+  overflow: hidden; /* the device is fixed; only panels scroll */
   overscroll-behavior: none;
+}
+
+/* Buttons and inputs do not inherit the page font by themselves. */
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
 /* Tabular figures for every numeric readout (design.md §4.2) */

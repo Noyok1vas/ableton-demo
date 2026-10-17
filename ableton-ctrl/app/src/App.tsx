@@ -1,4 +1,4 @@
-import { Workspace } from './workspace/Workspace.tsx'
+import { DeviceShell } from './device/DeviceShell.tsx'
 import { SoundEngineSession } from './transport/session.tsx'
 import { RhythmicIntentSession } from './rhythmic-intent/session.tsx'
 import { SoundIntentSession } from './sound-intent/session.tsx'
@@ -36,9 +36,9 @@ export default function App() {
                   <MarchSession>
                     {/* Guiding mode touches only what is drawn, so it sits
                         innermost, with its one layer of hints beside the
-                        canvas rather than inside it. */}
+                        device rather than inside it. */}
                     <GuideSession>
-                      <Workspace />
+                      <DeviceShell />
                       <HintLayer />
                     </GuideSession>
                   </MarchSession>

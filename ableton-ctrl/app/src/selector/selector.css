@@ -1,6 +1,6 @@
-/* Sound Selector — the pads, 4×2, as large as the section is tall. Same
+/* The deck — eight square pads, 4×2, spaced evenly across the deck. Same
    geometry as the rest of the GUI: radius 0, 1px hairlines, selection by a
-   solid frame. */
+   solid frame. Hardware, so the resting frame is the grey hardware line. */
 
 .sel-screen {
   flex: 1 1 auto;
@@ -10,53 +10,47 @@
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  /* Two fingers on the pads (one on a strip) are playing, not a page pinch. */
+  /* Several fingers on the pads are playing, not a page pinch. */
   touch-action: none;
 }
 
-.sel-audio-unlock {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  background: var(--ink-pure);
-  color: var(--surface);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.35;
-}
-
-/* Four square pads across the full width, two rows. No names: the mark is
-   the name (guiding mode says it in words). */
+/* Four square pads across, two rows, the space between them shared out
+   evenly. No names: the mark is the name (guiding mode says it in words). */
 .sel-grid {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  align-content: start;
-  gap: var(--space-4);
-  padding: var(--space-4);
+  grid-template-columns: repeat(4, var(--pad));
+  grid-template-rows: repeat(2, var(--pad));
+  justify-content: space-evenly;
+  align-content: space-evenly;
 }
 
 .sel-button {
-  aspect-ratio: 1 / 1;
+  width: var(--pad);
+  height: var(--pad);
   min-width: 0;
   display: grid;
   place-items: center;
   padding: var(--space-3);
   background: var(--surface);
   /* Unselected pads sit in a hairline frame; selection turns it solid black. */
-  border: 1px solid var(--line-fine);
+  border: var(--stroke) solid var(--hw-line);
   border-radius: 0;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
   touch-action: none;
   transition:
     border-color var(--motion-fast),
     background-color var(--motion-fast);
 }
 
-.sel-button:hover {
-  border-color: var(--text-muted);
+@media (hover: hover) {
+  .sel-button:hover {
+    border-color: var(--text-muted);
+  }
 }
 
 .sel-button--selected {
@@ -64,8 +58,8 @@
   background: var(--surface-2);
 }
 
-/* Audition mode (a strip held): the pads go grey underneath, the way the
-   Main Screen does — nothing pressed now will be recorded. */
+/* Audition mode (a pad held long): the pads go grey, the way the screen
+   does — nothing pressed now will be recorded. */
 .sel-screen--audition .sel-button {
   background: var(--surface-2);
 }

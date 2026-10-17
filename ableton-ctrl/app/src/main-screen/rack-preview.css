@@ -1,5 +1,5 @@
-/* Rack preview — covers the sequencer while a mod strip is in use. Sized in
-   container units so the rack and the large sound scale with the screen. */
+/* Rack preview — covers the sequencer in audition mode. Sized in container
+   units so the rack and the large sound scale with the screen. */
 
 .rp {
   position: absolute;
@@ -56,6 +56,8 @@
 }
 
 .sound-preview {
+  /* Marks are drawn as black ink; show them as white ink. */
+  filter: invert(1);
   display: block;
   width: 100%;
   height: 100%;
@@ -74,17 +76,4 @@
   width: min(52cqw, 62cqh);
   aspect-ratio: 1 / 1;
   transform-origin: 50% 50%;
-}
-
-.rp-focus-label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  margin-top: var(--space-2);
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  text-align: center;
-  color: var(--text);
 }

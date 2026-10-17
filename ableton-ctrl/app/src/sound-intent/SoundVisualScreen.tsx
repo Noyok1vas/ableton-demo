@@ -194,6 +194,13 @@ const MARK_UNIT = 0.11
 // densely a solid region prints. Matched to the blot's old density — about
 // 3300 specks in a full-ENERGY kick — so the field reads as the same ink.
 const SPECK_DENSITY = 8000
+// The grain a mark is printed in, like a pad's tile (patterns.ts TILE_SIZE):
+// the field's square, [-1,1]² — two units across — at a mark's resting size is
+// MARK_GRAIN specks across, so one speck is one cell of a MARK_GRAIN² grid
+// whatever the canvas size. A finer grain prints more specks rather than
+// lighter ink: the count is raised by the old speck's area over the new one's
+// (see inkCount), so a mark keeps the darkness it was tuned to.
+const MARK_GRAIN = 200
 
 // ── Length → ink tail ─────────────────────────────────────────────────────
 // LENGTH is Sound Intent's second dimension: how long a sound rings on after it
@@ -629,6 +636,19 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     /** Ink correction for a canvas bigger than the reference; 1 at or below it.
         Read in CSS px so device pixel ratio stays out of the look. */
     const ink = () => Math.min(MAX_INK, Math.max(1, minDim() / dpr / REF_MIN_DIM))
+    /** One speck, in device px: one cell of a resting mark's MARK_GRAIN grid.
+        Fractional on purpose; it is drawn antialiased. */
+    const speckDot = () => (2 * MARK_UNIT * MARK_SCALE * minDim()) / MARK_GRAIN
+    /** The speck the ink was tuned with — the square root of the ink
+        correction, at SPECK_SCALE (the count carried the other half). */
+    const tunedDot = () => Math.max(1, Math.max(1, Math.round(dpr)) * Math.sqrt(ink()) * SPECK_SCALE)
+    /** What every count (and cap) is scaled by: the ink correction, plus the
+        tuned speck's area over the real one's, so the finer grain prints the
+        same ink. */
+    const inkCount = () => {
+      const r = tunedDot() / speckDot()
+      return ink() * r * r
+    }
 
     const resize = () => {
       dpr = window.devicePixelRatio || 1
@@ -792,7 +812,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       const dim = minDim()
       const pool = speckPool(tap)
       const vel = velocityOf(tap)
-      const inkScale = ink()
+      const inkScale = inkCount()
       const { x0, y0, x1, y1 } = pool.bounds
       // ENERGY's count already allows for the size ENERGY gives a mark. The
       // size velocity and a ring scale add on top is paid for in draws here,
@@ -856,7 +876,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       const spread = LENGTH_MAX_SPREAD * v
       const decay = lerp(LENGTH_DECAY_STEEP, LENGTH_DECAY_GENTLE, v)
 
-      const inkScale = ink()
+      const inkScale = inkCount()
       const count = Math.round(
         TAIL_PER_TAP *
           lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) *
@@ -937,7 +957,7 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
       if (reach <= 0) return
 
       const vel = velocityOf(tap)
-      const inkScale = ink()
+      const inkScale = inkCount()
       // Printed like the mark it leaves (see spawnMark), only lighter.
       const grown = vel.size * (patternOf(tap).ringScale ?? 1)
       const candidates = Math.round(
@@ -1073,11 +1093,8 @@ export function SoundVisualScreen({ controls = true }: { controls?: boolean }) {
     const speckFrame = () => ({
       cx: width / 2,
       cy: height / 2,
-      // One speck. It carries the square root of the ink correction (the
-      // count carries the other half), and stays fractional on purpose:
-      // rounding it would step the whole field's density 4× at the crossover
-      // while a window is being dragged.
-      dot: Math.max(1, Math.max(1, Math.round(dpr)) * Math.sqrt(ink()) * SPECK_SCALE),
+      // One speck: one cell of a mark's MARK_GRAIN grid (see speckDot).
+      dot: speckDot(),
       // REVERB, in device px: every speck is offset along its own fixed stray
       // direction by this much. 0 draws each speck exactly where it was struck.
       stray: scatter * REVERB_MAX_SCATTER * minDim(),
