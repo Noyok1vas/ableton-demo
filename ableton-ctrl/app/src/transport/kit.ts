@@ -11,36 +11,86 @@
  * queued ahead of the clock — see webAudioEngine's scheduler.
  */
 
-import type { MarchVoiceId, SoundVoiceId } from './engine.ts'
+import type { DrumParams, MarchVoiceId, SoundVoiceId } from './engine.ts'
 import { fxModes, snareModes } from '../selector/character.ts'
+import { drumValue, orderSplit } from '../chladni2/params.ts'
 
 /** One pad, as a recipe rather than a sound file. `decay` is the voice's
-    natural length in seconds at LENGTH's midpoint; LENGTH scales it. */
+    natural length in seconds at LENGTH's midpoint; LENGTH scales it.
+
+    The fields marked "Chladni 2" are only ever set by `resolveDrumVoice`, for
+    the knobs that page adds; absent, every voice is exactly what it was. */
 export type Voice = { label: string } & (
-  | { kind: 'kick'; freq: number; snap: number; decay: number }
+  // Chladni 2: `click` 0..1 is the attack's level (absent, ENERGY sets it) and
+  // `saturation` the drive curve's amount (absent, the 909's own).
+  | { kind: 'kick'; freq: number; snap: number; decay: number; click?: number; saturation?: number }
   // `sweep` is how far above its note the drum starts: a tom's 1.9 when absent,
   // a kick's 4 or so at the floor of TOM's range, where it is tuned into one.
-  | { kind: 'tom'; freq: number; decay: number; sweep?: number }
+  // Chladni 2: `kickBlend` pins how kick-like the drum is instead of reading it
+  // off the sweep (so BEND can bend without turning the tom into a kick), and
+  // `skin` 0..1 is the stick-on-head noise, dark and quiet to bright and loud.
+  | {
+      kind: 'tom'
+      freq: number
+      decay: number
+      sweep?: number
+      kickBlend?: number
+      skin?: number
+    }
   // `thump` 0..1 hands the tuned shell over to a slack head's thud — the kick's
   // body — which is all that is left at the bottom of SNAPPY.
-  | { kind: 'snare'; tone: number; noiseMix: number; decay: number; thump?: number }
+  // Chladni 2: the rattle through one filter of DS Snare's three, at `noiseTone` Hz.
+  | {
+      kind: 'snare'
+      tone: number
+      noiseMix: number
+      decay: number
+      thump?: number
+      noiseFilter?: 'lp' | 'bp' | 'hp'
+      noiseTone?: number
+    }
   // `band` and `q` place the clap's one band: lower and wider is a fuller clap,
   // higher and narrower a brighter one. Absent, they are the 909's own.
-  | { kind: 'clap'; decay: number; band?: number; q?: number }
+  // Chladni 2: `spacing` is the seconds between the bursts (SLOPPY), `tail`
+  // the tail's level against the 909's, `spread` how far the bursts pan apart.
+  | {
+      kind: 'clap'
+      decay: number
+      band?: number
+      q?: number
+      spacing?: number
+      tail?: number
+      spread?: number
+    }
   // `ring` 0..1 brings up the narrow metallic band an OPEN hat sustains — the
-  // part that is not simply a longer closed hat.
-  | { kind: 'hat'; cutoff: number; decay: number; ring?: number }
+  // part that is not simply a longer closed hat. Chladni 2: `rate` replays the
+  // metal faster or slower (TUNE).
+  | { kind: 'hat'; cutoff: number; decay: number; ring?: number; rate?: number }
   // `tune` replays the metal faster or slower, as the 909's TUNE re-pitches its
   // cymbal samples: everything in it moves, and it shortens as it rises.
-  | { kind: 'cymbal'; cutoff: number; decay: number; tune?: number }
-  | { kind: 'rim'; decay: number }
+  // Chladni 2: `bell` 0..1 sets the ping directly instead of from the cutoff.
+  | { kind: 'cymbal'; cutoff: number; decay: number; tune?: number; bell?: number }
+  // Chladni 2: `modes` replaces the three fixed resonators with these
+  // [Hz, share] pairs — the free bar's own partials.
+  | { kind: 'rim'; decay: number; modes?: readonly (readonly [number, number])[] }
   | { kind: 'bell'; freqs: [number, number]; decay: number }
   | { kind: 'block'; freq: number; decay: number }
   | { kind: 'shaker'; decay: number }
   // A tom-like resonator under two frequency modulators: `ripple` and `lobes`
   // (0..1) are the depths of a fine, high one and a deep, inharmonic one — the
-  // two modes of fxModes() in character.ts.
-  | { kind: 'fm'; freq: number; decay: number; ripple: number; lobes: number }
+  // two modes of fxModes() in character.ts. Chladni 2: one modulator instead,
+  // at integer `ratio` and peak `index`, and `noise` 0..1 of noise FM standing
+  // in for DS FM's feedback.
+  | {
+      kind: 'fm'
+      freq: number
+      decay: number
+      ripple: number
+      lobes: number
+      ratio?: number
+      index?: number
+      noise?: number
+    }
 )
 
 /** Lowest pad — C1, bottom-left of the grid, matching PAD_BASE_PITCH. */
@@ -340,6 +390,156 @@ export function resolveSoundVoice(id: SoundVoiceId, character?: number): Resolve
   }
 }
 
+// ── Chladni 2: the 909 / Drum Synth knobs → the voice ─────────────────────
+// The same eight voices, read from several knobs instead of one character.
+// Each range is the musical one for that knob on a 909 or a DS device; the
+// figure each knob moves is drawn from the same values (chladni2/glyphs.ts).
+
+/** A free-free bar's partials over its first: the β² of its first three
+    modes, 4.730² : 7.853² : 10.996². RIM's figure draws these same modes. */
+export const BAR_RATIOS = [1, 2.756, 5.404] as const
+const RIM_BAR_BASE = 520
+const SNARE_BAND_LIFT = 1.4
+
+const expRange = (lo: number, hi: number, u: number) => lo * Math.pow(hi / lo, u)
+
+/**
+ * A Chladni 2 tap's knobs, resolved into a voice. Every value is the one the
+ * tap carried, so a loop replays each hit as it was played.
+ */
+export function resolveDrumVoice(id: SoundVoiceId, params: DrumParams): ResolvedVoice {
+  const v = (key: string) => drumValue(id, key, params)
+  const level = SOUND_TYPE_KIT[id].level
+  switch (id) {
+    case 'kick':
+      return {
+        voice: {
+          label: 'KICK',
+          kind: 'kick',
+          freq: expRange(46, 96, v('tune')),
+          snap: 0.6 + 6 * v('sweep'),
+          decay: expRange(0.16, 1.5, v('decay')),
+          click: v('click'),
+          saturation: 1 + 6 * v('drive'),
+        },
+        level,
+      }
+
+    case 'tom': {
+      const tune = v('tune')
+      return {
+        voice: {
+          label: 'TOM',
+          kind: 'tom',
+          freq: expRange(70, 260, tune),
+          // A higher drum is a shorter one, whatever DECAY says.
+          decay: lerp(0.12, 0.8, v('decay')) * lerp(1.15, 0.8, tune),
+          sweep: 1 + 1.7 * v('bend'),
+          kickBlend: 0,
+          skin: v('tone'),
+        },
+        level,
+      }
+    }
+
+    case 'snare':
+      return {
+        voice: {
+          label: 'SNARE',
+          kind: 'snare',
+          tone: expRange(140, 300, v('tune')),
+          noiseMix: 0.12 + 0.8 * v('snappy'),
+          decay: lerp(0.1, 0.5, v('decay')),
+          thump: 0,
+          noiseFilter: (['lp', 'bp', 'hp'] as const)[v('filter')],
+          noiseTone: expRange(1200, 12000, v('tone')),
+        },
+        // One filter band passes less of the noise than the 909's two-sided
+        // one, so it is lifted to sit with the rest (measured, not taste).
+        level: level * SNARE_BAND_LIFT,
+      }
+
+    case 'rim': {
+      // TUNE walks the strike from the bar's first mode to its third, as the
+      // figure's stripes do; the others stay underneath, quieter, as wood.
+      const tune = v('tune')
+      const { lo, f } = orderSplit(1 + 2 * tune)
+      const base = RIM_BAR_BASE * lerp(0.9, 1.15, tune)
+      const modes = BAR_RATIOS.map((ratio, k) => {
+        const n = k + 1
+        const share = n === lo ? 1 - f : n === lo + 1 ? f : 0
+        return [base * ratio, 0.18 + 0.6 * share] as const
+      })
+      return {
+        voice: { label: 'RIM', kind: 'rim', decay: lerp(0.025, 0.14, v('decay')), modes },
+        level,
+      }
+    }
+
+    case 'clap': {
+      const tone = v('tone')
+      const tail = v('tail')
+      return {
+        voice: {
+          label: 'CLAP',
+          kind: 'clap',
+          band: expRange(750, 2600, tone),
+          q: lerp(0.8, 2.2, tone),
+          spacing: lerp(0.005, 0.024, v('sloppy')),
+          tail: lerp(0.15, 1.1, tail),
+          decay: lerp(0.08, 0.55, tail),
+          spread: v('spread'),
+        },
+        level,
+      }
+    }
+
+    case 'hat': {
+      const decay = v('decay')
+      return {
+        voice: {
+          label: 'HAT',
+          kind: 'hat',
+          cutoff: lerp(5200, 10500, v('tone')),
+          decay: expRange(0.026, 0.55, decay),
+          ring: smoothstep(0.35, 1, decay),
+          rate: expRange(0.7, 1.45, v('tune')),
+        },
+        level: level * lerp(1, HAT_OPEN_TRIM, decay),
+      }
+    }
+
+    case 'ride':
+      return {
+        voice: {
+          label: 'RIDE',
+          kind: 'cymbal',
+          cutoff: lerp(6500, 10000, v('tone')),
+          decay: expRange(0.6, 3, v('decay')),
+          tune: expRange(0.8, 1.3, v('tune')),
+          bell: v('bell'),
+        },
+        level,
+      }
+
+    case 'fx':
+      return {
+        voice: {
+          label: 'FX',
+          kind: 'fm',
+          freq: expRange(70, 420, v('pitch')),
+          decay: lerp(0.08, 1, v('decay')),
+          ripple: 0,
+          lobes: 0,
+          ratio: v('mod') + 1,
+          index: 9 * Math.pow(v('amnt'), 1.3),
+          noise: v('feedback'),
+        },
+        level,
+      }
+  }
+}
+
 /** How a single hit is coloured by the live parameters. */
 export type HitParams = {
   /** 0..1 from the tap. */
@@ -419,6 +619,13 @@ function drive(k: number): Float32Array<ArrayBuffer> {
 }
 
 const KICK_DRIVE = 2.2
+
+/** The 909 rimshot's three resonators, [Hz, share]. */
+const RIM_RESONATORS = [
+  [455, 0.5],
+  [1660, 0.38],
+  [2840, 0.22],
+] as const
 const TOM_DRIVE = 1.4
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
@@ -547,13 +754,21 @@ function loudness(velocity: number, energy: number): number {
  * two-stage pitch sweep, with a click of noise on top. KICK is this and
  * nothing else; a slack SNARE turns into it.
  */
-type ThudParams = { freq: number; snap: number; energy: number; level: number; decay: number }
+type ThudParams = {
+  freq: number
+  snap: number
+  energy: number
+  level: number
+  decay: number
+  click?: number
+  saturation?: number
+}
 
 function thud(
   ctx: BaseAudioContext,
   dest: AudioNode,
   when: number,
-  { freq, snap, energy, level, decay }: ThudParams,
+  { freq, snap, energy, level, decay, click, saturation }: ThudParams,
   track: <T extends AudioScheduledSourceNode>(source: T) => T,
 ): void {
   const osc = track(ctx.createOscillator())
@@ -566,7 +781,7 @@ function thud(
   osc.frequency.exponentialRampToValueAtTime(freq * 1.45, when + 0.022)
   osc.frequency.exponentialRampToValueAtTime(freq, when + 0.13)
   const shaper = ctx.createWaveShaper()
-  shaper.curve = drive(KICK_DRIVE)
+  shaper.curve = drive(saturation ?? KICK_DRIVE)
   // A short hold before the fall: the body sits at full level for a beat of
   // the pitch sweep, which is where the 909's weight comes from.
   const gain = envelope(ctx, when, level, decay, 0.001, 0.018)
@@ -575,10 +790,13 @@ function thud(
   osc.stop(when + decay + 0.07)
 
   // The attack: a click of filtered noise on top, ENERGY's share of it
-  // growing the way the 909's ATTACK knob does.
-  const click = track(noiseSource(ctx, when, 0.012))
-  const clickGain = envelope(ctx, when, level * (0.2 + 0.45 * energy), 0.006, 0.0005)
-  click.connect(lowpass(ctx, 5200)).connect(clickGain).connect(dest)
+  // growing the way the 909's ATTACK knob does — or, from Chladni 2, its own
+  // CLICK knob, which also opens it up brighter.
+  const tick = track(noiseSource(ctx, when, 0.012))
+  const tickLevel = click === undefined ? 0.2 + 0.45 * energy : 0.03 + 1.1 * click
+  const clickGain = envelope(ctx, when, level * tickLevel, 0.006, 0.0005)
+  const tickTone = click === undefined ? 5200 : 2600 + 9000 * click
+  tick.connect(lowpass(ctx, tickTone)).connect(clickGain).connect(dest)
 }
 
 // SNARE's thud: the kick's body pitched a little above the kick, so the two
@@ -652,7 +870,21 @@ export function playVoice(
 
   switch (voice.kind) {
     case 'kick':
-      thud(ctx, dest, when, { freq: voice.freq, snap: voice.snap, energy, level, decay }, track)
+      thud(
+        ctx,
+        dest,
+        when,
+        {
+          freq: voice.freq,
+          snap: voice.snap,
+          energy,
+          level,
+          decay,
+          click: voice.click,
+          saturation: voice.saturation,
+        },
+        track,
+      )
       break
 
     case 'tom': {
@@ -661,7 +893,7 @@ export function playVoice(
       // tuned down toward a kick, so it takes on the rest of the kick's recipe
       // with it: a longer hold at the top and a harder drive.
       const sweep = voice.sweep ?? TOM_SWEEP
-      const kick = clamp01((sweep - TOM_SWEEP) / (TOM_KICK_SWEEP - TOM_SWEEP))
+      const kick = voice.kickBlend ?? clamp01((sweep - TOM_SWEEP) / (TOM_KICK_SWEEP - TOM_SWEEP))
       const osc = track(ctx.createOscillator())
       osc.type = 'sine'
       // A tom glides into its note over most of its length; a kick punches
@@ -679,10 +911,13 @@ export function playVoice(
       osc.start(when)
       osc.stop(when + decay + 0.05)
 
+      // Chladni 2's TONE: the stick on the head, dark and soft to bright and hard.
+      const skinTone = voice.skin === undefined ? 1 : lerp(0.35, 2.2, voice.skin)
+      const skinBand = voice.skin === undefined ? 7 : lerp(4, 14, voice.skin)
       const skin = track(noiseSource(ctx, when, 0.06))
-      const skinLevel = level * 0.22 * (0.5 + energy) * lerp(1, 0.5, kick)
+      const skinLevel = level * 0.22 * (0.5 + energy) * lerp(1, 0.5, kick) * skinTone
       const skinGain = envelope(ctx, when, skinLevel, 0.045, 0.001)
-      skin.connect(bandpass(ctx, voice.freq * 7, 0.9)).connect(skinGain).connect(dest)
+      skin.connect(bandpass(ctx, voice.freq * skinBand, 0.9)).connect(skinGain).connect(dest)
       break
     }
 
@@ -734,6 +969,18 @@ export function playVoice(
       if (voice.noiseMix <= 0) break
       const rattle = track(noiseSource(ctx, when, decay + 0.05))
       const rattleGain = envelope(ctx, when, level * voice.noiseMix, decay, 0.001)
+      if (voice.noiseFilter) {
+        // DS Snare's noise filter, LP / BP / HP, at the TONE knob's frequency.
+        const at = voice.noiseTone ?? 4000
+        const shaped =
+          voice.noiseFilter === 'lp'
+            ? rattle.connect(lowpass(ctx, at))
+            : voice.noiseFilter === 'bp'
+              ? rattle.connect(bandpass(ctx, at, 1.1))
+              : rattle.connect(highpass(ctx, at * 0.6))
+        shaped.connect(rattleGain).connect(dest)
+        break
+      }
       rattle
         .connect(highpass(ctx, 1400))
         .connect(lowpass(ctx, Math.min(open * 1.6 + 3000, 16000)))
@@ -749,19 +996,31 @@ export function playVoice(
       const band = voice.band ?? 1150
       const filter = bandpass(ctx, band, voice.q ?? 1.3)
       filter.connect(highpass(ctx, band * 0.56)).connect(dest)
-      for (const [offset, gainScale] of [
-        [0, 0.8],
-        [0.0095, 0.9],
-        [0.019, 0.85],
-        [0.0285, 1],
-      ] as const) {
+      // Chladni 2: SLOPPY spaces the bursts out (each a little off the grid,
+      // as hands are), and SPREAD pans them apart, left and right in turn.
+      const spacing = voice.spacing ?? 0.0095
+      const loose = voice.spacing === undefined ? 0 : 0.25
+      const spread = voice.spread ?? 0
+      const bursts = [0.8, 0.9, 0.85, 1]
+      bursts.forEach((gainScale, k) => {
+        const offset = k * spacing * (1 + loose * (Math.random() - 0.5))
         const burst = track(noiseSource(ctx, when + offset, 0.015))
-        burst
-          .connect(envelope(ctx, when + offset, level * gainScale, 0.0085, 0.0003))
-          .connect(filter)
-      }
-      const tail = track(noiseSource(ctx, when + 0.03, decay))
-      tail.connect(envelope(ctx, when + 0.03, level * 0.5, decay, 0.002)).connect(filter)
+        const shaped = burst.connect(
+          envelope(ctx, when + offset, level * gainScale, 0.0085, 0.0003),
+        )
+        if (spread > 0) {
+          const pan = ctx.createStereoPanner()
+          pan.pan.value = (k % 2 === 0 ? -1 : 1) * spread * (0.6 + (0.4 * k) / 3)
+          shaped.connect(pan).connect(filter)
+        } else {
+          shaped.connect(filter)
+        }
+      })
+      const tailAt = when + (bursts.length - 1) * spacing + 0.0015
+      const tail = track(noiseSource(ctx, tailAt, decay))
+      tail
+        .connect(envelope(ctx, tailAt, level * 0.5 * (voice.tail ?? 1), decay, 0.002))
+        .connect(filter)
       break
     }
 
@@ -772,7 +1031,8 @@ export function playVoice(
       const cutoff = Math.max(voice.cutoff, open)
       const out = highpass(ctx, cutoff)
       out.connect(dest)
-      const metal = track(bufferSource(ctx, metalBuffer(ctx), when, decay + 0.03, 1))
+      const rate = voice.rate ?? 1
+      const metal = track(bufferSource(ctx, metalBuffer(ctx), when, decay + 0.03, rate))
       const metalGain = envelope(ctx, when, level * 0.5, decay, 0.0008)
       metal.connect(bandpass(ctx, 10500, 0.7)).connect(metalGain).connect(out)
       const air = track(noiseSource(ctx, when, decay + 0.03))
@@ -780,7 +1040,7 @@ export function playVoice(
       // An open hat rings: the metal's own band carries on after the hiss
       // has gone, which is what separates it from a longer closed one.
       if (voice.ring) {
-        const body = track(bufferSource(ctx, metalBuffer(ctx), when, decay + 0.05, 1))
+        const body = track(bufferSource(ctx, metalBuffer(ctx), when, decay + 0.05, rate))
         const bodyGain = envelope(ctx, when, level * 0.3 * voice.ring, decay * 1.1, 0.004)
         body.connect(bandpass(ctx, 8200, 3)).connect(bodyGain).connect(dest)
       }
@@ -792,7 +1052,7 @@ export function playVoice(
       // and left to ring. The brighter `cutoff` is (the ride end) the more a
       // narrow ping sits on top of the wash — the bell of a ride. `tune` moves
       // all of it together, the way replaying a sample faster does.
-      const ping = clamp01((voice.cutoff - 5000) / 4400)
+      const ping = voice.bell ?? clamp01((voice.cutoff - 5000) / 4400)
       const tune = voice.tune ?? 1
       const cutoff = voice.cutoff * tune
       const span = decay + 0.05
@@ -821,11 +1081,7 @@ export function playVoice(
       // almost immediately, high-passed into a hard, woody tick.
       const out = highpass(ctx, 320)
       out.connect(dest)
-      for (const [freq, share] of [
-        [455, 0.5],
-        [1660, 0.38],
-        [2840, 0.22],
-      ] as const) {
+      for (const [freq, share] of voice.modes ?? RIM_RESONATORS) {
         const ring = track(tone(ctx, 'triangle', freq, when, decay + 0.01))
         ring.connect(envelope(ctx, when, level * share, decay * 0.32, 0.0005)).connect(out)
       }
@@ -879,10 +1135,15 @@ export function playVoice(
       const carrier = track(ctx.createOscillator())
       carrier.type = 'sine'
       sweep(carrier.frequency, 1)
-      for (const [ratio, index] of [
-        [FX_RIPPLE_RATIO, FX_RIPPLE_INDEX * voice.ripple],
-        [FX_LOBE_RATIO, FX_LOBE_INDEX * voice.lobes],
-      ] as const) {
+      // Chladni 2 plays DS FM's one modulator, at its integer MOD ratio.
+      const modulators: readonly (readonly [number, number])[] =
+        voice.ratio !== undefined
+          ? [[voice.ratio, voice.index ?? 0]]
+          : [
+              [FX_RIPPLE_RATIO, FX_RIPPLE_INDEX * voice.ripple],
+              [FX_LOBE_RATIO, FX_LOBE_INDEX * voice.lobes],
+            ]
+      for (const [ratio, index] of modulators) {
         if (index <= 0) continue
         const modulator = track(ctx.createOscillator())
         modulator.type = 'sine'
@@ -897,6 +1158,16 @@ export function playVoice(
         modulator.connect(depth).connect(carrier.frequency)
         modulator.start(when)
         modulator.stop(when + decay + 0.05)
+      }
+      // FEEDBACK: noise bending the carrier, the grit a feeding-back operator
+      // throws — dying away with the modulation.
+      if (voice.noise) {
+        const grit = track(noiseSource(ctx, when, decay + 0.05))
+        const gritDepth = ctx.createGain()
+        const peak = voice.noise * freq * 2.5
+        gritDepth.gain.setValueAtTime(peak, when)
+        gritDepth.gain.exponentialRampToValueAtTime(peak * 0.1, when + decay * FX_INDEX_FALL)
+        grit.connect(lowpass(ctx, 6000)).connect(gritDepth).connect(carrier.frequency)
       }
       const shaper = ctx.createWaveShaper()
       shaper.curve = drive(TOM_DRIVE)

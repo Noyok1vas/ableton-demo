@@ -12,6 +12,7 @@ import { BridgeEngine, isBridgeAddressable, probeBridge } from './bridgeEngine.t
 import { WebAudioEngine } from './webAudioEngine.ts'
 import {
   SOUND_VOICES,
+  type DrumParams,
   type EngineStatus,
   type LoopEvent,
   type MacroScope,
@@ -165,7 +166,12 @@ export type SoundEngineSessionValue = {
       the tap carried (or absent for the pad the PITCH mapping selects) and
       `character` that identity's axis at the moment of input. Also the
       Selector panel's audition, which sounds a note without recording one. */
-  noteOn: (velocity?: number, voice?: SoundVoiceId, character?: number) => void
+  noteOn: (
+    velocity?: number,
+    voice?: SoundVoiceId,
+    character?: number,
+    drum?: DrumParams,
+  ) => void
   /** Start or replace the looping bar. */
   startLoop: (events: readonly LoopEvent[], barDuration: number) => void
   stopLoop: () => void
@@ -304,9 +310,12 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer)
   }, [source, bridgeEngineConnected])
 
-  const noteOn = useCallback((velocity = 1, voice?: SoundVoiceId, character?: number) => {
-    engineRef.current?.noteOn(velocity, voice, character)
-  }, [])
+  const noteOn = useCallback(
+    (velocity = 1, voice?: SoundVoiceId, character?: number, drum?: DrumParams) => {
+      engineRef.current?.noteOn(velocity, voice, character, drum)
+    },
+    [],
+  )
 
   const startLoop = useCallback((events: readonly LoopEvent[], barDuration: number) => {
     engineRef.current?.startLoop(events, barDuration)

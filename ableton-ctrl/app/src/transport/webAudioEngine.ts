@@ -37,6 +37,7 @@
 
 import {
   SOUND_VOICES,
+  type DrumParams,
   type EngineStatus,
   type LoopEvent,
   type MacroScope,
@@ -45,7 +46,14 @@ import {
   type SoundVoiceId,
   type TrackId,
 } from './engine.ts'
-import { KIT, KIT_BASE_PITCH, MARCH_KIT, playVoice, resolveSoundVoice } from './kit.ts'
+import {
+  KIT,
+  KIT_BASE_PITCH,
+  MARCH_KIT,
+  playVoice,
+  resolveDrumVoice,
+  resolveSoundVoice,
+} from './kit.ts'
 
 /**
  * How far ahead of the clock notes are queued.
@@ -409,14 +417,14 @@ export class WebAudioEngine implements SoundEngine {
     })
   }
 
-  noteOn(velocity = 1, voice?: SoundVoiceId, character?: number): void {
+  noteOn(velocity = 1, voice?: SoundVoiceId, character?: number, drum?: DrumParams): void {
     const ctx = this.ensureContext()
     if (!ctx) return
     // Fire in this same turn as the tap. Waiting for resume().then() is
     // outside the iOS user-gesture stack: the visual still records, the
     // note is dropped. Desktop never notices because the context is already
     // running by the time the promise settles.
-    this.fire(ctx.currentTime, velocity, voice, character)
+    this.fire(ctx.currentTime, velocity, voice, character, drum)
     if (ctx.state !== 'running') this.resumeContext(ctx)
   }
 
@@ -694,6 +702,11 @@ export class WebAudioEngine implements SoundEngine {
    * than at whatever the Selector says now. KICK's axis IS energy, which is why
    * the resolver can hand one back and override the live macro for that note.
    *
+   * `drum` is a Chladni 2 tap's whole parameter snapshot. It takes over from
+   * `character`, and from LENGTH too: that page's DECAY sliders are the
+   * length, so the global stretch would only make the sound disagree with the
+   * tail its mark draws.
+   *
    * Returns the hit's sources so a queued loop note can be taken back; a live
    * tap discards them.
    */
@@ -702,12 +715,17 @@ export class WebAudioEngine implements SoundEngine {
     velocity: number,
     sound?: SoundVoiceId,
     character?: number,
+    drum?: DrumParams,
   ): AudioScheduledSourceNode[] {
     const ctx = this.ctx
     // An identity plays through its own mixer channel; a bare pad note has none.
     const bus = (sound && this.voiceGains[sound]) || this.mainGain
     if (!ctx || !bus) return []
-    const identity = sound ? resolveSoundVoice(sound, character) : undefined
+    const identity = sound
+      ? drum
+        ? resolveDrumVoice(sound, drum)
+        : resolveSoundVoice(sound, character)
+      : undefined
     const voice = identity?.voice ?? KIT[this.pitch - KIT_BASE_PITCH]
     if (!voice) return [] // a pitch outside the pad grid has no sound here
     return playVoice(ctx, bus, voice, when, {
@@ -715,7 +733,7 @@ export class WebAudioEngine implements SoundEngine {
       energy: identity?.energy ?? this.energy,
       // LENGTH's midpoint is a voice's natural decay; the ends roughly halve
       // and double it.
-      lengthScale: 0.45 + this.length * 1.7,
+      lengthScale: drum ? 1 : 0.45 + this.length * 1.7,
     })
   }
 
@@ -748,7 +766,7 @@ export class WebAudioEngine implements SoundEngine {
     const now = ctx.currentTime
     const horizon = now + LOOKAHEAD_S
     this.main.pump(now, horizon, (event, at) =>
-      this.fire(at, event.velocity, event.voice, event.character),
+      this.fire(at, event.velocity, event.voice, event.character, event.drum),
     )
     this.march.pump(now, horizon, (event, at) => this.fireMarch(event, at))
     if (this.click.running) this.click.pump(now, horizon, (event, at) => this.fireClick(event, at))

@@ -1,0 +1,34 @@
+/** Canvas view transform. x/y are screen-space translation in px; scale is
+    the zoom factor. Applied as translate(x,y) scale(scale) with origin 0,0. */
+export type View = { x: number; y: number; scale: number }
+
+/** Which content a window renders. */
+export type WindowKind = 'shape-view' | 'shape-controls' | 'shape-rack' | 'sound-controls'
+
+/** Where a window's function ends up in the product. `software` stays on a
+    screen (the system display and the Sound Visual); `hardware` becomes a
+    physical control surface. The canvas draws the two differently — black
+    outline for software, grey for hardware — so the split is visible while
+    everything is still on screen. */
+export type WindowTier = 'software' | 'hardware'
+
+export type WindowState = {
+  id: string
+  kind: WindowKind
+  title: string
+  /** Position and size in canvas coordinates (pre-zoom). */
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export type WindowLimits = {
+  minW: number
+  minH: number
+  maxW: number
+  maxH: number
+}
+
+export const MIN_SCALE = 0.05
+export const MAX_SCALE = 8
