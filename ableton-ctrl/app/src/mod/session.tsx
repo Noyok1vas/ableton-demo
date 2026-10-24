@@ -14,30 +14,22 @@ import { useSoundEngine } from '../transport/session.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
 import type { PatternId } from '../selector/patterns.ts'
 
-/**
- * How long audition mode outlasts the last touch of a strip or pad — long
- * enough to let go of a long-pressed pad and reach a strip on the screen, or
- * another pad, without dropping back into recording on the way there.
- */
-export const MOD_LINGER_MS = 2000
-
 export type ModValue = {
-  /** Audition mode: a pad is held long or a strip is touched, or was a moment
-      ago. While it is on, the pads sound and preview without recording, and
-      the screen shows the rack preview instead of the circular sequencer. */
+  /** Audition mode: a pad is held past a long press. While it is on, the pads
+      and the glass sound and preview without recording, and the screen shows
+      that sound large instead of the circular sequencer. Letting go of every
+      held pad leaves it at once. */
   active: boolean
   /** The same, read at call time rather than at render — what a press asks,
-      so a strip and a pad touched in the same instant still audition. */
+      so a second pad touched while one is held still auditions. */
   isActive: () => boolean
   /** The sound shown large on the Main Screen — the last pad pressed while
       auditioning. Null shows the whole rack. */
   focus: PatternId | null
-  /** A strip or a held pad was pressed / released. Counted, so several can
-      be held at once. */
+  /** A held pad was pressed / released. Counted, so several can be held at
+      once. The view stays only while at least one is down. */
   beginTouch: () => void
   endTouch: () => void
-  /** A strip moved (or was nudged from the keyboard). */
-  poke: () => void
   /** Play a pad in audition mode: selects it, sounds it with the strips'
       velocity and its own character, and brings its visual up large. Nothing
       is recorded. */
@@ -60,8 +52,9 @@ export function useMod(): ModValue {
  *
  * Hold a pad long and it auditions rather than records; the screen shows the
  * sound large between two strips (velocity, character), so the other hand can
- * shape it before it is played into the loop. Lives above the tap trigger,
- * which asks it whether a press should record or audition.
+ * shape it and tap the glass to hear it. Letting go of the pad returns to the
+ * sequencer at once. Lives above the tap trigger, which asks it whether a
+ * press should record or audition.
  */
 export function ModSession({ children }: { children: ReactNode }) {
   const { setGesture, character, currentVelocity } = useSelector()
@@ -72,38 +65,24 @@ export function ModSession({ children }: { children: ReactNode }) {
 
   const touches = useRef(0)
   const activeRef = useRef(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const clearTimer = () => {
-    if (timer.current !== null) clearTimeout(timer.current)
-    timer.current = null
-  }
-
-  /** Stay in audition mode; if nothing is held, for MOD_LINGER_MS more. */
-  const keepAlive = useCallback(() => {
+  const show = useCallback(() => {
     activeRef.current = true
     setActive(true)
-    clearTimer()
-    if (touches.current > 0) return
-    timer.current = setTimeout(() => {
-      timer.current = null
-      activeRef.current = false
-      setActive(false)
-      setFocus(null)
-    }, MOD_LINGER_MS)
   }, [])
-
-  useEffect(() => clearTimer, [])
 
   const beginTouch = useCallback(() => {
     touches.current += 1
-    keepAlive()
-  }, [keepAlive])
+    show()
+  }, [show])
 
   const endTouch = useCallback(() => {
     touches.current = Math.max(0, touches.current - 1)
-    keepAlive()
-  }, [keepAlive])
+    if (touches.current > 0) return
+    activeRef.current = false
+    setActive(false)
+    setFocus(null)
+  }, [])
 
   // Read at the moment of the press, like every other tap.
   const characterRef = useRef(character)
@@ -116,9 +95,9 @@ export function ModSession({ children }: { children: ReactNode }) {
       setGesture(id)
       setFocus(id)
       noteOn(velocityRef.current(accented), id, characterOf(id, characterRef.current) ?? undefined)
-      keepAlive()
+      show()
     },
-    [setGesture, noteOn, keepAlive],
+    [setGesture, noteOn, show],
   )
 
   // Shaping a sound is listening to that sound alone: the loop and the
@@ -146,16 +125,16 @@ export function ModSession({ children }: { children: ReactNode }) {
     (id: PatternId) => {
       setGesture(id)
       setFocus(id)
-      keepAlive()
+      show()
     },
-    [setGesture, keepAlive],
+    [setGesture, show],
   )
 
   const isActive = useCallback(() => activeRef.current, [])
 
   const value = useMemo<ModValue>(
-    () => ({ active, isActive, focus, beginTouch, endTouch, poke: keepAlive, audition, present }),
-    [active, isActive, focus, beginTouch, endTouch, keepAlive, audition, present],
+    () => ({ active, isActive, focus, beginTouch, endTouch, audition, present }),
+    [active, isActive, focus, beginTouch, endTouch, audition, present],
   )
   return <ModContext.Provider value={value}>{children}</ModContext.Provider>
 }

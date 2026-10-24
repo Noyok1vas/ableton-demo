@@ -50,17 +50,6 @@ export function IconList({ size = 24 }: IconProps) {
   )
 }
 
-/** Settings: two sliders, each with its knob. */
-export function IconSliders({ size = 24 }: IconProps) {
-  return (
-    <svg {...svg(size)}>
-      <path d="M4 8h9M17 8h3M4 16h3M11 16h9" />
-      <circle cx="15" cy="8" r="2" />
-      <circle cx="9" cy="16" r="2" />
-    </svg>
-  )
-}
-
 export function IconSparkle({ size = 24, filled = false }: IconProps & { filled?: boolean }) {
   return (
     <svg {...svg(size)} fill={filled ? 'currentColor' : 'none'}>

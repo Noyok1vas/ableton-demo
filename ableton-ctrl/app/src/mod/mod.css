@@ -71,8 +71,8 @@
   opacity: var(--bar-opacity-active);
 }
 
-/* A sound with no character axis: the strip still switches the pads into
-   audition, but has nothing to set. */
+/* A sound with no character axis: the strip is still there, but has nothing
+   to set. */
 .mod-strip--disabled .mod-track {
   cursor: pointer;
 }

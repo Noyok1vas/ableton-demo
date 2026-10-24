@@ -2,7 +2,7 @@
 
    The circle buttons sit --edge in from the frame; the pills fill the width
    between them. A panel floats on the left (Collection) or the right
-   (Settings), between the top row and the bottom row. Sizes are device units
+   between the top row and the bottom row. Sizes are device units
    (design/system.md). */
 
 .ms-screen {
@@ -66,8 +66,7 @@
    the right; the stack itself stays level. Later sheets sit over earlier
    ones, outlines only, so every edge shows through. */
 .ms-stack {
-  /* Centred on the screen itself, not on the room the bottom row's buttons
-     leave: it has one button to its left and two to its right. */
+  /* Centred on the screen itself. */
   position: absolute;
   left: 50%;
   top: 50%;

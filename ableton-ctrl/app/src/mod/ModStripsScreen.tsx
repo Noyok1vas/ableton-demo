@@ -4,7 +4,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { useMod } from './session.tsx'
 import { VELOCITY_MAX, VELOCITY_MIN, useSelector } from '../selector/session.tsx'
 import { CHARACTER, CHARACTER_NOTE } from '../selector/character.ts'
 import { PATTERNS } from '../selector/patterns.ts'
@@ -26,11 +25,10 @@ type StripProps = {
 /**
  * One mod strip: a tall touch strip, value from the bottom up, set by where
  * the finger is (absolute, like a physical strip — not dragged relative).
- * Touching it is also what switches the pads into audition mode, so every
- * press and release is reported to the mod session.
+ * The view itself stays only while a pad is held; a strip does not hold it
+ * open, and letting go of the pad returns at once.
  */
 function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
-  const { beginTouch, endTouch, poke } = useMod()
   const trackRef = useRef<HTMLDivElement>(null)
   const held = useRef<number | null>(null)
   const [active, setActive] = useState(false)
@@ -51,19 +49,16 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
     } catch {
       /* synthetic pointer — nothing to capture */
     }
-    beginTouch()
     if (!disabled) onChange(valueAt(e.clientY))
   }
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (held.current !== e.pointerId) return
     if (!disabled) onChange(valueAt(e.clientY))
-    poke()
   }
   const release = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (held.current !== e.pointerId) return
     held.current = null
     setActive(false)
-    endTouch()
   }
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -76,7 +71,6 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
     if (next === null) return
     e.preventDefault()
     onChange(clamp01(next))
-    poke()
   }
 
   const pct = `${clamp01(value) * 100}%`
@@ -118,8 +112,8 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
  *   right  character — the selected sound's one axis (SOFT↔HARD for KICK,
  *          CLOSED↔OPEN for HAT, …); sounds without one leave it idle
  *
- * They appear while a pad is held long, and touching one keeps the view up.
- * Let go of everything and, a moment later, the pads record again.
+ * They appear while a pad is held long. Letting go of the pad returns to the
+ * sequencer at once; a tap anywhere on the glass hears the sound as it is.
  */
 export function ModStripsScreen() {
   const { gesture, character, setSelectedCharacter, velocity, setVelocity } = useSelector()

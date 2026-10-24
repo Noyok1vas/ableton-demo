@@ -43,7 +43,8 @@ type Press = { timer: ReturnType<typeof setTimeout> | null; holding: boolean }
  *   long press    it auditions: the note it just played is taken back out of
  *                 the loop, and the screen shows the sound large between a
  *                 velocity strip and a character strip, so the other hand can
- *                 shape it. While that view is up every pad auditions.
+ *                 shape it or tap the glass to hear it. Letting go returns
+ *                 at once. While that view is up every pad auditions.
  *
  * Each pad shows its sound as it is now: its mark redraws at its own
  * character and scales with the velocity.
@@ -180,8 +181,8 @@ export function SelectorScreen() {
               }}
               data-hint={
                 auditioning
-                  ? `${pattern.label.toUpperCase()} — audition: heard and shown large, not recorded`
-                  : `${pattern.label.toUpperCase()} — tap to play it into the loop. Hold to audition and shape it`
+                  ? `${pattern.label.toUpperCase()} — heard, not recorded. Let go of the pad to return`
+                  : `${pattern.label.toUpperCase()} — tap to play it into the loop. Hold to shape it; let go to return`
               }
             >
               {/* The sound as it is now: its own character, at the strips'

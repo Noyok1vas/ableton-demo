@@ -8,12 +8,11 @@ import { useSession } from '../rhythmic-intent/session.tsx'
 import { useGuide } from '../guide/session.tsx'
 import { useMod } from '../mod/session.tsx'
 import { useSoundEngine } from '../transport/session.tsx'
-import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { loadSaved, useSaved } from '../persist.ts'
 import { ExtractPanel } from '../extract/ExtractPanel.tsx'
 import { AssistDock } from '../agent/AssistDock.tsx'
 import type { GrooveContext } from '../agent/groove.ts'
-import { IconGlobe, IconList, IconPlus, IconSliders, IconSparkle, IconUndo, IconWave } from './icons.tsx'
+import { IconGlobe, IconList, IconPlus, IconSparkle, IconUndo, IconWave } from './icons.tsx'
 import { RackPreview } from './RackPreview.tsx'
 import './main-screen.css'
 
@@ -24,13 +23,13 @@ const swallowSpace = (e: KeyboardEvent) => {
 }
 
 /** The screen's panels — at most one is open. */
-type Panel = 'collection' | 'settings' | 'extract'
+type Panel = 'collection' | 'extract'
 
 type ExtractLive = 'idle' | 'recording' | 'reading' | 'preview'
 
 function restorePanel(): Panel | null {
   const saved = loadSaved('ui.panel')
-  return saved === 'collection' || saved === 'settings' ? saved : null
+  return saved === 'collection' ? saved : null
 }
 
 /**
@@ -39,12 +38,12 @@ function restorePanel(): Panel | null {
  * controls float over it in two rows, all icons:
  *
  *   top     +  new pattern · [transport pill] · ↶ undo
- *   bottom  ≡  Collection  · [section stack]  · ⚙ Settings · ✦ assistant
+ *   bottom  ≡  Collection  · [section stack]  · ✦ assistant
  *   left    ◍  arrange — the song as a helix, on or off
  *   right   ∿  extract — one bar from a short take
  *
- * Collection, Settings and Extract each float over the ring, and only one is
- * open. Loading a pattern, or keeping an extracted bar, closes its block.
+ * Collection and Extract each float over the ring, and only one is open.
+ * Loading a pattern, or keeping an extracted bar, closes its block.
  * The assistant is the star: while it is on, pointing at a control explains
  * it, and a short block at the bottom takes one spoken question. The ring
  * stays underneath all of them.
@@ -155,11 +154,6 @@ export function MainScreen() {
             <CollectionPanel onLoaded={() => setPanel(null)} />
           </div>
         )}
-        {panel === 'settings' && (
-          <div className="ms-panel ms-panel--right" role="dialog" aria-label="Settings">
-            <SoundSourceScreen />
-          </div>
-        )}
         {panel === 'extract' && (
           <div className="ms-panel ms-panel--extract">
             <ExtractPanel
@@ -202,17 +196,6 @@ export function MainScreen() {
             />
           )}
           <span className="ms-spacer" aria-hidden />
-          <button
-            type="button"
-            className={`ms-circle${panel === 'settings' ? ' ms-circle--on' : ''}`}
-            aria-label="Settings"
-            aria-expanded={panel === 'settings'}
-            onClick={() => toggle('settings')}
-            onKeyUp={swallowSpace}
-            data-hint="Settings — which source plays the sounds, and what it can reach"
-          >
-            <IconSliders />
-          </button>
           <button
             type="button"
             className={`ms-circle${guiding ? ' ms-circle--on' : ''}`}
