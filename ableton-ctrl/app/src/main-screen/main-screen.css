@@ -192,6 +192,27 @@
   display: none;
 }
 
+/* …and so does every button on the glass — the two rows, the globe, the
+   toast — leaving the visual and the two sliders. They fade rather than
+   vanish, and cannot be pressed while hidden. */
+.ms-overlay--audition .ms-row,
+.ms-overlay--audition .ms-side,
+.ms-overlay--audition .ms-toast {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    visibility 0s linear 180ms;
+}
+
+.ms-side,
+.ms-toast {
+  transition:
+    opacity 180ms ease,
+    visibility 0s;
+}
+
 .ms-screen .sv-canvas,
 .ms-screen .sv3-canvas {
   transition: opacity 220ms ease;
