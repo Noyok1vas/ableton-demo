@@ -17,10 +17,8 @@
   height: var(--circle);
   padding: 0 var(--space-3);
   border-radius: var(--radius-pill);
-  background: rgba(22, 22, 22, 0.3);
-  box-shadow:
-    inset 4px 4px 4px rgba(12, 12, 12, 0.25),
-    inset -1px -1px 1px rgba(255, 255, 255, 0.06);
+  background: var(--engrave-fill);
+  box-shadow: var(--engrave-shadow);
   /* Greys taken from the page's own ink, so the bar reads on the light
      Chladni pages as on the screen. */
   color: color-mix(in srgb, var(--text) 62%, transparent);
@@ -86,7 +84,8 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--type-m);
+  font-size: var(--type-s);
+  font-weight: 500;
   user-select: none;
 }
 
@@ -110,19 +109,23 @@
 }
 
 .tp-value {
-  font-size: var(--type-m);
+  font-size: var(--type-s);
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .tp-suffix {
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 500;
   letter-spacing: 0.06em;
   align-self: flex-end;
-  margin-bottom: 22px;
+  margin-bottom: 25px;
 }
 
 .tp-division {
-  font-size: var(--type-m);
+  font-size: var(--type-xs);
+  font-weight: 700;
+  letter-spacing: 0.4px;
 }
 
 /* A value or the name, being typed. */
@@ -134,7 +137,8 @@
   background: none;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: var(--type-m);
+  font-size: var(--type-s);
+  font-weight: 500;
   text-align: center;
   outline: none;
 }

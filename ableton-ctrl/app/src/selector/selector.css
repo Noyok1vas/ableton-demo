@@ -59,15 +59,8 @@
   height: 100%;
 }
 
-/* The selected sound: a hairline ring just inside the glass's edge. */
-.sel-button--selected .sel-icon {
-  box-shadow: inset 0 0 0 1.5px var(--text-muted);
-}
-
-/* Capturing a bar — the live mark's ring goes to full white. */
-.sel-button--recording .sel-icon {
-  box-shadow: inset 0 0 0 1.5px var(--ink-pure);
-}
+/* The selected sound carries no ring: the pads are hardware, and the screen
+   above already says which sound is playing. */
 
 /* Press feedback: the glass lights for a moment under the finger. */
 .sel-button--flash .sel-icon {

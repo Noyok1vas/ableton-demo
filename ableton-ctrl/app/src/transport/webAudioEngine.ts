@@ -465,6 +465,17 @@ export class WebAudioEngine implements SoundEngine {
     this.ensureTicker()
   }
 
+  retime(factor: number): void {
+    const ctx = this.ctx
+    if (!ctx || !this.main.running || !(factor > 0) || factor === 1) return
+    const now = ctx.currentTime
+    // Everything since the downbeat, stretched: the loop stands where it
+    // stood, in loop terms, on the new grid. March is stretched with it.
+    this.gridTop = now - (now - this.gridTop) * factor
+    this.main.top = this.gridTop
+    if (this.march.running) this.march.top = now - (now - this.march.top) * factor
+  }
+
   stopLoop(): void {
     // Without this the loop would keep sounding for a lookahead's worth of
     // notes after PAUSE. Notes already ringing are left alone — stopping the

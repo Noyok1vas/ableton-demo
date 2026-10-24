@@ -160,6 +160,13 @@ export interface SoundEngine {
 
   stopLoop(): void
 
+  /** The loop's length is about to change by `factor` (the tempo or the meter
+      moved): stretch the time already played by the same amount, so the
+      loop carries on from the same point of itself — the same pass, the same
+      place in it — rather than jumping. The next `startLoop` brings the new
+      length. Optional: a source that keeps no clock of its own ignores it. */
+  retime?(factor: number): void
+
   /** Start looping the March phrase, or swap the phrase of a running one.
    *
    * Two loops run side by side rather than one, because March is a second

@@ -174,6 +174,9 @@ export type SoundEngineSessionValue = {
   ) => void
   /** Start or replace the looping bar. */
   startLoop: (events: readonly LoopEvent[], barDuration: number) => void
+  /** The loop's length is changing by `factor`: keep its place (see
+      SoundEngine.retime). Call before the startLoop that sends the new length. */
+  retimeLoop: (factor: number) => void
   stopLoop: () => void
   /** Start or replace the March phrase on the second track. It joins the grid
       the tapped loop is already on, so the two share a downbeat. */
@@ -317,6 +320,10 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     [],
   )
 
+  const retimeLoop = useCallback((factor: number) => {
+    engineRef.current?.retime?.(factor)
+  }, [])
+
   const startLoop = useCallback((events: readonly LoopEvent[], barDuration: number) => {
     engineRef.current?.startLoop(events, barDuration)
   }, [])
@@ -420,6 +427,7 @@ export function SoundEngineSession({ children }: { children: ReactNode }) {
     suspendMetronome,
     noteOn,
     startLoop,
+    retimeLoop,
     stopLoop,
     startMarchLoop,
     stopMarchLoop,
