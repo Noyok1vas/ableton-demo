@@ -44,6 +44,16 @@
   --bar-opacity: 0.4;
   --bar-opacity-active: 0.7;
 
+  /* Engraved controls: a dark disc cut into the glass, its shadow falling in
+     from the top-left and a bright lip of light along the bottom-right edge
+     where the cut catches it. */
+  --engrave-fill: rgba(6, 6, 6, 0.62);
+  --engrave-shadow:
+    inset 5px 5px 8px rgba(0, 0, 0, 0.6), inset -1.5px -1.5px 1px rgba(255, 255, 255, 0.45),
+    inset 1px 1px 0.5px rgba(255, 255, 255, 0.14);
+  --engrave-shadow-dim:
+    inset 5px 5px 8px rgba(0, 0, 0, 0.45), inset -1.5px -1.5px 1px rgba(255, 255, 255, 0.2);
+
   /* Strokes and radii */
   --stroke: 1px;
   --stroke-strong: 1.5px;

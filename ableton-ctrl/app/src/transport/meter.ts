@@ -7,8 +7,8 @@
  * shorter than one of 4/4 at the same BPM — the meter changes how long a bar
  * is, not how fast the clock runs.
  *
- * The tapped loop is always BARS_PER_LOOP bars of this meter, and its grid is
- * always sixteenth notes, so both follow from the numbers here.
+ * The tapped loop is always BARS_PER_LOOP bars of this meter, and its grid
+ * four steps to the beat, so both follow from the numbers here.
  */
 
 export type MeterUnit = 2 | 4 | 8 | 16

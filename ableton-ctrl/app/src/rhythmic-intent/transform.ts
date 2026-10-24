@@ -12,7 +12,7 @@ function circularDistance(a: number, b: number): number {
   return Math.min(d, 1 - d)
 }
 
-/** Pull a position toward its nearest 1/16 grid line by `tightness` (0..1).
+/** Pull a position toward its nearest grid line (four to a beat) by `tightness` (0..1).
     The nearest line for a tap late in the loop can be the downbeat of the next
     pass, hence the wrap. `divisions` is how many grid steps the loop holds,
     which the meter decides. */

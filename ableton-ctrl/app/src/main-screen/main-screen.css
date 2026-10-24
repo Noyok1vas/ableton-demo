@@ -229,21 +229,20 @@
 
 /* ── Buttons, engraved ─────────────────────────────────
    Every round control is a shape cut into the glass rather than drawn on
-   it: a faint dark disc with its own shadow falling in from the top-left.
-   No outline. An "on" state lifts the disc toward white. */
+   it: a dark disc with its shadow falling in from the top-left and a bright
+   lip along the edge that catches the light (design/tokens.css). No
+   outline. An "on" state lifts the disc toward white. */
 .ms-circle,
 .ms-circle:hover:not(:disabled) {
-  background: rgba(22, 22, 22, 0.3);
+  background: var(--engrave-fill);
   border: 0;
-  box-shadow:
-    inset 4px 4px 4px rgba(12, 12, 12, 0.25),
-    inset -1px -1px 1px rgba(255, 255, 255, 0.06);
+  box-shadow: var(--engrave-shadow);
   color: var(--text);
 }
 
 .ms-circle:disabled {
   color: var(--text-muted);
-  box-shadow: inset 4px 4px 4px rgba(12, 12, 12, 0.18);
+  box-shadow: var(--engrave-shadow-dim);
 }
 
 .ms-circle--on,

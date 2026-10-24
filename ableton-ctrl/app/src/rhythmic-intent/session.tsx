@@ -334,6 +334,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const {
     noteOn,
     startLoop: engineStartLoop,
+    retimeLoop: engineRetimeLoop,
     stopLoop: engineStopLoop,
     setPitch: engineSetPitch,
     onExternalTap,
@@ -552,6 +553,17 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   // While playing, (re)send the loop whenever the transformed pattern changes:
   // pressing PLAY, turning a knob, or loading a collection entry mid-loop.
+  // A tempo or meter change stretches the loop. The engine stretches the time
+  // it has already played by the same factor (as the capture's clock does),
+  // before the resend below hands it the new length — so what is heard and
+  // what is drawn stay on one downbeat, and a song stays on its section.
+  const lastDurationRef = useRef(loopDuration)
+  useEffect(() => {
+    const previous = lastDurationRef.current
+    lastDurationRef.current = loopDuration
+    if (previous !== loopDuration && playingRef.current) engineRetimeLoop(loopDuration / previous)
+  }, [loopDuration, engineRetimeLoop])
+
   // ARRANGE plays the whole song through; CREATE loops the open section.
   useEffect(() => {
     if (!playing) return

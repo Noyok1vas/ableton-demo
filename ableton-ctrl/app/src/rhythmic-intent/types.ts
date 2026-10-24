@@ -1,5 +1,5 @@
 import type { DrumParams, SoundVoiceId } from '../transport/engine.ts'
-import { barSecondsFor, sixteenthsPerBar, type Meter } from '../transport/meter.ts'
+import { barSecondsFor, type Meter } from '../transport/meter.ts'
 
 /** One captured tap. `time` is seconds from the first tap of the loop. `id` is
     stable for the life of the tap: it is what a later edit (the Sound Visual's
@@ -35,9 +35,9 @@ export type Tap = {
 export type CaptureState = 'ready' | 'recording' | 'complete'
 
 export type TransformParams = {
-  /** 0..100 — 0 preserves raw timing, 100 snaps fully to the 1/16 grid. */
+  /** 0..100 — 0 preserves raw timing, 100 snaps fully to the grid (four steps a beat). */
   tightness: number
-  /** 0..gridDivisions-1 — discrete 1/16-step rotation of the whole pattern. */
+  /** 0..gridDivisions-1 — discrete one-grid-step rotation of the whole pattern. */
   phase: number
   /** 0..100 — 100 keeps every tap; lower values remove taps (never adds). */
   density: number
@@ -60,8 +60,11 @@ export const beatsPerLoopFor = (meter: Meter) => meter.beats * BARS_PER_LOOP
     the pattern keeps its shape when either moves. */
 export const loopDurationFor = (bpm: number, meter: Meter) =>
   barSecondsFor(bpm, meter) * BARS_PER_LOOP
-/** The 1/16-note grid across the loop: 32 steps in 4/4, 12 in 3/8. */
-export const gridDivisionsFor = (meter: Meter) => sixteenthsPerBar(meter) * BARS_PER_LOOP
+/** The grid TIGHTNESS pulls toward and PHASE steps by: four steps to the
+    beat, whatever note value counts as one — 32 steps in 4/4 (sixteenths),
+    and 32 in 4/8 too. Changing the division re-labels the beat without
+    moving anything on it, so the pattern keeps its shape. */
+export const gridDivisionsFor = (meter: Meter) => meter.beats * 4 * BARS_PER_LOOP
 
 /** The song, for now: the loop's pattern laid end to end this many times.
     The first take fills every section; an edit after that changes only the

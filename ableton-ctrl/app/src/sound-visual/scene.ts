@@ -56,12 +56,18 @@ const BASE_ALPHA = 0.7
 /** The helix's own ink; brighter than the canvas's 0.08 because here it is
     white on black, where the same alpha reads fainter. */
 const GRID_ALPHA = 0.14
-/** Radius of the ball a mark becomes, in ring radii, before the mark's size.
-    Only ARRANGE's: a mark in CREATE is drawn at its full size regardless. */
-const BALL_RADIUS = 0.03
-/** The share of a mark's specks that print its ball — most of them, packed
-    into that small a disc, so it prints solid. */
-const BALL_SHARE = 0.6
+/** The spread of the ball a mark becomes, in ring radii, before the mark's
+    size: the sigma of a gaussian cloud, dense at the middle and diffusing
+    at the edge like the kick's own mark. Only ARRANGE's: a mark in CREATE is
+    drawn at its full size regardless. */
+const BALL_RADIUS = 0.034
+/** The share of a mark's specks that print its ball. */
+const BALL_SHARE = 0.4
+/** The beat spokes' round mask, in ring radii: they fade from the first
+    radius to nothing at the second, inside the screen's half-height (about
+    1.7 radii), before they reach the buttons in its corners. */
+const SPOKE_FADE_FROM = 1.12
+const SPOKE_FADE_TO = 1.55
 /** The section the finger is over on the stack: a sheet of this much white
     through that turn. */
 const HIGHLIGHT_ALPHA = 0.1
@@ -280,9 +286,24 @@ const TONE_FRAG = /* glsl */ `
 const SPOKE_VERT = /* glsl */ `
   uniform float uMorph;
   varying float vAlpha;
+  varying float vReach;
   void main() {
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     vAlpha = ${GRID_ALPHA} * (1.0 - uMorph);
+    // How far from the axis, in ring radii; the fragment fades on it.
+    vReach = length(position.yz);
+  }
+`
+
+/** The spokes inside a round mask: full out past the ring, gone before the
+    glass's edge, so they never run through the buttons in its corners. */
+const SPOKE_FRAG = /* glsl */ `
+  varying float vAlpha;
+  varying float vReach;
+  void main() {
+    float a = vAlpha * (1.0 - smoothstep(${SPOKE_FADE_FROM.toFixed(3)}, ${SPOKE_FADE_TO.toFixed(3)}, vReach));
+    if (a < 0.002) discard;
+    gl_FragColor = vec4(1.0, 1.0, 1.0, a);
   }
 `
 
@@ -406,7 +427,7 @@ export class SpiralScene {
     })
     this.spokeMaterial = new THREE.ShaderMaterial({
       vertexShader: SPOKE_VERT,
-      fragmentShader: LINE_FRAG,
+      fragmentShader: SPOKE_FRAG,
       uniforms: { uMorph: { value: 0 } },
       transparent: true,
       depthTest: false,
@@ -605,7 +626,9 @@ export class SpiralScene {
         offsets[i * 2 + 1] = -y
         jitters[i * 2] = specks.jxs[k] * stray
         jitters[i * 2 + 1] = -specks.jys[k] * stray
-        const r = Math.sqrt(rand()) * ball
+        // A gaussian cloud (Box–Muller radius): most grains near the middle,
+        // a few straying well out, so the ball's edge diffuses.
+        const r = Math.sqrt(-2 * Math.log(1 - rand())) * ball
         const a = rand() * Math.PI * 2
         balls[i * 2] = Math.cos(a) * r
         balls[i * 2 + 1] = Math.sin(a) * r

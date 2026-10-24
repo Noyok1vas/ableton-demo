@@ -290,9 +290,11 @@ export function useTapCapture(
     if (tapsRef.current.length > 0) {
       setAllTaps(tapsRef.current.map((t) => ({ ...t, time: t.time * factor })))
     }
+    // Everything since the downbeat stretches with it — the pass as well as
+    // the place in it — exactly as the engine stretches its own grid, so the
+    // two still agree, and a song keeps the section it was on.
     const now = performance.now()
-    const phase = ((((now - startRef.current) / 1000 / previous) % 1) + 1) % 1
-    startRef.current = now - phase * loopDuration * 1000
+    startRef.current = now - (now - startRef.current) * factor
   }, [loopDuration, setAllTaps])
 
   useEffect(() => stopTimers, [stopTimers])
