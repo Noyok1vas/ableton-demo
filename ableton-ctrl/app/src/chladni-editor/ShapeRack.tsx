@@ -4,6 +4,7 @@ import { ShapeCanvas, type ShapeCanvasHandle } from './ShapeCanvas.tsx'
 import { useShapeEditor } from './session.tsx'
 import { PATTERNS } from '../selector/patterns.ts'
 import type { SoundVoiceId } from '../transport/engine.ts'
+import { SOUND_PACK_READY } from './soundPack.ts'
 import './chladni-editor.css'
 
 const swallowSpace = (e: React.KeyboardEvent) => {
@@ -71,14 +72,30 @@ function Slot({ id, label }: { id: SoundVoiceId; label: string }) {
  * The drum rack: the eight sounds, each with the figure saved for it. A pad
  * plays its sound (and makes it the one the viewport plays); SAVE puts the
  * editor's figure in the slot, LOAD brings a slot's figure back to the
- * sliders, CLEAR empties it.
+ * sliders, CLEAR empties it. SOUND PACK fills the slots from the figures
+ * kept in soundPack.ts.
  */
 export function ShapeRack() {
+  const { loadPack } = useShapeEditor()
   return (
-    <div className="ce-rack" data-no-pinch>
-      {PATTERNS.map((p) => (
-        <Slot key={p.id} id={p.id} label={p.label} />
-      ))}
+    <div className="ce-rack-wrap" data-no-pinch>
+      <div className="ce-rack-bar">
+        <button
+          type="button"
+          className="ce-mini ce-mini--bar"
+          disabled={!SOUND_PACK_READY}
+          title={SOUND_PACK_READY ? 'Load the sound pack into the rack' : 'No sound pack yet'}
+          onClick={loadPack}
+          onKeyUp={swallowSpace}
+        >
+          SOUND PACK
+        </button>
+      </div>
+      <div className="ce-rack">
+        {PATTERNS.map((p) => (
+          <Slot key={p.id} id={p.id} label={p.label} />
+        ))}
+      </div>
     </div>
   )
 }

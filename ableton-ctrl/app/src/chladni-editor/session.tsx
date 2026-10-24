@@ -3,6 +3,7 @@ import { SOUND_VOICES, type SoundVoiceId } from '../transport/engine.ts'
 import { isRecord, loadSaved, useSaved } from '../persist.ts'
 import { usePlaySound } from './play.ts'
 import { DEFAULT_SHAPE, clampTo, completeShape, controlOf, randomShape, type ShapeParams } from './shape.ts'
+import { SOUND_PACK } from './soundPack.ts'
 
 /** A shape kept in a rack slot, and when it was put there. */
 export type RackShape = { shape: ShapeParams; savedAt: number }
@@ -22,6 +23,8 @@ export type ShapeSessionValue = {
   saveTo: (id: SoundVoiceId) => void
   loadFrom: (id: SoundVoiceId) => void
   clearSlot: (id: SoundVoiceId) => void
+  /** Put the sound pack's figures (soundPack.ts) into their slots. */
+  loadPack: () => void
   /** Play a sound (making it the target) — from the viewport or a rack pad. */
   tap: (id: SoundVoiceId) => void
   /** The last tap: which sound, and a count that changes on every one, so
@@ -101,6 +104,17 @@ export function ShapeSession({ children }: { children: ReactNode }) {
     [rack],
   )
   const clearSlot = useCallback((id: SoundVoiceId) => setRack((prev) => ({ ...prev, [id]: null })), [])
+  const loadPack = useCallback(() => {
+    const now = Date.now()
+    setRack((prev) => {
+      const next = { ...prev }
+      for (const id of SOUND_VOICES) {
+        const shape = SOUND_PACK[id]
+        if (shape) next[id] = { shape: completeShape(shape), savedAt: now }
+      }
+      return next
+    })
+  }, [])
 
   const saved = useMemo<Saved>(() => ({ shape, target, rack }), [shape, target, rack])
   useSaved('shapeEditor', saved)
@@ -117,10 +131,11 @@ export function ShapeSession({ children }: { children: ReactNode }) {
       saveTo,
       loadFrom,
       clearSlot,
+      loadPack,
       tap,
       hit,
     }),
-    [shape, setControl, resetShape, randomize, target, rack, saveTo, loadFrom, clearSlot, tap, hit],
+    [shape, setControl, resetShape, randomize, target, rack, saveTo, loadFrom, clearSlot, loadPack, tap, hit],
   )
   return <ShapeContext.Provider value={value}>{children}</ShapeContext.Provider>
 }
