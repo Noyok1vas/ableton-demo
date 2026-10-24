@@ -177,10 +177,10 @@ function DragValue({
  * three groups held apart by space rather than rules:
  *
  *   PROJECT          TRANSPORT          CLOCK
- *   Project.01   |    ●○  |  ▶     |   148 BPM   4/4   /4
+ *   Project.01   |    ▶  |  ●○     |   148 BPM   4/4   /4
  *
- * The project's name (double-click to rename); the metronome and PLAY /
- * STOP, the group in the middle of the bar; then the tempo and the beats of
+ * The project's name (double-click to rename); PLAY / STOP and the
+ * metronome, the group in the middle of the bar; then the tempo and the beats of
  * the meter — each dragged up and down, or double-clicked and typed — and
  * the division, the note value that counts as a beat, which a click moves
  * on through /2 /4 /8 /16. Whatever is being changed is lit, and so are
@@ -256,6 +256,23 @@ export function TransportBar() {
       <div className="tp-group tp-group--transport" role="group" aria-label="Transport">
         <button
           type="button"
+          className={`tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
+          aria-label={playing ? 'Stop' : 'Play'}
+          aria-pressed={playing}
+          disabled={!hasPattern}
+          onClick={togglePlay}
+          onKeyUp={swallowSpace}
+          data-hint={
+            playing ? 'Stop — the pattern stays. Key: Enter' : 'Play the loop from the top. Key: Enter'
+          }
+        >
+          <span className="tp-mark tp-mark--icon">
+            {playing ? <IconStop size={22} /> : <IconPlay size={26} />}
+          </span>
+        </button>
+        <span className="tp-sep" aria-hidden />
+        <button
+          type="button"
           className={`tp-btn tp-metronome${metronome ? ' tp-btn--on' : ''}${
             freeRunning ? ' tp-metronome--free' : ''
           }`}
@@ -272,23 +289,6 @@ export function TransportBar() {
         >
           <span className="tp-mark tp-mark--icon">
             <IconMetronome lit={lit} size={30} />
-          </span>
-        </button>
-        <span className="tp-sep" aria-hidden />
-        <button
-          type="button"
-          className={`tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
-          aria-label={playing ? 'Stop' : 'Play'}
-          aria-pressed={playing}
-          disabled={!hasPattern}
-          onClick={togglePlay}
-          onKeyUp={swallowSpace}
-          data-hint={
-            playing ? 'Stop — the pattern stays. Key: Enter' : 'Play the loop from the top. Key: Enter'
-          }
-        >
-          <span className="tp-mark tp-mark--icon">
-            {playing ? <IconStop size={22} /> : <IconPlay size={26} />}
           </span>
         </button>
       </div>

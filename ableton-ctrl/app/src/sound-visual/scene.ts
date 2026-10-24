@@ -78,9 +78,15 @@ const TRANSITION_MS = 650
 /** ARRANGE follows the playhead along the song, easing toward it with this
     time constant — quick enough to keep up, slow enough not to jitter. */
 const FOLLOW_TAU_MS = 220
-/** After a finger lets go of the song, how long it is left where it was put
-    before the view goes back to following the playhead. */
-const FOLLOW_RESUME_MS = 2500
+/** After a hand lets go of the song — a pan, a turn of the camera — how
+    long it is left where it was put before it eases home: the pan back onto
+    the playhead (or where it started, stopped), the camera back to the front. */
+const RETURN_AFTER_MS = 1200
+/** How the camera turns under one finger, in radians per canvas px, and how
+    far it may go from the front view either way. */
+const ORBIT_PER_PX = 0.006
+const ORBIT_MAX_YAW = 1.25
+const ORBIT_MAX_ELEVATION = 1.1
 /** The canvas's ink was tuned at this shorter side, in CSS px; a larger
     canvas buys more specks. */
 const REF_MIN_DIM = 500
@@ -381,10 +387,15 @@ export class SpiralScene {
       and where along the axis (in ring radii) the screen is centred. */
   private visible = 5
   private scroll = 0
-  /** A finger is on the song: the view is the finger's, not the playhead's. */
+  /** A hand is on the song: the view is the hand's, not the playhead's. */
   private holding = false
-  /** …and stays the finger's until then, after it lets go. */
+  /** …and stays the hand's until then, after it lets go. */
   private followPausedUntil = 0
+  /** Where a pan goes back to when nothing is playing: where it started. */
+  private panHome = 0
+  /** The camera turned off the front view by one finger, in radians. */
+  private orbitYaw = 0
+  private orbitElevation = 0
   private lastFrame = 0
 
   constructor(
@@ -770,7 +781,10 @@ export class SpiralScene {
     this.blendTarget = mode === 'arrange' ? 1 : 0
     this.blendStart = now
     // Arriving in ARRANGE, the screen is centred on the turn you were on.
-    if (mode === 'arrange') this.scroll = this.clampScroll((this.current + 0.5) * this.pitch())
+    if (mode === 'arrange') {
+      this.scroll = this.clampScroll((this.current + 0.5) * this.pitch())
+      this.panHome = this.scroll
+    }
   }
 
   getMode(): Mode {
@@ -821,27 +835,44 @@ export class SpiralScene {
   /** Scroll the song by a drag of `dx` canvas px — the helix follows the
       finger, so a drag to the left shows what comes later. */
   panByPixels(dx: number): void {
+    this.pauseFollow()
     this.scroll = this.clampScroll(this.scroll - dx * this.worldPerPixel())
-    this.pauseFollow()
   }
 
-  /** A finger is down on the song, or has just come off it. */
+  /** Turn the camera off the front view by a one-finger drag of (dx, dy)
+      canvas px: across swings it round the helix, up and down tilts it. */
+  orbitBy(dx: number, dy: number): void {
+    this.pauseFollow()
+    this.orbitYaw = clamp(this.orbitYaw - dx * ORBIT_PER_PX, -ORBIT_MAX_YAW, ORBIT_MAX_YAW)
+    this.orbitElevation = clamp(
+      this.orbitElevation + dy * ORBIT_PER_PX,
+      -ORBIT_MAX_ELEVATION,
+      ORBIT_MAX_ELEVATION,
+    )
+  }
+
+  /** A hand is down on the song, or has just come off it. */
   setHolding(on: boolean): void {
-    this.holding = on
     this.pauseFollow()
+    this.holding = on
   }
 
+  /** The view is the hand's from now until RETURN_AFTER_MS after it lets go.
+      A gesture that starts with the view at rest marks where home is. */
   private pauseFollow(): void {
-    this.followPausedUntil = performance.now() + FOLLOW_RESUME_MS
+    const now = performance.now()
+    if (!this.holding && now >= this.followPausedUntil) this.panHome = this.scroll
+    this.followPausedUntil = now + RETURN_AFTER_MS
   }
 
   /** Pinch: `ratio` > 1 spreads the turns (fewer across the screen), < 1
       packs them. The turn under the middle of the screen stays put. */
   zoomBy(ratio: number): void {
+    this.pauseFollow()
     const before = this.pitch()
     this.visible = clamp(this.visible / ratio, MIN_VISIBLE, MAX_VISIBLE)
     this.scroll = this.clampScroll((this.scroll / before) * this.pitch())
-    this.pauseFollow()
+    this.panHome = this.clampScroll((this.panHome / before) * this.pitch())
   }
 
   /** Ring radii per canvas px. */
@@ -855,14 +886,22 @@ export class SpiralScene {
   isAnimating(now: number): boolean {
     return (
       (this.blend !== this.blendTarget && now - this.blendStart < TRANSITION_MS + 50) ||
-      now < this.revealUntil
+      now < this.revealUntil ||
+      // A hand's view: held, waiting to go home, or not home yet — judged by
+      // where the view is, not by the clock, so a frame held up never leaves
+      // it stranded halfway.
+      this.holding ||
+      now < this.followPausedUntil ||
+      Math.abs(this.orbitYaw) + Math.abs(this.orbitElevation) > 1e-4 ||
+      (this.blendTarget === 1 && this.playhead() === null && Math.abs(this.scroll - this.panHome) > 1e-3)
     )
   }
 
   private placeCamera(): void {
     const u = easeInOut(this.blend)
-    const yaw = lerp(CREATE.yaw, ARRANGE.yaw, u)
-    const elevation = lerp(CREATE.elevation, ARRANGE.elevation, u)
+    // A finger's turn of the camera counts only as far as ARRANGE does.
+    const yaw = lerp(CREATE.yaw, ARRANGE.yaw, u) + this.orbitYaw * u
+    const elevation = lerp(CREATE.elevation, ARRANGE.elevation, u) + this.orbitElevation * u
     const pitch = this.pitch()
     // CREATE looks at the current turn; ARRANGE at wherever the song is
     // scrolled to.
@@ -899,18 +938,27 @@ export class SpiralScene {
     }
     const head = this.playhead()
 
-    // ARRANGE, playing, nobody holding the song: keep the playhead's light in
-    // the middle of the screen, as far as the song's ends allow.
+    // Nobody holding the song, and its last gesture RETURN_AFTER_MS gone: the
+    // view eases home. Playing, the pan keeps the playhead's light in the
+    // middle of the screen, as far as the song's ends allow; stopped, it goes
+    // back to where the hand found it. The camera turns back to the front.
     const dt = this.lastFrame > 0 ? Math.min(100, now - this.lastFrame) : 16
     this.lastFrame = now
-    if (
-      this.blendTarget === 1 &&
-      head !== null &&
-      !this.holding &&
-      now >= this.followPausedUntil
-    ) {
-      const want = this.clampScroll((this.current + head) * this.pitch())
-      this.scroll += (want - this.scroll) * (1 - Math.exp(-dt / FOLLOW_TAU_MS))
+    const settle = 1 - Math.exp(-dt / FOLLOW_TAU_MS)
+    const resting = !this.holding && now >= this.followPausedUntil
+    if (resting) {
+      this.orbitYaw += (0 - this.orbitYaw) * settle
+      this.orbitElevation += (0 - this.orbitElevation) * settle
+      if (Math.abs(this.orbitYaw) + Math.abs(this.orbitElevation) < 1e-4) {
+        this.orbitYaw = 0
+        this.orbitElevation = 0
+      }
+    }
+    if (this.blendTarget === 1 && resting) {
+      const want =
+        head !== null ? this.clampScroll((this.current + head) * this.pitch()) : this.panHome
+      this.scroll += (want - this.scroll) * settle
+      if (head === null && Math.abs(want - this.scroll) <= 1e-3) this.scroll = want
     }
 
     const morph = easeInOut(this.blend)
