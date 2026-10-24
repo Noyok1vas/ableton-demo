@@ -238,6 +238,9 @@ export function SoundVisual3D({
       event.currentTarget.setPointerCapture(event.pointerId)
       fingersRef.current.set(event.pointerId, point)
       pinchRef.current = fingerSpan()
+      // The song is the finger's while it is down: the view stops following
+      // the playhead.
+      scene.setHolding(true)
       setGrabbing(true)
       return
     }
@@ -289,7 +292,11 @@ export function SoundVisual3D({
   const endDrag = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (fingersRef.current.delete(event.pointerId)) {
       pinchRef.current = fingerSpan()
-      if (fingersRef.current.size === 0) setGrabbing(false)
+      if (fingersRef.current.size === 0) {
+        // Let go: the view stays put a moment, then follows again.
+        sceneRef.current?.setHolding(false)
+        setGrabbing(false)
+      }
       return
     }
     if (dragRef.current?.pointerId !== event.pointerId) return
