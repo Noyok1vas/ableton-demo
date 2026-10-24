@@ -37,9 +37,12 @@ const MAX_TAPS = 64
  */
 export function SoundVisual3D({
   highlight,
+  onHold,
 }: {
   /** The section the stack's finger is over, lit on the helix. */
   highlight: number | null
+  /** A hand has come down on the song in ARRANGE, or let go of it. */
+  onHold?: (holding: boolean) => void
 }) {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
@@ -250,6 +253,7 @@ export function SoundVisual3D({
       // The view is the hand's while it is down: it stops following the
       // playhead, and goes home a moment after the hand lets go.
       scene.setHolding(true)
+      onHold?.(true)
       setGrabbing(true)
       return
     }
@@ -309,6 +313,7 @@ export function SoundVisual3D({
         // Let go: the view stays put a moment, then goes home.
         twoFingeredRef.current = false
         sceneRef.current?.setHolding(false)
+        onHold?.(false)
         setGrabbing(false)
         schedule()
       }

@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import { TransportBar } from '../transport/TransportBar.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundVisual3D } from '../sound-visual/SoundVisual3D.tsx'
 import { TURNS } from '../sound-visual/scene.ts'
 import { SectionStack } from './SectionStack.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
-import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useGuide } from '../guide/session.tsx'
 import { useMod } from '../mod/session.tsx'
 import { useSoundEngine } from '../transport/session.tsx'
@@ -20,11 +19,6 @@ import './main-screen.css'
 const swallowSpace = (e: KeyboardEvent) => {
   if (e.key === ' ') e.preventDefault()
 }
-
-/** How long after the last tap (or mark drag) the bars come back. Long enough
-    to span the gaps inside a phrase, short enough that they return as soon as
-    the playing stops. */
-const QUIET_MS = 2200
 
 /** The screen's panels — at most one is open. */
 type Panel = 'collection' | 'settings'
@@ -54,7 +48,6 @@ export function MainScreen() {
   const { clearPattern, undoTap, canUndo, hasPattern, view, setView, section, openSection } =
     useSession()
   const { on: guiding, setOn: setGuiding } = useGuide()
-  const { onTap } = useSoundIntent()
   const { active: auditioning } = useMod()
   const { status, source } = useSoundEngine()
   const needsUnlock = source === 'builtin' && !status.ready
@@ -63,32 +56,11 @@ export function MainScreen() {
   // keeps which, since it decides what plays). `highlight` is the section a
   // finger on the stack is over.
   const [highlight, setHighlight] = useState<number | null>(null)
+  // A hand is on the song in ARRANGE — turning it, sliding it, pinching it:
+  // every control steps out of the way until the hand lets go.
+  const [handling, setHandling] = useState(false)
   const toggle = (which: Panel) => setPanel((open) => (open === which ? null : which))
 
-  // While you are playing into the ring — tapping, or dragging a mark — the
-  // two bars step back to 20% so the picture is all there is. They return
-  // QUIET_MS after the last gesture, or at once under the pointer.
-  const [quiet, setQuiet] = useState(false)
-  const quietTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const poke = () => {
-    setQuiet(true)
-    if (quietTimer.current !== null) clearTimeout(quietTimer.current)
-    quietTimer.current = setTimeout(() => setQuiet(false), QUIET_MS)
-  }
-  const pokeRef = useRef(poke)
-  pokeRef.current = poke
-  // Every tap, from any surface — pads, Space — arrives here.
-  useEffect(() => onTap(() => pokeRef.current()), [onTap])
-  useEffect(
-    () => () => {
-      if (quietTimer.current !== null) clearTimeout(quietTimer.current)
-    },
-    [],
-  )
-  // A press on the canvas itself is a mark being moved or removed.
-  const onCanvasPress = (e: PointerEvent) => {
-    if (e.target instanceof HTMLCanvasElement) poke()
-  }
   useSaved('ui.panel', panel)
 
   // Escape closes the open panel, as it would any floating window.
@@ -102,17 +74,13 @@ export function MainScreen() {
   }, [panel])
 
   return (
-    <div
-      className={`ms-screen${auditioning ? ' ms-screen--audition' : ''}`}
-      onPointerDownCapture={onCanvasPress}
-      onPointerUpCapture={onCanvasPress}
-    >
-      <SoundVisual3D highlight={highlight} />
+    <div className={`ms-screen${auditioning ? ' ms-screen--audition' : ''}`}>
+      <SoundVisual3D highlight={highlight} onHold={setHandling} />
       <RackPreview />
 
       <div
-        className={`ms-overlay${quiet ? ' ms-overlay--quiet' : ''}${
-          auditioning ? ' ms-overlay--audition' : ''
+        className={`ms-overlay${auditioning ? ' ms-overlay--audition' : ''}${
+          handling && view === 'arrange' ? ' ms-overlay--handling' : ''
         }`}
       >
         <div className="ms-row ms-row--top">

@@ -48,7 +48,7 @@ canvases, so the drawing code is untouched.
 | Type | `--type-xs` 18u (the smallest) · `-s` 22 · `-m` 28 · `-l` 40 · `-xl` 72 |
 | Space | `--space-1…8`: 4 / 8 / 16 / 24 / 32 / 40 / 48 / 64u |
 | Stroke, radius | 1u hairline · 1.5u for outer shapes · 0 inside · 40u pills and panels |
-| Motion | press 90ms · fast 150ms · base 250ms · quiet 400ms · long-press 400ms |
+| Motion | press 90ms · fast 150ms · base 250ms · long-press 400ms |
 
 **Colour is state, never decoration.** White filled = on. Grey fill = selected
 or auditioning. Muted = disabled. Nothing is coloured.
@@ -72,7 +72,7 @@ or auditioning. Muted = disabled. Nothing is coloured.
 | Component | Shape | States |
 |---|---|---|
 | `CircleButton` (`.ms-circle`) | 72u circle, 1.5u ink | default · pressed · on (filled) · disabled (grey) |
-| `PillBar` (`.tp-bar`) | 80u pill, 1.5u ink | quiet (20%) while you play |
+| `PillBar` (`.tp-bar`) | 80u pill, 1.5u ink | stays put while you play |
 | `Square` (`.tp-btn`) | 56u square, 1u ink | default · on · disabled |
 | `Stepper` | square − value square +, joined | — |
 | `Segmented` | joined squares, one on | — |
