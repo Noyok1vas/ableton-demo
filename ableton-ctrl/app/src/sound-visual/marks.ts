@@ -50,6 +50,7 @@ const ENERGY_MAX_DENSITY = 1
 const VELOCITY_MIN_SIZE = 0.45
 const VELOCITY_MAX_SIZE = 1.3
 const VELOCITY_MIN_DENSITY = 0.75
+const VELOCITY_MIN_INK = 0.35
 
 export const lerp = (a: number, b: number, u: number) => a + (b - a) * u
 export const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
@@ -110,6 +111,9 @@ export const velocityOf = (tap: MarkTap) => {
     density: lerp(VELOCITY_MIN_DENSITY, 1, v),
   }
 }
+
+/** How much tail a tap's velocity leaves. */
+const inkOf = (tap: MarkTap) => lerp(VELOCITY_MIN_INK, 1, clamp01(tap.velocity))
 
 /** The tap's character as 0..1, or 0.5 for an identity that has none. */
 export const characterOf = (tap: MarkTap) =>
@@ -201,4 +205,223 @@ export function sampleSpecks(tap: MarkTap, inkScale = 1): Specks {
   if (cache.size >= CACHE_MAX) cache.clear()
   cache.set(key, specks)
   return specks
+}
+
+// ── Length → ink tail, and the ride's ringing ─────────────────────────────
+// The canvas's numbers, to the digit (see sound-intent/SoundVisualScreen for
+// the reasoning behind each). Time is the angle around the ring, so a sound's
+// length is drawn as an arc of it, clockwise from the mark.
+
+export const BASE_ALPHA = 0.7
+const TAIL_PER_TAP = 4000
+const LENGTH_MIN_ARC = 0
+const LENGTH_MAX_ARC = 1.2
+const LENGTH_MAX_SPREAD = 0.03
+const TAIL_HEAD_WIDTH = 0.2
+const LENGTH_MAX_BODY = 0.9
+const TAIL_HEAD_ALPHA = 0.55
+const LENGTH_DECAY_STEEP = 7
+const LENGTH_DECAY_GENTLE = 1.6
+const TAIL_BIAS = 1.6
+/** How long a fresh tail takes to sweep out, and the shape of that sweep. */
+export const TAIL_GROWTH_S = 0.9
+const TAIL_SWEEP_EASE = 0.75
+const RING_ARC = 0.85
+const RING_MAX_ARC = 2
+const RING_INK = 0.55
+const LENGTH_STRETCH_MIN = 0.45
+const LENGTH_STRETCH_RANGE = 1.7
+const RING_HIGH_TUNE_REACH = 0.72
+/** Share of a ride's tail showing between strikes, and while stopped. */
+export const RING_REST = 0.32
+/** How fast the ringing thins again behind the playhead, per tail length. */
+export const RING_FADE = 2.5
+
+/**
+ * A tap's trail: LENGTH's tail, or a ride's ringing tail. Positions are in
+ * ring radii from the axis, screen convention (x right, y down). `alpha` is a
+ * tail speck's ink; `reveal` is how many seconds after the tap a fresh one
+ * first shows. A ringing speck also has `at` (how far round the loop past the
+ * strike it lies, in turns) and `needs` (the ringing level it takes to show).
+ */
+export type Trail = {
+  count: number
+  xs: Float32Array
+  ys: Float32Array
+  jxs: Float32Array
+  jys: Float32Array
+  alpha: Float32Array
+  reveal: Float32Array
+  /** Ringing only: where the strike is, and how far round its tail reaches,
+      in turns. Null for LENGTH's tail. */
+  ring: { pos: number; reach: number; at: Float32Array; needs: Float32Array } | null
+}
+
+const lengthOf = (tap: MarkTap) => clamp01((tap.length - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
+
+const sweepDelay = (s: number) => TAIL_GROWTH_S * Math.pow(s, TAIL_SWEEP_EASE)
+
+/** The tail a tap leaves, or null for one that stops dead (LENGTH 0). */
+export function sampleTrail(tap: MarkTap, inkScale = 1): Trail | null {
+  const ringing = patternOf(tap).ringing
+  return ringing ? sampleRinging(tap, inkScale) : sampleTail(tap, inkScale)
+}
+
+function sampleTail(tap: MarkTap, inkScale: number): Trail | null {
+  const v = lengthOf(tap)
+  if (v <= 0) return null
+  // Its own stream, so re-placing tails leaves the mark untouched.
+  const rand = makeRng(tap.seed ^ 0x9e3779b9)
+  const e = clamp01((tap.energy - SOUND_MIN) / (SOUND_MAX - SOUND_MIN))
+  const body = LENGTH_MAX_BODY * v
+  const arc = lerp(LENGTH_MIN_ARC, LENGTH_MAX_ARC, v)
+  const spread = LENGTH_MAX_SPREAD * v
+  const decay = lerp(LENGTH_DECAY_STEEP, LENGTH_DECAY_GENTLE, v)
+  const count = Math.round(
+    TAIL_PER_TAP *
+      lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, e) *
+      body *
+      inkOf(tap) *
+      inkScale,
+  )
+  if (count <= 0) return null
+
+  const theta0 = tap.pos * Math.PI * 2 - Math.PI / 2
+  const ox = Math.cos(theta0)
+  const oy = Math.sin(theta0)
+  // The tail keeps out of the mark's own clearance and leaves from its edge.
+  const hollowR = patternOf(tap).clear(characterOf(tap)) * unitOf(tap)
+  // Lateral spread, measured off the ring: a fraction of minDim, in radii.
+  const lateralUnit = (MARK_SCALE / CIRCLE_RADIUS) * spread
+  const xs: number[] = []
+  const ys: number[] = []
+  const jxs: number[] = []
+  const jys: number[] = []
+  const alpha: number[] = []
+  const reveal: number[] = []
+  for (let i = 0; i < count; i++) {
+    const s = Math.pow(rand(), TAIL_BIAS)
+    const theta = theta0 + s * arc
+    const lateral =
+      gaussianFrom(rand) * lateralUnit * (TAIL_HEAD_WIDTH + (1 - TAIL_HEAD_WIDTH) * s)
+    const radius = 1 + lateral
+    const x = Math.cos(theta) * radius
+    const y = Math.sin(theta) * radius
+    if (hollowR > 0 && Math.hypot(x - ox, y - oy) < hollowR) continue
+    xs.push(x)
+    ys.push(y)
+    alpha.push(BASE_ALPHA * TAIL_HEAD_ALPHA * Math.exp(-decay * s))
+    reveal.push(sweepDelay(s))
+    jxs.push(gaussianFrom(rand))
+    jys.push(gaussianFrom(rand))
+  }
+  return {
+    count: xs.length,
+    xs: Float32Array.from(xs),
+    ys: Float32Array.from(ys),
+    jxs: Float32Array.from(jxs),
+    jys: Float32Array.from(jys),
+    alpha: Float32Array.from(alpha),
+    reveal: Float32Array.from(reveal),
+    ring: null,
+  }
+}
+
+/** A ride's own tail: the trace from its pad, bent along the ring and drawn
+    out for as long as the ride rings. */
+function sampleRinging(tap: MarkTap, inkScale: number): Trail | null {
+  const ringing = patternOf(tap).ringing
+  if (!ringing) return null
+  const rand = makeRng(tap.seed ^ 0x51ed270b)
+  const v = lengthOf(tap)
+  const c = characterOf(tap)
+  const arc = Math.min(
+    RING_MAX_ARC,
+    RING_ARC * (LENGTH_STRETCH_MIN + LENGTH_STRETCH_RANGE * v) * lerp(1, RING_HIGH_TUNE_REACH, c),
+  )
+  const unit = unitOf(tap)
+  // Where the tail ends along its own axis, in field units.
+  const reach = arc / unit - ringing.start
+  if (reach <= 0) return null
+
+  const vel = velocityOf(tap)
+  const grown = vel.size * (patternOf(tap).ringScale ?? 1)
+  const candidates = Math.round(
+    SPECK_DENSITY *
+      RING_INK *
+      reach *
+      2 *
+      ringing.width *
+      lerp(ENERGY_MIN_DENSITY, ENERGY_MAX_DENSITY, energyOf(tap)) *
+      vel.density *
+      grown *
+      grown *
+      inkScale,
+  )
+  const theta0 = tap.pos * Math.PI * 2 - Math.PI / 2
+  const ox = Math.cos(theta0)
+  const oy = Math.sin(theta0)
+  const hollowR = patternOf(tap).clear(c) * unit
+  const xs: number[] = []
+  const ys: number[] = []
+  const jxs: number[] = []
+  const jys: number[] = []
+  const at: number[] = []
+  const needs: number[] = []
+  const reveal: number[] = []
+  for (let i = 0; i < candidates; i++) {
+    const along = ringing.start + rand() * reach
+    const across = (rand() * 2 - 1) * ringing.width
+    const keep = rand()
+    if (keep >= ringing.tail(along, across, reach)) continue
+    // Radians past the strike: distance along the tail, as arc of a unit ring.
+    const turn = along * unit
+    const radius = 1 + across * unit
+    const x = Math.cos(theta0 + turn) * radius
+    const y = Math.sin(theta0 + turn) * radius
+    if (hollowR > 0 && Math.hypot(x - ox, y - oy) < hollowR) continue
+    const t = (along - ringing.start) / reach
+    xs.push(x)
+    ys.push(y)
+    at.push(turn / (Math.PI * 2))
+    needs.push(rand())
+    reveal.push(sweepDelay(t))
+    jxs.push(gaussianFrom(rand))
+    jys.push(gaussianFrom(rand))
+  }
+  if (xs.length === 0) return null
+  return {
+    count: xs.length,
+    xs: Float32Array.from(xs),
+    ys: Float32Array.from(ys),
+    jxs: Float32Array.from(jxs),
+    jys: Float32Array.from(jys),
+    alpha: new Float32Array(xs.length).fill(BASE_ALPHA),
+    reveal: Float32Array.from(reveal),
+    ring: {
+      pos: tap.pos,
+      reach: arc / (Math.PI * 2),
+      at: Float32Array.from(at),
+      needs: Float32Array.from(needs),
+    },
+  }
+}
+
+// ── FX's tone maps ────────────────────────────────────────────────────────
+// HIGH PASS FILTER and SATURATE re-map the finished frame's ink, one
+// alpha→alpha curve; the scene runs it in a shader. These say where its stops
+// are for a pair of slider values.
+
+const HIGHPASS_MAX_PIVOT = 0.8
+/** Above this pivot HIGH PASS crossfades into a plain inversion. */
+export const HIGHPASS_INVERT_FROM = 0.85
+const SATURATE_MAX_FLOOR = 0.75
+
+/** HIGH PASS's black stop and SATURATE's floor, each 0..1, from the 0..100
+    sliders. Both 0 is the identity. */
+export function toneStops(highpass: number, saturate: number): { pivot: number; floor: number } {
+  return {
+    pivot: HIGHPASS_MAX_PIVOT * clamp01(highpass / 100),
+    floor: SATURATE_MAX_FLOOR * clamp01(saturate / 100),
+  }
 }

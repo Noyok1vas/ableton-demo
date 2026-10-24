@@ -160,6 +160,11 @@ export function SoundVisual3D({
   }, [fx.reverb])
 
   useEffect(() => {
+    sceneRef.current?.setTone(fx.highpass, fx.saturate)
+    schedule()
+  }, [fx.highpass, fx.saturate])
+
+  useEffect(() => {
     sceneRef.current?.setBeats(beatsPerLoop)
     schedule()
   }, [beatsPerLoop])
