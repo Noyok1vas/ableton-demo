@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { BPM_MAX, BPM_MIN, useSoundEngine } from './session.tsx'
-import { METER_PRESETS, METER_UNITS, formatMeter, sameMeter, type Meter } from './meter.ts'
-import { useSession } from '../rhythmic-intent/session.tsx'
 import {
-  IconChevron,
-  IconMetronome,
-  IconMinus,
-  IconPlay,
-  IconPlus,
-  IconStop,
-} from '../main-screen/icons.tsx'
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
+import { BPM_MAX, BPM_MIN, useSoundEngine } from './session.tsx'
+import { METER_BEATS_MAX, METER_BEATS_MIN, METER_UNITS, type MeterUnit } from './meter.ts'
+import { useSession } from '../rhythmic-intent/session.tsx'
+import { IconMetronome, IconPlay, IconStop } from '../main-screen/icons.tsx'
+import { isRecord, loadSaved, useSaved } from '../persist.ts'
 import './transport.css'
 
 /** Space must stay the tap key everywhere: a focused button here must not
@@ -18,108 +19,235 @@ const swallowSpace = (e: KeyboardEvent) => {
   if (e.key === ' ') e.preventDefault()
 }
 
-/** Where the meter pager stands: the preset that IS the meter, or — when the
-    division has made it something no preset is (4/4 → /8 gives 4/8) — the
-    preset with the same number of beats, so paging carries on from there. */
-function pagerIndex(meter: Meter): number {
-  const exact = METER_PRESETS.findIndex((p) => sameMeter(p, meter))
-  if (exact >= 0) return exact
-  const beats = METER_PRESETS.findIndex((p) => p.beats === meter.beats)
-  return beats >= 0 ? beats : METER_PRESETS.findIndex((p) => sameMeter(p, { beats: 4, unit: 4 }))
+const DEFAULT_NAME = 'Project.01'
+const NAME_MAX = 32
+
+/** How far a finger travels up or down a value, in the bar's own units, for
+    the value to move one step. */
+const DRAG_STEP = 8
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+
+function restoreName(): string {
+  const saved = loadSaved('project')
+  const name = isRecord(saved) ? saved.name : undefined
+  return typeof name === 'string' && name.trim() ? name.slice(0, NAME_MAX) : DEFAULT_NAME
 }
 
 /**
- * Transport — the clock, as the pill across the top of the Main Screen. All
- * icons, no words (guiding mode supplies those):
+ * A line of text that turns into a field on a double-click (or Enter): Enter
+ * or leaving it commits, Escape puts it back.
+ */
+function EditField({
+  initial,
+  label,
+  onDone,
+  className,
+}: {
+  initial: string
+  label: string
+  /** The typed text, or null when the edit was abandoned. */
+  onDone: (text: string | null) => void
+  className?: string
+}) {
+  const [draft, setDraft] = useState(initial)
+  const done = useRef(false)
+  const finish = (text: string | null) => {
+    if (done.current) return
+    done.current = true
+    onDone(text)
+  }
+  return (
+    <input
+      className={`tp-input num ${className ?? ''}`}
+      autoFocus
+      aria-label={label}
+      value={draft}
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => finish(draft)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') finish(draft)
+        else if (e.key === 'Escape') finish(null)
+        else return
+        e.preventDefault()
+      }}
+      onKeyUp={(e) => e.stopPropagation()}
+    />
+  )
+}
+
+/**
+ * A value dragged up and down to change — up is more — or double-clicked to
+ * type: the tempo, and the beats of the meter.
+ */
+function DragValue({
+  value,
+  display,
+  onStep,
+  onCommit,
+  label,
+  hint,
+  className,
+  suffix,
+}: {
+  value: number
+  display: string
+  onStep: (delta: number) => void
+  onCommit: (text: string) => void
+  label: string
+  hint: string
+  className?: string
+  suffix?: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const drag = useRef<{ id: number; y: number; carried: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    drag.current = { id: e.pointerId, y: e.clientY, carried: 0 }
+    setDragging(true)
+  }
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || d.id !== e.pointerId) return
+    // Counted in the bar's own units, so the feel is the same however small
+    // the device is drawn.
+    const el = e.currentTarget
+    const scale = el.offsetHeight / (el.getBoundingClientRect().height || 1)
+    const travel = (d.y - e.clientY) * scale + d.carried
+    const steps = Math.trunc(travel / DRAG_STEP)
+    d.y = e.clientY
+    d.carried = travel - steps * DRAG_STEP
+    if (steps !== 0) onStep(steps)
+  }
+  const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.id !== e.pointerId) return
+    drag.current = null
+    setDragging(false)
+  }
+
+  return (
+    <div
+      className={`tp-cell tp-drag${dragging ? ' tp-drag--on' : ''} ${className ?? ''}`}
+      role="spinbutton"
+      tabIndex={editing ? -1 : 0}
+      aria-label={label}
+      aria-valuenow={value}
+      onPointerDown={editing ? undefined : onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onDoubleClick={() => setEditing(true)}
+      onKeyDown={(e) => {
+        if (editing) return
+        if (e.key === 'ArrowUp') onStep(1)
+        else if (e.key === 'ArrowDown') onStep(-1)
+        else if (e.key === 'Enter') setEditing(true)
+        else return
+        e.preventDefault()
+      }}
+      data-hint={hint}
+    >
+      {editing ? (
+        <EditField
+          initial={display}
+          label={label}
+          onDone={(text) => {
+            setEditing(false)
+            if (text !== null) onCommit(text)
+          }}
+        />
+      ) : (
+        <span className="tp-value num">{display}</span>
+      )}
+      {suffix && <span className="tp-suffix">{suffix}</span>}
+    </div>
+  )
+}
+
+/**
+ * Transport — the clock, as the bar across the top of the Main Screen,
+ * engraved into the glass like the round buttons either side of it:
  *
- *   ▶ / ■   play and stop       ●○   metronome
- *   − 120 +  tempo               ‹ 4/4 ›  meter, paged through the common ones
- *   /2 /4 /8 /16  division — the note value that counts as one beat
+ *   Project.01 | ●○ | ▶ | 148 BPM | 4/4 | /4
+ *
+ * The project's name (double-click to rename), the metronome, PLAY / STOP in
+ * the middle of the bar, then the tempo and the beats of the meter — each
+ * dragged up and down, or double-clicked and typed — and the division, the
+ * note value that counts as a beat, which a click moves on through
+ * /2 /4 /8 /16.
  *
  * PLAY restarts the pattern from its top and STOP keeps it, so stopping is
- * never destructive — the + beside this bar is what starts a new one. A tap
- * into a stopped pattern starts it again, with the tap on the downbeat.
+ * never destructive — the + beside this bar is what starts a new one.
  */
 export function TransportBar() {
   const { bpm, setBpm, meter, setMeter, metronome, setMetronome } = useSoundEngine()
   const { playing, togglePlay, hasPattern, playhead, beatsPerLoop } = useSession()
 
-  // Free text while focused; a tempo only on blur or Enter. The session clamps.
-  const [draft, setDraft] = useState(String(bpm))
-  useEffect(() => setDraft(String(bpm)), [bpm])
-  const commit = () => {
-    const next = Number.parseInt(draft, 10)
-    if (Number.isNaN(next)) setDraft(String(bpm))
-    else setBpm(next)
-  }
+  const [name, setName] = useState(restoreName)
+  const saved = useMemo(() => ({ name }), [name])
+  useSaved('project', saved)
+  const [naming, setNaming] = useState(false)
 
-  const index = pagerIndex(meter)
-  const page = (delta: number) => {
-    const next = METER_PRESETS[index + delta]
-    if (next) setMeter(() => next)
-  }
-
-  // The metronome's two dots trade places on every beat. While the loop plays
-  // they are read off the playhead, so they swap exactly when the click sounds;
-  // stopped (but armed) they keep time on their own at the tempo, so the
-  // button still shows it is on.
+  // The metronome's two dots trade places on every beat. While the loop
+  // plays they are read off the playhead, so they swap exactly when the
+  // click sounds; stopped (but armed) they keep time on their own.
   const beat = playing && playhead !== null ? Math.floor(playhead * beatsPerLoop) : null
   const lit: 0 | 1 = metronome && beat !== null ? ((beat % 2) as 0 | 1) : 0
   const freeRunning = metronome && beat === null
   const beatSeconds = (60 / bpm) * (4 / meter.unit)
 
-  // The pill lights while a finger is on it (or focus is in it), and stays
-  // lit a moment after, so a quick tap reads as more than a flicker.
-  const [active, setActive] = useState(false)
-  const activeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const touch = () => {
-    if (activeTimer.current !== null) clearTimeout(activeTimer.current)
-    activeTimer.current = null
-    setActive(true)
+  const commitBpm = (text: string) => {
+    const next = Number.parseInt(text, 10)
+    if (!Number.isNaN(next)) setBpm(clamp(next, BPM_MIN, BPM_MAX))
   }
-  const release = () => {
-    if (activeTimer.current !== null) clearTimeout(activeTimer.current)
-    activeTimer.current = setTimeout(() => setActive(false), 600)
+  const stepBeats = (delta: number) =>
+    setMeter((m) => ({ ...m, beats: clamp(m.beats + delta, METER_BEATS_MIN, METER_BEATS_MAX) }))
+  /** "7" sets the beats; "7/8" sets the division too, when it is one of ours. */
+  const commitMeter = (text: string) => {
+    const match = /^\s*(\d+)\s*(?:\/\s*(\d+))?\s*$/.exec(text)
+    if (!match) return
+    const beats = clamp(Number.parseInt(match[1], 10), METER_BEATS_MIN, METER_BEATS_MAX)
+    const unit = match[2] ? (Number.parseInt(match[2], 10) as MeterUnit) : null
+    setMeter((m) => ({ beats, unit: unit && METER_UNITS.includes(unit) ? unit : m.unit }))
   }
-  useEffect(
-    () => () => {
-      if (activeTimer.current !== null) clearTimeout(activeTimer.current)
-    },
-    [],
-  )
+  const nextUnit = () =>
+    setMeter((m) => ({
+      ...m,
+      unit: METER_UNITS[(METER_UNITS.indexOf(m.unit) + 1) % METER_UNITS.length],
+    }))
 
   return (
-    <div
-      className={`tp-bar${active ? ' tp-bar--active' : ''}`}
-      role="toolbar"
-      aria-label="Transport"
-      onPointerDownCapture={touch}
-      onPointerUpCapture={release}
-      onPointerCancelCapture={release}
-      onFocusCapture={touch}
-      onBlurCapture={release}
-    >
-      <div className="tp-scroll">
-      <div className="tp-group">
-        <button
-          type="button"
-          className={`tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
-          aria-label={playing ? 'Stop' : 'Play'}
-          aria-pressed={playing}
-          disabled={!hasPattern}
-          onClick={togglePlay}
-          onKeyUp={swallowSpace}
-          data-hint={
-            playing
-              ? 'Stop — the pattern stays. Key: Enter'
-              : 'Play the loop from the top. Key: Enter'
-          }
+    <div className="tp-bar" role="toolbar" aria-label="Transport">
+      <div className="tp-side tp-side--left">
+        <div
+          className="tp-cell tp-cell--name"
+          title={naming ? undefined : name}
+          onDoubleClick={() => setNaming(true)}
+          data-hint="The project — double-click to rename it"
         >
-          {playing ? <IconStop /> : <IconPlay />}
-        </button>
+          {naming ? (
+            <EditField
+              initial={name}
+              label="Project name"
+              className="tp-input--name"
+              onDone={(text) => {
+                setNaming(false)
+                const next = text?.trim().slice(0, NAME_MAX)
+                if (next) setName(next)
+              }}
+            />
+          ) : (
+            <span className="tp-name">{name}</span>
+          )}
+        </div>
+        <span className="tp-rule" aria-hidden />
         <button
           type="button"
-          className={`tp-btn tp-metronome${metronome ? ' tp-btn--on' : ''}${
+          className={`tp-cell tp-btn tp-metronome${metronome ? ' tp-btn--on' : ''}${
             freeRunning ? ' tp-metronome--free' : ''
           }`}
           style={{ '--beat': `${beatSeconds}s` } as CSSProperties}
@@ -133,101 +261,59 @@ export function TransportBar() {
               : 'Metronome — a click on every beat while the loop plays'
           }
         >
-          <IconMetronome lit={lit} />
+          <IconMetronome lit={lit} size={34} />
         </button>
       </div>
 
-      <div className="tp-stepper">
-        <button
-          type="button"
-          className="tp-btn"
-          aria-label="Slower"
-          onClick={() => setBpm(bpm - 1)}
-          onKeyUp={swallowSpace}
-          data-hint="Slower — one BPM down"
-        >
-          <IconMinus />
-        </button>
-        <input
-          className="tp-value tp-bpm num"
-          type="number"
-          inputMode="numeric"
-          aria-label="Tempo in BPM"
-          min={BPM_MIN}
-          max={BPM_MAX}
-          step={1}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-          }}
-          onKeyUp={(e) => e.stopPropagation()}
-          data-hint="Tempo in BPM — type a value, or use − and +"
+      <span className="tp-rule" aria-hidden />
+      <button
+        type="button"
+        className={`tp-cell tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
+        aria-label={playing ? 'Stop' : 'Play'}
+        aria-pressed={playing}
+        disabled={!hasPattern}
+        onClick={togglePlay}
+        onKeyUp={swallowSpace}
+        data-hint={
+          playing ? 'Stop — the pattern stays. Key: Enter' : 'Play the loop from the top. Key: Enter'
+        }
+      >
+        {playing ? <IconStop size={28} /> : <IconPlay size={32} />}
+      </button>
+      <span className="tp-rule" aria-hidden />
+
+      <div className="tp-side tp-side--right">
+        <DragValue
+          value={bpm}
+          display={String(bpm)}
+          suffix="BPM"
+          onStep={(d) => setBpm(clamp(bpm + d, BPM_MIN, BPM_MAX))}
+          onCommit={commitBpm}
+          label="Tempo in BPM"
+          hint="Tempo — drag up or down, or double-click to type it"
+          className="tp-bpm"
         />
+        <span className="tp-rule" aria-hidden />
+        <DragValue
+          value={meter.beats}
+          display={`${meter.beats}/${meter.unit}`}
+          onStep={stepBeats}
+          onCommit={commitMeter}
+          label="Time signature"
+          hint="Time signature — drag up or down for more or fewer beats, or double-click to type it"
+          className="tp-meter"
+        />
+        <span className="tp-rule" aria-hidden />
         <button
           type="button"
-          className="tp-btn"
-          aria-label="Faster"
-          onClick={() => setBpm(bpm + 1)}
+          className="tp-cell tp-btn tp-division num"
+          aria-label={`Division /${meter.unit}`}
+          onClick={nextUnit}
           onKeyUp={swallowSpace}
-          data-hint="Faster — one BPM up"
+          data-hint={`Division /${meter.unit} — a 1/${meter.unit} note counts as one beat. Click for the next`}
         >
-          <IconPlus size={18} />
+          /{meter.unit}
         </button>
-      </div>
-
-      <div className="tp-group">
-        <div className="tp-stepper">
-          <button
-            type="button"
-            className="tp-btn"
-            aria-label="Previous time signature"
-            disabled={index <= 0}
-            onClick={() => page(-1)}
-            onKeyUp={swallowSpace}
-            data-hint="Previous time signature"
-          >
-            <IconChevron dir="left" />
-          </button>
-          <span
-            className="tp-value tp-meter num"
-            aria-live="polite"
-            data-hint="Time signature — page through the common ones with ‹ ›"
-          >
-            {formatMeter(meter)}
-          </span>
-          <button
-            type="button"
-            className="tp-btn"
-            aria-label="Next time signature"
-            disabled={index >= METER_PRESETS.length - 1}
-            onClick={() => page(1)}
-            onKeyUp={swallowSpace}
-            data-hint="Next time signature"
-          >
-            <IconChevron dir="right" />
-          </button>
-        </div>
-        <div className="tp-divisions" role="group" aria-label="Division">
-          {METER_UNITS.map((unit) => {
-            const on = meter.unit === unit
-            return (
-              <button
-                key={unit}
-                type="button"
-                className={`tp-btn tp-division num${on ? ' tp-btn--on' : ''}`}
-                aria-pressed={on}
-                onClick={() => setMeter((m) => ({ ...m, unit }))}
-                onKeyUp={swallowSpace}
-                data-hint={`Division /${unit} — a 1/${unit} note counts as one beat`}
-              >
-                /{unit}
-              </button>
-            )
-          })}
-        </div>
-      </div>
       </div>
     </div>
   )

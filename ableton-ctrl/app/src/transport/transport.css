@@ -1,157 +1,147 @@
-/* Transport pill + Mixer. The pill is the screen's top bar: a translucent
-   grey bar on the glass, square inside — every control in it is the same
-   hairline square the rest of the instrument uses. Sized for touch: every
-   square is --hit-min and joined groups share their borders. The controls
-   are wider than the pill, so they scroll sideways inside it; the pill
-   lights while a finger is on it. */
+/* Transport bar + Mixer. The bar is the screen's top row between the two
+   round buttons: as tall as they are and cut into the glass the same way —
+   a faint dark pill with its shadow falling in from the top-left. Inside,
+   no boxes: grey mono type and glyphs, parted by hairline rules, with PLAY
+   in the bar's exact middle. */
 
 .tp-bar {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  height: var(--pill-h);
-  overflow: hidden;
-  background: var(--bar-fill);
-  border-radius: var(--radius-pill);
-  opacity: var(--bar-opacity);
-  transition: opacity var(--motion-fast);
-}
-
-.tp-bar--active {
-  opacity: var(--bar-opacity-active);
-}
-
-/* The controls, in one row that scrolls sideways; no scrollbar, the pill's
-   rounded ends are the hint. Fingers pan it, buttons still press. */
-.tp-scroll {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  height: 100%;
-  padding: 0 20px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
-}
-
-.tp-scroll::-webkit-scrollbar {
-  display: none;
-}
-
-.tp-scroll > * {
-  flex: 0 0 auto;
-}
-
-.tp-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* Shared button base for everything pressable in the pill and the Mixer. */
-.tp-btn,
-.mx-switch {
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: 0;
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  cursor: pointer;
-  touch-action: manipulation;
-  user-select: none;
-  transition:
-    background-color var(--motion-fast),
-    color var(--motion-fast);
-}
-
-.tp-btn {
-  flex: 0 0 auto;
   display: grid;
-  place-items: center;
-  width: var(--hit-min);
-  height: var(--hit-min);
-  padding: 0;
+  /* Every cell one share wide and the name two, parted by hairlines: three
+     shares either side of PLAY, so PLAY sits in the bar's middle. */
+  grid-template-columns:
+    minmax(0, 2fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr)
+    1px minmax(0, 1fr) 1px minmax(0, 1fr);
+  align-items: center;
+  height: var(--circle);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: rgba(22, 22, 22, 0.3);
+  box-shadow:
+    inset 4px 4px 4px rgba(12, 12, 12, 0.25),
+    inset -1px -1px 1px rgba(255, 255, 255, 0.06);
+  /* Greys taken from the page's own ink, so the bar reads on the light
+     Chladni pages as on the screen. */
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+  font-family: var(--font-ui);
 }
 
-@media (hover: hover) {
-  .tp-btn:hover:not(:disabled),
-  .mx-switch:hover {
-    background: var(--surface-2);
-  }
+.tp-side {
+  display: contents;
 }
 
-.tp-btn:active:not(:disabled) {
-  background: var(--surface-2);
+/* The hairlines between cells. */
+.tp-rule {
+  width: 1px;
+  height: 64%;
+  background: color-mix(in srgb, var(--text) 32%, transparent);
 }
 
-.tp-btn:disabled {
-  border-color: var(--line-fine);
-  color: var(--text-muted);
-  cursor: default;
-}
-
-.tp-btn--on,
-.tp-btn--on:hover:not(:disabled) {
-  background: var(--ink-pure);
-  color: var(--surface);
-}
-
-/* Joined controls — − value + and ‹ meter › — share their borders. */
-.tp-stepper {
-  display: flex;
-  align-items: stretch;
-}
-
-.tp-stepper > * + * {
-  margin-left: -1px;
-}
-
-.tp-value {
+.tp-cell {
+  min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 76px;
-  height: var(--hit-min);
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
+  padding: 0 var(--space-2);
+}
+
+.tp-btn {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: color var(--motion-fast);
+}
+
+@media (hover: hover) {
+  .tp-btn:hover:not(:disabled) {
+    color: var(--text);
+  }
+}
+
+.tp-btn:active:not(:disabled),
+.tp-btn--on {
   color: var(--text);
-  font-family: var(--font-ui);
-  font-size: var(--type-s);
-  font-weight: 500;
 }
 
-.tp-bpm {
-  padding: 0;
-  border-radius: 0;
-  text-align: center;
-  appearance: textfield;
-  -moz-appearance: textfield;
+.tp-btn:disabled {
+  color: color-mix(in srgb, var(--text) 30%, transparent);
+  cursor: default;
 }
 
-.tp-bpm::-webkit-outer-spin-button,
-.tp-bpm::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+/* The project's name: as much of it as the side has room for. */
+.tp-cell--name {
+  justify-content: flex-start;
+  padding: 0 var(--space-1) 0 20px;
+  cursor: text;
 }
 
-.tp-divisions {
-  display: flex;
+.tp-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--type-m);
+  user-select: none;
 }
 
-.tp-divisions > * + * {
-  margin-left: -1px;
+/* Tempo and meter: dragged up and down, so the finger owns the gesture. */
+.tp-drag {
+  gap: 6px;
+  align-items: baseline;
+  touch-action: none;
+  cursor: ns-resize;
+  user-select: none;
+}
+
+.tp-drag > * {
+  align-self: center;
+}
+
+.tp-drag--on,
+.tp-drag:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.tp-value {
+  font-size: var(--type-m);
+  white-space: nowrap;
+}
+
+.tp-suffix {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  align-self: flex-end;
+  margin-bottom: 22px;
 }
 
 .tp-division {
-  font-size: var(--type-xs);
-  font-weight: 700;
+  font-size: var(--type-m);
+}
+
+/* A value or the name, being typed. */
+.tp-input {
+  width: 4.2ch;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 50%, transparent);
+  background: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--type-m);
+  text-align: center;
+  outline: none;
+}
+
+.tp-input--name {
+  width: 100%;
+  text-align: left;
 }
 
 /* ── Metronome: the dots trade places on every beat while it is on ── */
@@ -236,6 +226,19 @@
 }
 
 .mx-switch {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
   width: 40px;
   height: 36px;
   font-size: 12px;
