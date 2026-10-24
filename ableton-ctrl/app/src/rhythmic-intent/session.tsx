@@ -18,6 +18,8 @@ import {
   DEFAULT_PITCH,
   PAD_BASE_PITCH,
   PAD_GRID_SIZE,
+  SECTIONS,
+  type ViewMode,
   type CollectionEntry,
   type CollectionKind,
   type CollectionSelection,
@@ -52,6 +54,16 @@ type SavedRhythm = {
   pattern: { taps: readonly Tap[]; duration: number }
   saved: SavedPattern[]
   selection: CollectionSelection | null
+  song: SavedSong
+}
+
+/** The song: every section's taps, which one is open, and whether the first
+    take has been laid across them all yet. */
+type SavedSong = {
+  sections: (readonly Tap[])[]
+  duration: number
+  current: number
+  taken: boolean
 }
 
 function parseTap(raw: unknown): Tap | null {
@@ -129,6 +141,28 @@ function restoreRhythm(duration: number): Restored {
       ? { kind: sel.kind, id: sel.id }
       : null
   const pitch = finiteIn(stored.pitch, PAD_BASE_PITCH, PAD_BASE_PITCH + PAD_GRID_SIZE ** 2 - 1)
+  // The song, re-timed like the pattern. One saved before there were songs
+  // is the pattern in every section; so is one that no longer parses.
+  const rawSong = isRecord(stored.song) ? stored.song : {}
+  const songSections =
+    Array.isArray(rawSong.sections) && rawSong.sections.length === SECTIONS
+      ? rawSong.sections.map((section) => parseTaps(section, rawSong.duration, duration))
+      : null
+  const current = Math.round(finiteIn(rawSong.current, 0, SECTIONS - 1) ?? 0)
+  const song: SavedSong =
+    songSections && songSections.some((section) => section.length > 0)
+      ? {
+          sections: songSections,
+          duration,
+          current,
+          taken: rawSong.taken === true,
+        }
+      : {
+          sections: Array.from({ length: SECTIONS }, () => taps),
+          duration,
+          current: 0,
+          taken: taps.length > 0,
+        }
   return {
     params: mergeNumbers(DEFAULT_PARAMS, stored.params, 0, 100),
     pitch: pitch === null ? DEFAULT_PITCH : Math.round(pitch),
@@ -136,6 +170,7 @@ function restoreRhythm(duration: number): Restored {
     saved,
     temporary,
     selection,
+    song,
   }
 }
 
@@ -162,6 +197,17 @@ const loopEvents = (rendered: readonly RenderedTap[]): LoopEvent[] =>
   rendered
     .filter((t) => t.kept)
     .map((t) => ({ pos: t.finalPos, velocity: t.velocity, voice: t.voice, character: t.character }))
+
+/** The whole song as one loop for the engine: section `k` played in pass
+    `k - offset` of it, so that whichever section is open when ARRANGE starts
+    is the one heard in the pass already under way. */
+const songEvents = (sections: readonly (readonly RenderedTap[])[], offset: number): LoopEvent[] =>
+  sections.flatMap((section, k) => {
+    const slot = (((k - offset) % SECTIONS) + SECTIONS) % SECTIONS
+    return loopEvents(section).map((event) => ({ ...event, pos: (slot + event.pos) / SECTIONS }))
+  })
+
+const mod = (n: number, m: number) => ((n % m) + m) % m
 
 export type Session = {
   capture: TapCapture
@@ -229,6 +275,19 @@ export type Session = {
       temporary half rather than vanishing, so it is only really gone once the
       page is reloaded. */
   deleteSaved: (id: string) => void
+  /** CREATE (one section, as a ring, looping on its own) or ARRANGE (the
+      whole song, played through). */
+  view: ViewMode
+  setView: (view: ViewMode) => void
+  /** The section on screen: in CREATE the one open for editing; in ARRANGE,
+      while it plays, the one being heard. */
+  section: number
+  /** The section open for editing — the working pattern. */
+  selected: number
+  /** Open one section in CREATE. */
+  openSection: (section: number) => void
+  /** Every section of the song as it plays — the open one live. */
+  songRendered: RenderedTap[][]
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -279,6 +338,21 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     setSelectionState(next)
   }, [])
 
+  // ── The song ─────────────────────────────────────────────────────
+  // The working pattern (the capture) is always the OPEN section. Until the
+  // first take closes, every change to it is laid across all the sections;
+  // after that, a change belongs to the open section alone.
+  const [song, setSong] = useState<Tap[][]>(() => restored.song.sections.map((s) => [...s]))
+  const songRef = useRef(song)
+  songRef.current = song
+  const takenRef = useRef(restored.song.taken)
+  const [selected, setSelected] = useState(restored.song.current)
+  const selectedRef = useRef(selected)
+  const [view, setViewState] = useState<ViewMode>('create')
+  const viewRef = useRef(view)
+  /** Which section the engine's first pass of the song plays — see songEvents. */
+  const [offset, setOffset] = useState(0)
+
   /** A new temporary entry at the top of the list, selected — the Collection
       recording what is being played. Its taps are filled in by the sync below. */
   const recordTemporary = useCallback(
@@ -323,7 +397,27 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   // The loop enters the Collection — as a temporary entry — when its first
   // pass closes, newest first.
-  const capture = useTapCapture(loopDuration, recordTemporary, restored.pattern.taps)
+  const capture = useTapCapture(
+    loopDuration,
+    recordTemporary,
+    restored.song.sections[restored.song.current] ?? restored.pattern.taps,
+  )
+
+  // The open section follows the capture. Declared before the effect that
+  // closes the first take, so the take's last change still reaches them all.
+  const captureTapsForSong = capture.taps
+  useEffect(() => {
+    if (!takenRef.current) {
+      setSong(Array.from({ length: SECTIONS }, () => [...captureTapsForSong]))
+    } else {
+      const open = selectedRef.current
+      setSong((prev) => prev.map((s, i) => (i === open ? [...captureTapsForSong] : s)))
+    }
+  }, [captureTapsForSong])
+  const captureStateForSong = capture.state
+  useEffect(() => {
+    if (captureStateForSong === 'complete' && captureTapsForSong.length > 0) takenRef.current = true
+  }, [captureStateForSong, captureTapsForSong])
 
   // …and keeps up with it afterwards: the loop stays open, so every addition,
   // undo and deletion belongs to the same entry rather than spawning a new one.
@@ -379,6 +473,20 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   renderedRef.current = rendered
   const hasPattern = capture.taps.length > 0
 
+  // Every section as it plays. The open one is the live render, so it never
+  // lags the capture by the effect that copies it into the song.
+  const songRendered = useMemo(
+    () =>
+      song.map((taps, i) =>
+        i === selected ? rendered : transformPattern(taps, loopDuration, params, gridDivisions),
+      ),
+    [song, selected, rendered, loopDuration, params, gridDivisions],
+  )
+  const songRenderedRef = useRef(songRendered)
+  songRenderedRef.current = songRendered
+  const offsetRef = useRef(offset)
+  offsetRef.current = offset
+
   // ── Loop playback ─────────────────────────────────────────────────
   // The *engine* schedules the looped notes (browser timers throttle when the
   // tab is backgrounded — e.g. while Live has focus), so a stalled tab never
@@ -407,18 +515,27 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     // Handed over now, inside the press, not only from the effect below: the
     // press is what lets a browser start audio, and PLAY on a pattern restored
     // from the last visit is the first sound this page makes.
-    engineStartLoop(loopEvents(renderedRef.current), loopDurationRef.current)
+    if (viewRef.current === 'arrange') {
+      // The song from its first section.
+      offsetRef.current = 0
+      setOffset(0)
+      engineStartLoop(songEvents(songRenderedRef.current, 0), loopDurationRef.current * SECTIONS)
+    } else {
+      engineStartLoop(loopEvents(renderedRef.current), loopDurationRef.current)
+    }
   }, [captureAnchor, engineStartLoop])
 
   // While playing, (re)send the loop whenever the transformed pattern changes:
   // pressing PLAY, turning a knob, or loading a collection entry mid-loop.
+  // ARRANGE plays the whole song through; CREATE loops the open section.
   useEffect(() => {
     if (!playing) return
-    engineStartLoop(loopEvents(rendered), loopDuration)
+    if (view === 'arrange') engineStartLoop(songEvents(songRendered, offset), loopDuration * SECTIONS)
+    else engineStartLoop(loopEvents(rendered), loopDuration)
     // `engineId` keeps a running loop alive across a source switch: the send
     // functions keep their identity when the engine underneath changes, so
     // without it the new engine would never be told what to play.
-  }, [playing, rendered, loopDuration, engineStartLoop, engineId])
+  }, [playing, view, rendered, songRendered, offset, loopDuration, engineStartLoop, engineId])
 
   useEffect(() => () => engineStopLoop(), [engineStopLoop])
 
@@ -497,6 +614,10 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   const clearPattern = useCallback(() => {
     stopLoop()
+    // A new song: the next take is laid across every section again.
+    takenRef.current = false
+    selectedRef.current = 0
+    setSelected(0)
     captureReset()
     setSelection(null)
   }, [captureReset, stopLoop, setSelection])
@@ -514,6 +635,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
       if (!entry) return
       // Re-timed from the loop it was played in to the one running now.
       const factor = loopDuration / entry.duration
+      // A pattern loaded from the Collection is a new take: the whole song.
+      takenRef.current = false
       captureLoad(
         entry.taps.map((t) => ({ ...t, time: Math.min(t.time * factor, loopDuration * 0.999999) })),
       )
@@ -575,6 +698,55 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     [captureMove, loopDuration],
   )
 
+  const { replace: captureReplace, pass } = capture
+  const passRef = useRef(pass)
+  passRef.current = pass
+
+  /** Make section `k` the working pattern, keeping the loop's clock. */
+  const selectSection = useCallback(
+    (k: number) => {
+      const next = mod(Math.round(k), SECTIONS)
+      if (next === selectedRef.current) return
+      selectedRef.current = next
+      setSelected(next)
+      captureReplace(songRef.current[next] ?? [])
+    },
+    [captureReplace],
+  )
+
+  const playheadOn = playing && capture.state !== 'ready'
+  const playheadOnRef = useRef(playheadOn)
+  playheadOnRef.current = playheadOn
+
+  const setView = useCallback(
+    (next: ViewMode) => {
+      if (next === viewRef.current) return
+      if (next === 'arrange') {
+        // The song carries on from the open section, in the pass under way.
+        const start = mod(selectedRef.current - passRef.current, SECTIONS)
+        offsetRef.current = start
+        setOffset(start)
+      } else if (playheadOnRef.current) {
+        // Back to the ring on whichever section was playing.
+        selectSection(offsetRef.current + passRef.current)
+      }
+      viewRef.current = next
+      setViewState(next)
+    },
+    [selectSection],
+  )
+
+  const openSection = useCallback(
+    (k: number) => {
+      selectSection(k)
+      viewRef.current = 'create'
+      setViewState('create')
+    },
+    [selectSection],
+  )
+
+  const section = view === 'arrange' && playheadOn ? mod(offset + pass, SECTIONS) : selected
+
   const setParam = useCallback(
     <K extends keyof TransformParams>(key: K, value: number) => {
       setParams((prev) => ({ ...prev, [key]: value }))
@@ -589,8 +761,9 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
       pattern: { taps: capture.taps, duration: loopDuration },
       saved,
       selection,
+      song: { sections: song, duration: loopDuration, current: selected, taken: takenRef.current },
     }),
-    [params, pitch, capture.taps, loopDuration, saved, selection],
+    [params, pitch, capture.taps, loopDuration, saved, selection, song, selected],
   )
   useSaved('rhythm', stored)
 
@@ -615,7 +788,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     clearPattern,
     handleReset,
     playing,
-    playhead: playing && capture.state !== 'ready' ? capture.progress : null,
+    playhead: playheadOn ? capture.progress : null,
     togglePlay,
     temporary,
     saved,
@@ -623,6 +796,12 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     loadEntry,
     savePattern,
     deleteSaved,
+    view,
+    setView,
+    section,
+    selected,
+    openSection,
+    songRendered,
   }
 
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>

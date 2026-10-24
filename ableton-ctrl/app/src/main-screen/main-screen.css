@@ -74,30 +74,32 @@
   flex: 1 1 auto;
 }
 
-/* The sections, a stack of sheets in the bottom row's middle. */
+/* The sections, a stack of sheets in the bottom row's middle, ARRANGE only.
+   Upright frames, sheared so they rise to the right as the helix's turns do
+   seen from the side; each later sheet sits over the one before it. */
 .ms-stack {
+  position: relative;
   flex: 0 0 auto;
-  height: var(--circle);
-  width: auto;
-  overflow: visible;
+  transform: skewY(-30deg);
   touch-action: none;
   cursor: pointer;
 }
 
 .ms-sheet {
-  fill: transparent;
-  stroke: var(--ink-pure);
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-  transition: fill var(--motion-fast);
+  position: absolute;
+  top: 0;
+  outline: 1px solid #ffffff;
+  outline-offset: -0.5px;
+  background: transparent;
+  transition: background var(--motion-fast);
 }
 
 .ms-sheet--lit {
-  fill: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .ms-sheet--current {
-  fill: var(--text-muted);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* The left edge: the one switch between the ring and the song. */

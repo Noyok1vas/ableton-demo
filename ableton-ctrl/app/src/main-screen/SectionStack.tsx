@@ -1,17 +1,17 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
 
-/** One sheet of the stack, in SVG units: a parallelogram leaning right. */
-const SHEET_W = 22
-const SHEET_H = 48
-const LEAN = 12
-const STEP = 24
-const PAD = 2
+/** One sheet's size and the step between sheets, in device units. */
+const SHEET_W = 20
+const SHEET_H = 44
+const STEP = 13
 
 /**
  * The song's sections as a stack of sheets, one per pass of the loop, seen
- * edge-on the way ARRANGE sees them. The current section is filled; sliding a
- * finger across the stack lights the sheet it is over (and the same section
- * on the visual above), and lifting it there opens that section in CREATE.
+ * at an angle the way ARRANGE sees the turns of the helix: upright frames
+ * sheared so they rise to the right, each overlapping the one behind it.
+ * The section on screen is filled; sliding a finger across the stack lights
+ * the sheet it is over (and the same section on the visual above), and
+ * lifting it there opens that section in CREATE.
  */
 export function SectionStack({
   count,
@@ -26,51 +26,49 @@ export function SectionStack({
   onHighlight: (section: number | null) => void
   onSelect: (section: number) => void
 }) {
-  const ref = useRef<SVGSVGElement>(null)
-  const width = PAD * 2 + STEP * (count - 1) + SHEET_W + LEAN
-  const height = PAD * 2 + SHEET_H
+  const ref = useRef<HTMLDivElement>(null)
+  const width = STEP * (count - 1) + SHEET_W
 
-  /** Which sheet a pointer is over, by where it is along the stack. */
+  /** Which sheet a pointer is over, by how far along the stack it is. The
+      shear moves the sheets only up and down, so x alone decides. */
   const sectionAt = (event: { clientX: number }) => {
     const rect = ref.current?.getBoundingClientRect()
     if (!rect || rect.width === 0) return null
     const x = ((event.clientX - rect.left) / rect.width) * width
-    const i = Math.floor((x - PAD - LEAN / 2) / STEP)
-    return Math.max(0, Math.min(count - 1, i))
+    return Math.max(0, Math.min(count - 1, Math.floor(x / STEP)))
   }
 
-  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId)
     onHighlight(sectionAt(event))
   }
-  const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    onHighlight(sectionAt(event))
-  }
-  const onPointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     const section = sectionAt(event)
     if (section !== null) onSelect(section)
     onHighlight(null)
   }
 
   return (
-    <svg
+    <div
       ref={ref}
       className="ms-stack"
-      viewBox={`0 0 ${width} ${height}`}
       role="group"
       aria-label="Sections"
+      style={{ width, height: SHEET_H }}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
+      onPointerMove={(event) => onHighlight(sectionAt(event))}
       onPointerUp={onPointerUp}
       onPointerCancel={() => onHighlight(null)}
       onPointerLeave={() => onHighlight(null)}
+      data-hint="Sections — slide across to find one, lift to open it"
     >
-      {Array.from({ length: count }, (_, i) => {
-        const x = PAD + i * STEP
-        const d = `M${x} ${PAD + SHEET_H} l${LEAN} ${-SHEET_H} h${SHEET_W} l${-LEAN} ${SHEET_H} Z`
-        const state = i === current ? ' ms-sheet--current' : i === highlight ? ' ms-sheet--lit' : ''
-        return <path key={i} className={`ms-sheet${state}`} d={d} />
-      })}
-    </svg>
+      {Array.from({ length: count }, (_, i) => (
+        <span
+          key={i}
+          className={`ms-sheet${i === current ? ' ms-sheet--current' : i === highlight ? ' ms-sheet--lit' : ''}`}
+          style={{ left: i * STEP, width: SHEET_W, height: SHEET_H }}
+        />
+      ))}
+    </div>
   )
 }

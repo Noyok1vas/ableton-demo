@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { TransportBar } from '../transport/TransportBar.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
-import { SoundVisual3D, type Mode } from '../sound-visual/SoundVisual3D.tsx'
+import { SoundVisual3D } from '../sound-visual/SoundVisual3D.tsx'
 import { TURNS } from '../sound-visual/scene.ts'
 import { SectionStack } from './SectionStack.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
@@ -51,19 +51,17 @@ function restorePanel(): Panel | null {
  * preview (see RackPreview), and the panels step aside for it.
  */
 export function MainScreen() {
-  const { clearPattern, undoTap, canUndo, hasPattern } = useSession()
+  const { clearPattern, undoTap, canUndo, hasPattern, view, setView, section, openSection } =
+    useSession()
   const { on: guiding, setOn: setGuiding } = useGuide()
   const { onTap } = useSoundIntent()
   const { active: auditioning } = useMod()
   const { status, source } = useSoundEngine()
   const needsUnlock = source === 'builtin' && !status.ready
   const [panel, setPanel] = useState<Panel | null>(restorePanel)
-  // CREATE is the ring; ARRANGE is the whole song, for looking at. The Sound
-  // Visual swings its camera between the two. `section` is the pass of the
-  // song the ring shows, carried on by the playhead or chosen on the stack;
-  // `highlight` the one a finger on the stack is over.
-  const [mode, setMode] = useState<Mode>('create')
-  const [section, setSection] = useState(0)
+  // CREATE is one section, as a ring; ARRANGE is the whole song (the session
+  // keeps which, since it decides what plays). `highlight` is the section a
+  // finger on the stack is over.
   const [highlight, setHighlight] = useState<number | null>(null)
   const toggle = (which: Panel) => setPanel((open) => (open === which ? null : which))
 
@@ -109,12 +107,7 @@ export function MainScreen() {
       onPointerDownCapture={onCanvasPress}
       onPointerUpCapture={onCanvasPress}
     >
-      <SoundVisual3D
-        mode={mode}
-        section={section}
-        highlight={highlight}
-        onSection={setSection}
-      />
+      <SoundVisual3D highlight={highlight} />
       <RackPreview />
 
       <div
@@ -151,12 +144,12 @@ export function MainScreen() {
         <div className="ms-side">
           <button
             type="button"
-            className={`ms-circle${mode === 'arrange' ? ' ms-circle--on' : ''}`}
+            className={`ms-circle${view === 'arrange' ? ' ms-circle--on' : ''}`}
             aria-label="Arrange"
-            aria-pressed={mode === 'arrange'}
-            onClick={() => setMode(mode === 'arrange' ? 'create' : 'arrange')}
+            aria-pressed={view === 'arrange'}
+            onClick={() => setView(view === 'arrange' ? 'create' : 'arrange')}
             onKeyUp={swallowSpace}
-            data-hint="Arrange — the whole song as a helix, every mark a dot sized by how hard it was played. Press again for the ring"
+            data-hint="Arrange — the whole song as a helix, played through. Press again for the ring, looping one section"
           >
             <IconGlobe />
           </button>
@@ -192,16 +185,18 @@ export function MainScreen() {
             <IconList />
           </button>
           <span className="ms-spacer" aria-hidden />
-          <SectionStack
-            count={TURNS}
-            current={section}
-            highlight={highlight}
-            onHighlight={setHighlight}
-            onSelect={(next) => {
-              setSection(next)
-              setMode('create')
-            }}
-          />
+          {view === 'arrange' && (
+            <SectionStack
+              count={TURNS}
+              current={section}
+              highlight={highlight}
+              onHighlight={setHighlight}
+              onSelect={(next) => {
+                setHighlight(null)
+                openSection(next)
+              }}
+            />
+          )}
           <span className="ms-spacer" aria-hidden />
           <button
             type="button"

@@ -7,7 +7,7 @@
  * axis — which is what CREATE is: a camera on the axis with a
  * near-orthographic lens, framing the current turn exactly as the canvas
  * framed its ring, every other turn faded out. ARRANGE swings the same camera
- * round to the side, a little above, at the same scale: the song runs off
+ * a quarter turn round to the front, level, at the same scale: the song runs off
  * both edges, and is scrolled along and pinched tighter or looser (the
  * turns' spacing, never the lens) to show three to eight of its passes.
  * Every mark collapses into a small solid dot sized by how hard it was
@@ -42,11 +42,12 @@ import {
   unitOf,
   type MarkTap,
 } from './marks.ts'
+import { SECTIONS, type ViewMode } from '../rhythmic-intent/types.ts'
 
-export type Mode = 'create' | 'arrange'
+export type Mode = ViewMode
 
-/** How many passes of the loop the song is, for now: the pattern, repeated. */
-export const TURNS = 8
+/** How many passes of the loop the song is: one turn per section. */
+export const TURNS = SECTIONS
 /** How many passes ARRANGE shows across the screen, at most and at least. */
 export const MIN_VISIBLE = 3
 export const MAX_VISIBLE = TURNS
@@ -81,8 +82,10 @@ const SPECK_SCALE = 0.6
 type Pose = { yaw: number; elevation: number }
 
 const CREATE: Pose = { yaw: 0, elevation: 0 }
-/** Not quite side-on, so a turn reads as a narrow loop rather than a line. */
-const ARRANGE: Pose = { yaw: (78 * Math.PI) / 180, elevation: (10 * Math.PI) / 180 }
+/** Side-on and level: the helix straight from the front, every turn a wave
+    of the same height as the ring. The swing between the two is a quarter
+    turn round the vertical and nothing else. */
+const ARRANGE: Pose = { yaw: Math.PI / 2, elevation: 0 }
 /** The view's height in ring radii, both poses: the ring at CIRCLE_RADIUS of
     the shorter side, as the canvas drew it. */
 const FRAME = 1 / CIRCLE_RADIUS
@@ -328,8 +331,11 @@ export class SpiralScene {
   private headMaterial: THREE.ShaderMaterial
   private headPosition: THREE.BufferAttribute
 
-  private marks: readonly MarkTap[] = []
-  private onCurrent: ((turn: number) => void) | null = null
+  /** Every section's marks, one list per turn of the helix. */
+  private sections: (readonly MarkTap[])[] = []
+  /** The section drawn in full: the one open in CREATE. Every other turn
+      keeps only the specks its ball is printed with. */
+  private detail = 0
   private width = 1
   private height = 1
   private dpr = 1
@@ -341,9 +347,8 @@ export class SpiralScene {
   private blendStart = 0
   private blendTarget = 0
 
-  /** Which pass of the loop the playhead is on, 0..TURNS-1. */
+  /** The section on screen, 0..TURNS-1 — the session says which. */
   private current = 0
-  private lastHead: number | null = null
 
   /** ARRANGE's view along the song: how many turns are across the screen,
       and where along the axis (in ring radii) the screen is centred. */
@@ -441,10 +446,10 @@ export class SpiralScene {
     this.scene.add(this.helix)
     this.buildSpokes()
 
-    // The sheet through a turn that the stack's finger is over: a square of
-    // glass a little larger than the ring, in the turn's plane.
-    const sheetGeometry = new THREE.PlaneGeometry(2.6, 2.6)
-    sheetGeometry.rotateY(Math.PI / 2)
+    // The section the stack's finger is over: a panel of glass over that
+    // section's stretch of the helix, facing ARRANGE's camera — a unit wide,
+    // stretched to the turns' spacing each frame.
+    const sheetGeometry = new THREE.PlaneGeometry(1, 2.6)
     this.sheet = new THREE.Mesh(
       sheetGeometry,
       new THREE.MeshBasicMaterial({
@@ -543,8 +548,16 @@ export class SpiralScene {
       this.points = null
     }
     const ink = this.inkScale()
-    const sampled = this.marks.map((tap) => ({ tap, specks: sampleSpecks(tap, ink) }))
-    const total = sampled.reduce((n, s) => n + s.specks.count, 0)
+    const sampled = this.sections.flatMap((marks, turn) =>
+      marks.map((tap) => {
+        const specks = sampleSpecks(tap, ink)
+        // Only the open section is ever seen whole; the rest are balls.
+        const count =
+          turn === this.detail ? specks.count : Math.ceil(specks.count * BALL_SHARE)
+        return { tap, specks, turn, count }
+      }),
+    )
+    const total = sampled.reduce((n, s) => n + s.count, 0)
     if (total === 0) return
 
     const centers = new Float32Array(total * 3)
@@ -552,9 +565,10 @@ export class SpiralScene {
     const balls = new Float32Array(total * 2)
     const jitters = new Float32Array(total * 2)
     const ranks = new Float32Array(total)
+    const turns = new Float32Array(total)
     const c = new THREE.Vector3()
     let i = 0
-    for (const { tap, specks } of sampled) {
+    for (const { tap, specks, turn: sectionTurn, count } of sampled) {
       helixPoint(tap.pos, 0, 1, c)
       const unit = unitOf(tap)
       const turn = turnOf(tap)
@@ -566,7 +580,7 @@ export class SpiralScene {
       // The ball's grains in their own order, so the share that prints it is
       // spread through the mark rather than being one corner of it.
       const rand = makeRng(tap.seed ^ 0x2545f491)
-      for (let k = 0; k < specks.count; k++, i++) {
+      for (let k = 0; k < count; k++, i++) {
         const fx = specks.xs[k]
         const fy = specks.ys[k]
         // Screen convention (x right, y down) as the canvas placed them; the
@@ -585,19 +599,17 @@ export class SpiralScene {
         balls[i * 2] = Math.cos(a) * r
         balls[i * 2 + 1] = Math.sin(a) * r
         ranks[i] = k / specks.count
+        turns[i] = sectionTurn
       }
     }
-    const geometry = new THREE.InstancedBufferGeometry()
+    const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(total * 3), 3))
     geometry.setAttribute('aCenter', new THREE.BufferAttribute(centers, 3))
     geometry.setAttribute('aOffset', new THREE.BufferAttribute(offsets, 2))
     geometry.setAttribute('aBall', new THREE.BufferAttribute(balls, 2))
     geometry.setAttribute('aJitter', new THREE.BufferAttribute(jitters, 2))
     geometry.setAttribute('aRank', new THREE.BufferAttribute(ranks, 1))
-    const turns = new Float32Array(TURNS)
-    for (let t = 0; t < TURNS; t++) turns[t] = t
-    geometry.setAttribute('aTurn', new THREE.InstancedBufferAttribute(turns, 1))
-    geometry.instanceCount = TURNS
+    geometry.setAttribute('aTurn', new THREE.BufferAttribute(turns, 1))
     this.points = new THREE.Points(geometry, this.pointMaterial)
     this.points.frustumCulled = false
     this.scene.add(this.points)
@@ -611,7 +623,7 @@ export class SpiralScene {
       this.trail = null
     }
     const ink = this.inkScale()
-    const trails = this.marks.flatMap((tap) => {
+    const trails = (this.sections[this.detail] ?? []).flatMap((tap) => {
       const trail = sampleTrail(tap, ink)
       return trail ? [{ born: this.born.get(tap.id) ?? 0, trail }] : []
     })
@@ -666,12 +678,12 @@ export class SpiralScene {
 
   // ── Inputs ────────────────────────────────────────────────────────────
 
-  setMarks(marks: readonly MarkTap[]): void {
-    this.marks = marks
-    if (marks.length === 0) {
-      this.current = 0
-      this.lastHead = null
-    }
+  /** The song: every section's marks, and which section is open (drawn in
+      full, with its tails). */
+  setSong(sections: (readonly MarkTap[])[], detail: number): void {
+    this.sections = sections
+    this.detail = detail
+    const marks = sections[detail] ?? []
     // Only a tap that was not here a moment ago sweeps its tail out; the
     // rest arrive finished, because nothing about them just happened. Times
     // are seconds, offset so a "long ago" of 0 is never mistaken for now.
@@ -700,18 +712,10 @@ export class SpiralScene {
     this.buildSpokes()
   }
 
-  /** Which pass of the song is shown in CREATE and lit on the helix. Set by
-      the stack; advanced by the playhead; reported back through `onCurrent`. */
+  /** The section on screen: the open one in CREATE, the one being heard in
+      ARRANGE. The playhead's light rides its turn. */
   setCurrent(turn: number): void {
     this.current = clamp(Math.round(turn), 0, TURNS - 1)
-  }
-
-  getCurrent(): number {
-    return this.current
-  }
-
-  setOnCurrent(listener: ((turn: number) => void) | null): void {
-    this.onCurrent = listener
   }
 
   /** The section the stack's finger is over, or none. */
@@ -847,14 +851,7 @@ export class SpiralScene {
       this.blend = lerp(this.blendFrom, this.blendTarget, t)
       if (t >= 1) this.blend = this.blendTarget
     }
-    // The playhead, and which pass of the song it is on: a wrap is one more
-    // turn. Stopping holds the turn; an emptied loop starts over (setMarks).
     const head = this.playhead()
-    if (head !== null && this.lastHead !== null && head < this.lastHead - 0.5) {
-      this.current = (this.current + 1) % TURNS
-      this.onCurrent?.(this.current)
-    }
-    this.lastHead = head
 
     const morph = easeInOut(this.blend)
     const pitch = this.pitch()
@@ -873,7 +870,10 @@ export class SpiralScene {
     // mid-turn, where the canvas drew it.
     if (this.spokes) this.spokes.position.x = (this.current + (head ?? 0.5)) * pitch
     this.sheet.visible = this.highlight !== null
-    if (this.highlight !== null) this.sheet.position.x = (this.highlight + 0.5) * pitch
+    if (this.highlight !== null) {
+      this.sheet.position.x = (this.highlight + 0.5) * pitch
+      this.sheet.scale.x = pitch
+    }
 
     // The light on the helix, where the loop is now.
     this.head.visible = head !== null
@@ -934,7 +934,7 @@ export class SpiralScene {
     if (this.blend !== 0) return null
     let hit: string | null = null
     let best = HIT_RADIUS * Math.max(MARK_SCALE, 0.75) * Math.min(this.width, this.height)
-    for (const mark of this.marks) {
+    for (const mark of this.sections[this.current] ?? []) {
       const at = this.project(mark.pos)
       const distance = Math.hypot(x - at.x, y - at.y)
       if (distance < best) {

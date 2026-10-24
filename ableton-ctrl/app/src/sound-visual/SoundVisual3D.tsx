@@ -12,7 +12,8 @@ import { useSession as useRhythmicIntent } from '../rhythmic-intent/session.tsx'
 import { useFx } from '../fx/session.tsx'
 import { FX_MAX, FX_MIN } from '../fx/types.ts'
 import { seedFromId, shortestStep, wrapPos, type MarkTap } from './marks.ts'
-import { SpiralScene, type Mode } from './scene.ts'
+import { SpiralScene } from './scene.ts'
+import type { RenderedTap } from '../rhythmic-intent/types.ts'
 import './sound-visual.css'
 
 export type { Mode } from './scene.ts'
@@ -35,22 +36,24 @@ const MAX_TAPS = 64
  * more or fewer of its passes. The scene animates between them.
  */
 export function SoundVisual3D({
-  mode,
-  section,
   highlight,
-  onSection,
 }: {
-  mode: Mode
-  /** The pass of the song CREATE shows; the playhead moves it on. */
-  section: number
-  /** The pass the stack's finger is over, lit on the helix. */
+  /** The section the stack's finger is over, lit on the helix. */
   highlight: number | null
-  /** The playhead has carried the song on to another pass. */
-  onSection: (section: number) => void
 }) {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
-  const { rendered, playhead, removeTap, moveTap, beatsPerLoop } = useRhythmicIntent()
+  const {
+    rendered,
+    songRendered,
+    section,
+    selected,
+    view: mode,
+    playhead,
+    removeTap,
+    moveTap,
+    beatsPerLoop,
+  } = useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sceneRef = useRef<SpiralScene | null>(null)
   const rafRef = useRef(0)
@@ -74,30 +77,34 @@ export function SoundVisual3D({
     [onTap],
   )
 
-  // The field the scene draws: Rhythmic Intent's transformed pattern, joined
-  // with the snapshots, so the marks move with the knobs and DENSITY drops the
-  // ones it silences.
-  const marks = useMemo<MarkTap[]>(
-    () =>
-      rendered
-        .filter((t) => t.kept)
-        .slice(-MAX_TAPS)
-        .map((t) => {
-          let snapshot = snapshotsRef.current.get(t.id)
-          if (!snapshot) {
-            const p = soundParamsRef.current
-            snapshot = {
-              energy: p.d1,
-              length: p.d2,
-              seed: seedFromId(t.id),
-              gesture: t.voice ?? 'kick',
-              character: t.character ?? null,
-            }
-            snapshotsRef.current.set(t.id, snapshot)
+  // The field the scene draws: every section of the song as Rhythmic Intent
+  // renders it, joined with the snapshots, so the marks move with the knobs
+  // and DENSITY drops the ones it silences. A tap copied into several
+  // sections keeps one id, and so one look, in all of them.
+  const toMarks = (taps: readonly RenderedTap[]): MarkTap[] =>
+    taps
+      .filter((t) => t.kept)
+      .slice(-MAX_TAPS)
+      .map((t) => {
+        let snapshot = snapshotsRef.current.get(t.id)
+        if (!snapshot) {
+          const p = soundParamsRef.current
+          snapshot = {
+            energy: p.d1,
+            length: p.d2,
+            seed: seedFromId(t.id),
+            gesture: t.voice ?? 'kick',
+            character: t.character ?? null,
           }
-          return { id: t.id, pos: t.finalPos, velocity: t.velocity, ...snapshot }
-        }),
-    [rendered],
+          snapshotsRef.current.set(t.id, snapshot)
+        }
+        return { id: t.id, pos: t.finalPos, velocity: t.velocity, ...snapshot }
+      })
+  const songMarks = useMemo(
+    () => songRendered.map(toMarks),
+    // toMarks reads only refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [songRendered],
   )
   const renderedRef = useRef(rendered)
   renderedRef.current = rendered
@@ -150,9 +157,10 @@ export function SoundVisual3D({
   }
 
   useEffect(() => {
-    sceneRef.current?.setMarks(marks)
+    // The open section is drawn whole, with its tails.
+    sceneRef.current?.setSong(songMarks, selected)
     schedule()
-  }, [marks])
+  }, [songMarks, selected])
 
   useEffect(() => {
     sceneRef.current?.setScatter((fx.reverb - FX_MIN) / (FX_MAX - FX_MIN))
@@ -179,12 +187,6 @@ export function SoundVisual3D({
     schedule()
   }, [highlight])
 
-  const onSectionRef = useRef(onSection)
-  onSectionRef.current = onSection
-  useEffect(() => {
-    sceneRef.current?.setOnCurrent((turn) => onSectionRef.current(turn))
-    return () => sceneRef.current?.setOnCurrent(null)
-  }, [])
 
   useEffect(() => {
     sceneRef.current?.setMode(mode, performance.now())
@@ -197,8 +199,8 @@ export function SoundVisual3D({
     schedule()
   }, [playheadOn])
 
-  // An empty loop has nothing left to remember.
-  const empty = rendered.length === 0
+  // An empty song has nothing left to remember.
+  const empty = songRendered.every((sectionTaps) => sectionTaps.length === 0)
   useEffect(() => {
     if (empty) snapshotsRef.current.clear()
   }, [empty])
