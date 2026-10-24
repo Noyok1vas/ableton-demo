@@ -422,10 +422,12 @@ export function printSand(
   alpha = 1,
   /** Per-kind print strength, overriding the defaults (the editor's). */
   kindAlpha?: Partial<Record<Kind, number>>,
+  /** The sand's colour: black on the light pages, white on the editor's. */
+  ink = '#000000',
 ): void {
   const g = grainPx * sand.grain
   const half = g / 2
-  ctx.fillStyle = '#000000'
+  ctx.fillStyle = ink
   for (const kind of KINDS) {
     ctx.globalAlpha = (kindAlpha?.[kind] ?? KIND_ALPHA[kind]) * alpha
     for (let i = 0; i < sand.count; i++) {
