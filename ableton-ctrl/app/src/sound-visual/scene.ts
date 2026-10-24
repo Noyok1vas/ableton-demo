@@ -29,8 +29,14 @@ import {
   MARK_SCALE,
   REVERB_MAX_SCATTER,
   SPECK_SIZE,
+  RING_FADE,
+  RING_REST,
+  TAIL_GROWTH_S,
+  HIGHPASS_INVERT_FROM,
   makeRng,
   sampleSpecks,
+  sampleTrail,
+  toneStops,
   scaleOf,
   turnOf,
   unitOf,
@@ -167,6 +173,99 @@ const LINE_FRAG = /* glsl */ `
   }
 `
 
+/**
+ * The trails: LENGTH's tails and the rides' ringing, CREATE's alone — they lie
+ * along the ring, so they belong to the turn being played, and fade as the
+ * camera swings round. A fresh speck shows `aReveal` seconds after its tap
+ * (the sweep out of the mark). A ringing speck (aRing 1) shows only while the
+ * ride's ringing level is above its `aNeeds`: the level swells to full where
+ * the playhead has just passed the strike, and thins back to RING_REST behind.
+ */
+const TRAIL_VERT = /* glsl */ `
+  attribute vec2 aOffset;
+  attribute vec2 aJitter;
+  attribute float aAlpha;
+  attribute float aBorn;
+  attribute float aReveal;
+  attribute float aRing;
+  attribute float aRingPos;
+  attribute float aReach;
+  attribute float aAt;
+  attribute float aNeeds;
+  uniform float uNow;
+  uniform float uHead;
+  uniform float uMorph;
+  uniform float uScatter;
+  uniform float uProj;
+  uniform float uDot;
+  varying float vAlpha;
+  void main() {
+    vec2 at = aOffset + aJitter * uScatter;
+    // Screen-right is -Z and screen-up +Y; offsets are x right, y down.
+    vec4 mv = modelViewMatrix * vec4(0.0, -at.y, -at.x, 1.0);
+    gl_Position = projectionMatrix * mv;
+    float px = uDot * uProj;
+    gl_PointSize = max(1.0, px);
+    float sub = min(1.0, px);
+    float shown = step(aBorn + aReveal, uNow);
+    float alpha = aAlpha;
+    if (aRing > 0.5) {
+      float level = ${RING_REST.toFixed(4)};
+      if (uHead >= 0.0) {
+        float since = fract(uHead - aRingPos);
+        if (since >= aAt) level += ${(1 - RING_REST).toFixed(4)} * exp(((aAt - since) / aReach) * ${RING_FADE.toFixed(4)});
+      }
+      shown *= step(aNeeds, level - 1e-6);
+    }
+    vAlpha = alpha * shown * sub * sub * (1.0 - uMorph);
+  }
+`
+
+/**
+ * HIGH PASS FILTER and SATURATE, as the canvas ran them: the finished frame's
+ * ink read as luminance over a white surface (1 - alpha), re-mapped, written
+ * back as ink. Run over everything recorded — grid, helix, marks, trails —
+ * and not over the playhead, which is not a sound. ARRANGE fades it out.
+ */
+const TONE_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
+  }
+`
+
+const TONE_FRAG = /* glsl */ `
+  uniform sampler2D uInk;
+  uniform float uPivot;
+  uniform float uFloor;
+  uniform float uMorph;
+  varying vec2 vUv;
+  float highpassMap(float l, float pivot) {
+    float v;
+    if (pivot <= 0.0) v = l;
+    else if (pivot >= 1.0) v = 1.0 - l;
+    else if (l <= pivot) v = 1.0 - l / pivot;
+    else v = (l - pivot) / (1.0 - pivot);
+    if (pivot <= ${HIGHPASS_INVERT_FROM.toFixed(4)}) return v;
+    float u = clamp((pivot - ${HIGHPASS_INVERT_FROM.toFixed(4)}) / ${(1 - HIGHPASS_INVERT_FROM).toFixed(4)}, 0.0, 1.0);
+    return mix(v, 1.0 - l, u * u * (3.0 - 2.0 * u));
+  }
+  float saturateMap(float l, float floor_) {
+    if (floor_ <= 0.0) return l;
+    if (floor_ >= 1.0) return 0.0;
+    return l <= floor_ ? 0.0 : (l - floor_) / (1.0 - floor_);
+  }
+  void main() {
+    float a = texture2D(uInk, vUv).a;
+    // The canvas ran this through an 8-bit table; quantize the same way.
+    a = floor(a * 255.0 + 0.5) / 255.0;
+    float mapped = 1.0 - saturateMap(highpassMap(1.0 - a, uPivot), uFloor);
+    float outA = mix(mapped, a, uMorph);
+    gl_FragColor = vec4(1.0, 1.0, 1.0, clamp(outA, 0.0, 1.0));
+  }
+`
+
 /** The beat grid's spokes, CREATE's alone: gone by the time the camera is
     round the side. */
 const SPOKE_VERT = /* glsl */ `
@@ -199,7 +298,22 @@ const HEAD_FRAG = /* glsl */ `
 
 export class SpiralScene {
   private renderer: THREE.WebGLRenderer
+  /** Everything recorded — the tone map runs over this. */
   private scene = new THREE.Scene()
+  /** What is not a record: the playhead's light and the stack's sheet. */
+  private overlay = new THREE.Scene()
+  private trail: THREE.Points | null = null
+  private trailMaterial: THREE.ShaderMaterial
+  /** When each tap on the ring first arrived, in seconds — a fresh one's
+      tail sweeps out of it; one already there is simply re-placed. */
+  private born = new Map<string, number>()
+  /** Until when a tail is still sweeping out, in performance.now() ms. */
+  private revealUntil = 0
+  private tone: { pivot: number; floor: number } = { pivot: 0, floor: 0 }
+  private toneTarget: THREE.WebGLRenderTarget | null = null
+  private toneScene = new THREE.Scene()
+  private toneCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+  private toneMaterial: THREE.ShaderMaterial
   private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, CAMERA_DISTANCE * 2 + 40)
   private points: THREE.Points | null = null
   private pointMaterial: THREE.ShaderMaterial
@@ -291,6 +405,38 @@ export class SpiralScene {
       depthWrite: false,
     })
 
+    this.trailMaterial = new THREE.ShaderMaterial({
+      vertexShader: TRAIL_VERT,
+      fragmentShader: POINT_FRAG,
+      uniforms: {
+        uNow: { value: 0 },
+        uHead: { value: -1 },
+        uMorph: { value: 0 },
+        uScatter: { value: 0 },
+        uProj: { value: 1 },
+        uDot: { value: SPECK_SIZE },
+      },
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    })
+    this.toneMaterial = new THREE.ShaderMaterial({
+      vertexShader: TONE_VERT,
+      fragmentShader: TONE_FRAG,
+      uniforms: {
+        uInk: { value: null },
+        uPivot: { value: 0 },
+        uFloor: { value: 0 },
+        uMorph: { value: 0 },
+      },
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    })
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.toneMaterial)
+    quad.frustumCulled = false
+    this.toneScene.add(quad)
+
     this.helix = this.buildHelix()
     this.scene.add(this.helix)
     this.buildSpokes()
@@ -312,7 +458,7 @@ export class SpiralScene {
     )
     this.sheet.visible = false
     this.sheet.renderOrder = -1
-    this.scene.add(this.sheet)
+    this.overlay.add(this.sheet)
 
     const headGeometry = new THREE.BufferGeometry()
     this.headPosition = new THREE.BufferAttribute(new Float32Array(3), 3)
@@ -320,7 +466,7 @@ export class SpiralScene {
     this.head = new THREE.Points(headGeometry, this.headMaterial)
     this.head.frustumCulled = false
     this.head.visible = false
-    this.scene.add(this.head)
+    this.overlay.add(this.head)
   }
 
   // ── Building ──────────────────────────────────────────────────────────
@@ -457,6 +603,67 @@ export class SpiralScene {
     this.scene.add(this.points)
   }
 
+  /** Every tap's tail or ringing, one geometry, in the current turn's plane. */
+  private buildTrail(): void {
+    if (this.trail) {
+      this.scene.remove(this.trail)
+      this.trail.geometry.dispose()
+      this.trail = null
+    }
+    const ink = this.inkScale()
+    const trails = this.marks.flatMap((tap) => {
+      const trail = sampleTrail(tap, ink)
+      return trail ? [{ born: this.born.get(tap.id) ?? 0, trail }] : []
+    })
+    const total = trails.reduce((n, t) => n + t.trail.count, 0)
+    if (total === 0) return
+    const offsets = new Float32Array(total * 2)
+    const jitters = new Float32Array(total * 2)
+    const alpha = new Float32Array(total)
+    const born = new Float32Array(total)
+    const reveal = new Float32Array(total)
+    const ring = new Float32Array(total)
+    const ringPos = new Float32Array(total)
+    const reach = new Float32Array(total)
+    const at = new Float32Array(total)
+    const needs = new Float32Array(total)
+    const stray = REVERB_MAX_SCATTER / CIRCLE_RADIUS
+    let i = 0
+    for (const { born: b, trail } of trails) {
+      for (let k = 0; k < trail.count; k++, i++) {
+        offsets[i * 2] = trail.xs[k]
+        offsets[i * 2 + 1] = trail.ys[k]
+        jitters[i * 2] = trail.jxs[k] * stray
+        jitters[i * 2 + 1] = trail.jys[k] * stray
+        alpha[i] = trail.alpha[k]
+        born[i] = b
+        reveal[i] = b > 0 ? trail.reveal[k] : 0
+        if (trail.ring) {
+          ring[i] = 1
+          ringPos[i] = trail.ring.pos
+          reach[i] = Math.max(1e-4, trail.ring.reach)
+          at[i] = trail.ring.at[k]
+          needs[i] = trail.ring.needs[k]
+        }
+      }
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(total * 3), 3))
+    geometry.setAttribute('aOffset', new THREE.BufferAttribute(offsets, 2))
+    geometry.setAttribute('aJitter', new THREE.BufferAttribute(jitters, 2))
+    geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1))
+    geometry.setAttribute('aBorn', new THREE.BufferAttribute(born, 1))
+    geometry.setAttribute('aReveal', new THREE.BufferAttribute(reveal, 1))
+    geometry.setAttribute('aRing', new THREE.BufferAttribute(ring, 1))
+    geometry.setAttribute('aRingPos', new THREE.BufferAttribute(ringPos, 1))
+    geometry.setAttribute('aReach', new THREE.BufferAttribute(reach, 1))
+    geometry.setAttribute('aAt', new THREE.BufferAttribute(at, 1))
+    geometry.setAttribute('aNeeds', new THREE.BufferAttribute(needs, 1))
+    this.trail = new THREE.Points(geometry, this.trailMaterial)
+    this.trail.frustumCulled = false
+    this.scene.add(this.trail)
+  }
+
   // ── Inputs ────────────────────────────────────────────────────────────
 
   setMarks(marks: readonly MarkTap[]): void {
@@ -465,7 +672,26 @@ export class SpiralScene {
       this.current = 0
       this.lastHead = null
     }
+    // Only a tap that was not here a moment ago sweeps its tail out; the
+    // rest arrive finished, because nothing about them just happened. Times
+    // are seconds, offset so a "long ago" of 0 is never mistaken for now.
+    const now = performance.now()
+    const born = new Map<string, number>()
+    for (const tap of marks) {
+      const was = this.born.get(tap.id)
+      born.set(tap.id, was ?? now / 1000 + 1)
+    }
+    if (marks.some((tap) => !this.born.has(tap.id))) {
+      this.revealUntil = now + (TAIL_GROWTH_S + 1) * 1000
+    }
+    this.born = born
     this.buildPoints()
+    this.buildTrail()
+  }
+
+  /** HIGH PASS FILTER and SATURATE, each 0..100. */
+  setTone(highpass: number, saturate: number): void {
+    this.tone = toneStops(highpass, saturate)
   }
 
   setBeats(beats: number): void {
@@ -496,6 +722,7 @@ export class SpiralScene {
   /** REVERB, 0..1. */
   setScatter(amount: number): void {
     this.pointMaterial.uniforms.uScatter.value = amount
+    this.trailMaterial.uniforms.uScatter.value = amount
   }
 
   setMode(mode: Mode, now: number): void {
@@ -520,7 +747,11 @@ export class SpiralScene {
     this.renderer.setPixelRatio(1)
     this.renderer.setSize(this.width, this.height, false)
     this.headMaterial.uniforms.uSize.value = HEAD_PX * dpr
-    if (this.inkScale() !== inkBefore) this.buildPoints()
+    if (this.inkScale() !== inkBefore) {
+      this.buildPoints()
+      this.buildTrail()
+    }
+    this.toneTarget?.setSize(this.width, this.height)
     this.scroll = this.clampScroll(this.scroll)
   }
 
@@ -572,7 +803,10 @@ export class SpiralScene {
 
   /** True while the camera is still moving. */
   isAnimating(now: number): boolean {
-    return this.blend !== this.blendTarget && now - this.blendStart < TRANSITION_MS + 50
+    return (
+      (this.blend !== this.blendTarget && now - this.blendStart < TRANSITION_MS + 50) ||
+      now < this.revealUntil
+    )
   }
 
   private placeCamera(): void {
@@ -603,6 +837,7 @@ export class SpiralScene {
     this.camera.updateMatrixWorld()
     // Pixels per ring radius, for the specks' size.
     this.pointMaterial.uniforms.uProj.value = this.height / vFrame
+    this.trailMaterial.uniforms.uProj.value = this.height / vFrame
   }
 
   frame(now: number): void {
@@ -629,6 +864,10 @@ export class SpiralScene {
     this.lineMaterial.uniforms.uMorph.value = morph
     this.lineMaterial.uniforms.uCurrent.value = this.current
     this.spokeMaterial.uniforms.uMorph.value = morph
+    this.trailMaterial.uniforms.uMorph.value = morph
+    this.trailMaterial.uniforms.uNow.value = now / 1000 + 1
+    this.trailMaterial.uniforms.uHead.value = head ?? -1
+    if (this.trail) this.trail.position.x = (this.current + 0.5) * pitch
     this.helix.scale.x = pitch
     // The grid sits in the plane the playhead is passing through; stopped,
     // mid-turn, where the canvas drew it.
@@ -645,7 +884,39 @@ export class SpiralScene {
     }
 
     this.placeCamera()
-    this.renderer.render(this.scene, this.camera)
+    this.render(morph)
+  }
+
+  /** The recorded frame, through the tone map when one is engaged, then the
+      overlay on top. With both tone sliders at 0 the map is skipped
+      entirely, so "0 changes nothing" is literally true. */
+  private render(morph: number): void {
+    const { pivot, floor } = this.tone
+    const toning = (pivot > 0 || floor > 0) && morph < 1
+    this.renderer.autoClear = false
+    this.renderer.setRenderTarget(null)
+    this.renderer.clear()
+    if (toning) {
+      if (!this.toneTarget) {
+        this.toneTarget = new THREE.WebGLRenderTarget(this.width, this.height, {
+          depthBuffer: false,
+        })
+      }
+      this.renderer.setRenderTarget(this.toneTarget)
+      this.renderer.setClearColor(0x000000, 0)
+      this.renderer.clear()
+      this.renderer.render(this.scene, this.camera)
+      this.renderer.setRenderTarget(null)
+      const u = this.toneMaterial.uniforms
+      u.uInk.value = this.toneTarget.texture
+      u.uPivot.value = pivot
+      u.uFloor.value = floor
+      u.uMorph.value = morph
+      this.renderer.render(this.toneScene, this.toneCamera)
+    } else {
+      this.renderer.render(this.scene, this.camera)
+    }
+    this.renderer.render(this.overlay, this.camera)
   }
 
   // ── Hit testing ───────────────────────────────────────────────────────
@@ -685,6 +956,10 @@ export class SpiralScene {
 
   dispose(): void {
     this.points?.geometry.dispose()
+    this.trail?.geometry.dispose()
+    this.trailMaterial.dispose()
+    this.toneTarget?.dispose()
+    this.toneMaterial.dispose()
     this.helix.geometry.dispose()
     this.spokes?.geometry.dispose()
     this.sheet.geometry.dispose()
