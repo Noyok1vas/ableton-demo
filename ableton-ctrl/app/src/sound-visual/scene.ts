@@ -69,6 +69,12 @@ const HIGHLIGHT_ALPHA = 0.1
 const HEAD_PX = 14
 /** The camera move, and the morph with it. */
 const TRANSITION_MS = 650
+/** ARRANGE follows the playhead along the song, easing toward it with this
+    time constant — quick enough to keep up, slow enough not to jitter. */
+const FOLLOW_TAU_MS = 220
+/** After a finger lets go of the song, how long it is left where it was put
+    before the view goes back to following the playhead. */
+const FOLLOW_RESUME_MS = 2500
 /** The canvas's ink was tuned at this shorter side, in CSS px; a larger
     canvas buys more specks. */
 const REF_MIN_DIM = 500
@@ -354,6 +360,11 @@ export class SpiralScene {
       and where along the axis (in ring radii) the screen is centred. */
   private visible = 5
   private scroll = 0
+  /** A finger is on the song: the view is the finger's, not the playhead's. */
+  private holding = false
+  /** …and stays the finger's until then, after it lets go. */
+  private followPausedUntil = 0
+  private lastFrame = 0
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -788,6 +799,17 @@ export class SpiralScene {
       finger, so a drag to the left shows what comes later. */
   panByPixels(dx: number): void {
     this.scroll = this.clampScroll(this.scroll - dx * this.worldPerPixel())
+    this.pauseFollow()
+  }
+
+  /** A finger is down on the song, or has just come off it. */
+  setHolding(on: boolean): void {
+    this.holding = on
+    this.pauseFollow()
+  }
+
+  private pauseFollow(): void {
+    this.followPausedUntil = performance.now() + FOLLOW_RESUME_MS
   }
 
   /** Pinch: `ratio` > 1 spreads the turns (fewer across the screen), < 1
@@ -796,6 +818,7 @@ export class SpiralScene {
     const before = this.pitch()
     this.visible = clamp(this.visible / ratio, MIN_VISIBLE, MAX_VISIBLE)
     this.scroll = this.clampScroll((this.scroll / before) * this.pitch())
+    this.pauseFollow()
   }
 
   /** Ring radii per canvas px. */
@@ -852,6 +875,20 @@ export class SpiralScene {
       if (t >= 1) this.blend = this.blendTarget
     }
     const head = this.playhead()
+
+    // ARRANGE, playing, nobody holding the song: keep the playhead's light in
+    // the middle of the screen, as far as the song's ends allow.
+    const dt = this.lastFrame > 0 ? Math.min(100, now - this.lastFrame) : 16
+    this.lastFrame = now
+    if (
+      this.blendTarget === 1 &&
+      head !== null &&
+      !this.holding &&
+      now >= this.followPausedUntil
+    ) {
+      const want = this.clampScroll((this.current + head) * this.pitch())
+      this.scroll += (want - this.scroll) * (1 - Math.exp(-dt / FOLLOW_TAU_MS))
+    }
 
     const morph = easeInOut(this.blend)
     const pitch = this.pitch()
