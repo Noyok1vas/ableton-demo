@@ -75,22 +75,22 @@
 }
 
 /* The sections, a stack of sheets in the bottom row's middle, ARRANGE only.
-   Upright frames, sheared so they rise to the right as the helix's turns do
-   seen from the side; each later sheet sits over the one before it. */
+   Each sheet is an upright frame sheared about its own centre so it rises to
+   the right; the stack itself stays level. Later sheets sit over earlier
+   ones, outlines only, so every edge shows through. */
 .ms-stack {
   position: relative;
   flex: 0 0 auto;
-  transform: skewY(-30deg);
   touch-action: none;
   cursor: pointer;
 }
 
 .ms-sheet {
   position: absolute;
-  top: 0;
-  outline: 1px solid #ffffff;
-  outline-offset: -0.5px;
+  box-sizing: border-box;
+  border: var(--stroke-strong) solid #ffffff;
   background: transparent;
+  transform: skewY(var(--sheet-skew));
   transition: background var(--motion-fast);
 }
 
