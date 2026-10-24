@@ -1,18 +1,22 @@
 /**
  * The Sound Visual as one three.js scene, in both of its modes.
  *
- * The loop is a helix: one turn per pass of the loop, 12 o'clock at the top,
- * clockwise, each turn sinking PITCH along the axis. The ring the 2D canvas
- * drew is this helix seen straight down its axis — which is what CREATE is: a
- * camera on the axis with a near-orthographic lens, framing the current turn
- * exactly as the canvas framed its ring, every other turn faded out. ARRANGE
- * tilts the same camera off the axis, opens the lens, and pulls back until the
- * whole song is in frame; every mark collapses into a flat grainy dot sized by
- * how hard it was played. Switching modes is one camera move between those
- * two poses, with the marks morphing on the way.
+ * The loop is a helix lying on its side: one turn per pass of the loop, time
+ * running left to right along the axis, 12 o'clock at the top of every turn,
+ * clockwise. The ring the 2D canvas drew is this helix seen straight down its
+ * axis — which is what CREATE is: a camera on the axis with a
+ * near-orthographic lens, framing the current turn exactly as the canvas
+ * framed its ring, every other turn faded out. ARRANGE swings the same camera
+ * round to the side, a little above, and brings it in until a turn nearly
+ * fills the screen's height: the song runs off both edges, and is scrolled
+ * along and pinched tighter or looser (the turns' spacing, not the lens) to
+ * show three to eight of its passes. Every mark collapses into a flat grainy
+ * dot sized by how hard it was played. Switching modes is one camera move
+ * between those two poses, with the marks morphing on the way.
  *
  * Drawn flat on purpose: white specks on the glass, the same ink as the 2D
- * canvas and the pads — nothing lit, no volume.
+ * canvas and the pads — nothing lit, no volume. The playhead is one point of
+ * light travelling the helix.
  *
  * Everything is in ring radii: the ring is one world unit across its radius.
  */
@@ -36,19 +40,20 @@ export type Mode = 'create' | 'arrange'
 
 /** How many passes of the loop the song is, for now: the pattern, repeated. */
 export const TURNS = 8
-/** How far a turn sinks along the axis, in ring radii. */
-const PITCH = 0.7
+/** How many passes ARRANGE shows across the screen, at most and at least. */
+export const MIN_VISIBLE = 3
+export const MAX_VISIBLE = TURNS
 
 const BASE_ALPHA = 0.7
-/** The grid's ink; brighter than the canvas's 0.08 because here it is white
-    on black, where the same alpha reads fainter. */
-const GRID_ALPHA = 0.12
-const PLAYHEAD_ALPHA = 0.06
-const PLAYHEAD_SWEEP = 0.62
+/** The helix's own ink; brighter than the canvas's 0.08 because here it is
+    white on black, where the same alpha reads fainter. */
+const GRID_ALPHA = 0.14
 /** Radius of the ball a mark becomes, in ring radii, before the mark's size. */
 const BALL_RADIUS = 0.085
 /** The share of a mark's specks that print its ball. */
 const BALL_SHARE = 0.18
+/** The playhead's light, in CSS px across. */
+const HEAD_PX = 14
 /** The camera move, and the morph with it. */
 const TRANSITION_MS = 650
 /** The canvas's ink was tuned at this shorter side, in CSS px; a larger
@@ -58,24 +63,36 @@ const MAX_INK = 4
 
 /** A camera pose. `frame` is the height of the view at the target, in ring
     radii; the distance follows from it and the lens, so a pose can open its
-    lens without the target plane changing size. */
-type Pose = { fov: number; elevation: number; targetZ: number; frame: number }
+    lens without the target plane changing size. `yaw` swings the camera off
+    the axis, round the vertical; `elevation` lifts it. */
+type Pose = { fov: number; yaw: number; elevation: number; frame: number }
 
-const CREATE_FOV = 8
-const ARRANGE_FOV = 42
-const ARRANGE_ELEVATION = (54 * Math.PI) / 180
-/** The ring at CIRCLE_RADIUS of the shorter side: that side is this many radii. */
-const CREATE_FRAME = 1 / CIRCLE_RADIUS
-const ARRANGE_FRAME = 7.2
+const CREATE: Pose = { fov: 8, yaw: 0, elevation: 0, frame: 1 / CIRCLE_RADIUS }
+const ARRANGE: Pose = {
+  fov: 30,
+  yaw: (78 * Math.PI) / 180,
+  elevation: (12 * Math.PI) / 180,
+  // A turn is two radii tall; this leaves a little glass above and below.
+  frame: 2.4,
+}
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
-/** The helix: a loop position on turn `k`, in world units. Screen y is down
-    in the canvas convention and up in three, so y is flipped. */
-export function helixPoint(pos: number, turn: number, out = new THREE.Vector3()): THREE.Vector3 {
+/**
+ * The helix: a loop position on turn `k`, in world units, at `pitch` per turn
+ * along +X. Seen from +X down the axis with Y up, screen-right is −Z, so the
+ * canvas's clockwise ring (x right, y down) lands as z = −cos θ, y = −sin θ.
+ */
+export function helixPoint(
+  pos: number,
+  turn: number,
+  pitch: number,
+  out = new THREE.Vector3(),
+): THREE.Vector3 {
   const theta = pos * Math.PI * 2 - Math.PI / 2
-  return out.set(Math.cos(theta), -Math.sin(theta), -(turn + pos) * PITCH)
+  return out.set((turn + pos) * pitch, -Math.sin(theta), -Math.cos(theta))
 }
 
 const POINT_VERT = /* glsl */ `
@@ -94,9 +111,11 @@ const POINT_VERT = /* glsl */ `
   uniform float uDot;
   varying float vAlpha;
   void main() {
-    vec3 center = aCenter + vec3(0.0, 0.0, -aTurn * uPitch);
+    vec3 center = vec3((aCenter.x + aTurn) * uPitch, aCenter.y, aCenter.z);
+    // The mark lies in its turn's plane: screen-right is -Z, screen-up is +Y.
     vec2 mark = aOffset + aJitter * uScatter;
-    vec4 mv = modelViewMatrix * vec4(center + vec3(mark * (1.0 - uMorph), 0.0), 1.0);
+    vec3 inPlane = vec3(0.0, mark.y, -mark.x) * (1.0 - uMorph);
+    vec4 mv = modelViewMatrix * vec4(center + inPlane, 1.0);
     // The ball faces the camera whatever the pose: a flat dot, not a sphere.
     mv.xy += aBall * uMorph;
     gl_Position = projectionMatrix * mv;
@@ -140,45 +159,38 @@ const LINE_FRAG = /* glsl */ `
   }
 `
 
-/** The playhead: the canvas's conic gradient, tinting the sweep behind the
-    leading edge, on a disc in the current turn's plane. */
+/** The playhead: one soft point of light, a fixed size on screen. */
 const HEAD_VERT = /* glsl */ `
-  varying vec2 vPos;
+  uniform float uSize;
   void main() {
-    vPos = position.xy;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = uSize;
   }
 `
 
 const HEAD_FRAG = /* glsl */ `
-  uniform float uHead;
-  varying vec2 vPos;
   void main() {
-    // Clockwise on screen is increasing angle with y down.
-    float theta = atan(-vPos.y, vPos.x);
-    float f = fract((theta - (uHead * 6.2831853 - 1.5707963)) / 6.2831853);
-    float back = 1.0 - ${PLAYHEAD_SWEEP};
-    float mid = mix(back, 1.0, 0.6);
-    float a = 0.0;
-    if (f > mid) a = mix(0.3, 1.0, (f - mid) / (1.0 - mid));
-    else if (f > back) a = mix(0.0, 0.3, (f - back) / (mid - back));
-    gl_FragColor = vec4(1.0, 1.0, 1.0, a * ${PLAYHEAD_ALPHA});
+    float d = length(gl_PointCoord - 0.5) * 2.0;
+    if (d > 1.0) discard;
+    // A bright core, falling off to nothing at the rim.
+    float a = smoothstep(1.0, 0.0, d);
+    gl_FragColor = vec4(1.0, 1.0, 1.0, a * a);
   }
 `
 
 export class SpiralScene {
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
-  private camera = new THREE.PerspectiveCamera(CREATE_FOV, 1, 0.1, 100)
+  private camera = new THREE.PerspectiveCamera(CREATE.fov, 1, 0.1, 100)
   private points: THREE.Points | null = null
   private pointMaterial: THREE.ShaderMaterial
   private lineMaterial: THREE.ShaderMaterial
-  private spokes: THREE.LineSegments | null = null
-  private head: THREE.Mesh
+  private helix: THREE.Line
+  private head: THREE.Points
   private headMaterial: THREE.ShaderMaterial
+  private headPosition: THREE.BufferAttribute
 
   private marks: readonly MarkTap[] = []
-  private beats = 8
   private width = 1
   private height = 1
   private dpr = 1
@@ -194,6 +206,11 @@ export class SpiralScene {
   private current = 0
   private lastHead: number | null = null
 
+  /** ARRANGE's view along the song: how many turns are across the screen,
+      and where along the axis (in ring radii) the screen is centred. */
+  private visible = 5
+  private scroll = 0
+
   constructor(
     canvas: HTMLCanvasElement,
     /** Read every frame: 0..1 through the loop, or null when stopped. */
@@ -207,7 +224,6 @@ export class SpiralScene {
       powerPreference: 'high-performance',
     })
     this.renderer.setClearColor(0x000000, 0)
-    this.renderer.autoClear = true
 
     this.pointMaterial = new THREE.ShaderMaterial({
       vertexShader: POINT_VERT,
@@ -215,7 +231,7 @@ export class SpiralScene {
       uniforms: {
         uMorph: { value: 0 },
         uScatter: { value: 0 },
-        uPitch: { value: PITCH },
+        uPitch: { value: 1 },
         uCurrent: { value: 0 },
         uKeep: { value: BALL_SHARE },
         uProj: { value: 1 },
@@ -236,23 +252,28 @@ export class SpiralScene {
     this.headMaterial = new THREE.ShaderMaterial({
       vertexShader: HEAD_VERT,
       fragmentShader: HEAD_FRAG,
-      uniforms: { uHead: { value: 0 } },
+      uniforms: { uSize: { value: HEAD_PX } },
       transparent: true,
       depthTest: false,
       depthWrite: false,
     })
 
-    this.scene.add(this.buildHelix())
-    this.head = new THREE.Mesh(new THREE.CircleGeometry(3.2, 96), this.headMaterial)
+    this.helix = this.buildHelix()
+    this.scene.add(this.helix)
+
+    const headGeometry = new THREE.BufferGeometry()
+    this.headPosition = new THREE.BufferAttribute(new Float32Array(3), 3)
+    headGeometry.setAttribute('position', this.headPosition)
+    this.head = new THREE.Points(headGeometry, this.headMaterial)
+    this.head.frustumCulled = false
     this.head.visible = false
-    this.head.renderOrder = -1
     this.scene.add(this.head)
-    this.buildSpokes()
   }
 
   // ── Building ──────────────────────────────────────────────────────────
 
-  /** The helix itself, every turn: seen down the axis it is the ring. */
+  /** The helix itself, every turn, built at unit pitch and stretched along
+      the axis to the pitch of the moment. Seen down the axis it is the ring. */
   private buildHelix(): THREE.Line {
     const steps = 192 * TURNS
     const positions = new Float32Array((steps + 1) * 3)
@@ -261,7 +282,7 @@ export class SpiralScene {
     for (let i = 0; i <= steps; i++) {
       const t = (i / steps) * TURNS
       const turn = Math.min(TURNS - 1, Math.floor(t))
-      helixPoint(t - turn, turn, p)
+      helixPoint(t - turn, turn, 1, p)
       positions.set([p.x, p.y, p.z], i * 3)
       turns[i] = turn
     }
@@ -273,33 +294,6 @@ export class SpiralScene {
     return line
   }
 
-  /** The beat grid: spokes from the axis, in the current turn's plane. */
-  private buildSpokes(): void {
-    if (this.spokes) {
-      this.scene.remove(this.spokes)
-      this.spokes.geometry.dispose()
-    }
-    const reach = 3.2
-    const positions = new Float32Array(this.beats * 6)
-    const turns = new Float32Array(this.beats * 2)
-    for (let beat = 0; beat < this.beats; beat++) {
-      const theta = (beat / this.beats) * Math.PI * 2 - Math.PI / 2
-      positions.set([0, 0, 0, Math.cos(theta) * reach, -Math.sin(theta) * reach, 0], beat * 6)
-      // Always the current turn's: the spokes move with it (see frame).
-      turns[beat * 2] = -1
-      turns[beat * 2 + 1] = -1
-    }
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    geometry.setAttribute('aTurn', new THREE.BufferAttribute(turns, 1))
-    // Its own material so it never fades: `aTurn` of -1 would otherwise hide it.
-    const material = this.lineMaterial.clone()
-    material.uniforms.uMorph.value = 1
-    this.spokes = new THREE.LineSegments(geometry, material)
-    this.spokes.frustumCulled = false
-    this.scene.add(this.spokes)
-  }
-
   /** Ink correction for a canvas larger than the reference; 1 at or below. */
   private inkScale(): number {
     const css = Math.min(this.width, this.height) / this.dpr
@@ -308,8 +302,8 @@ export class SpiralScene {
 
   /**
    * Every mark's specks, one geometry, drawn once per turn of the song. Each
-   * speck knows where its mark sits on the helix, where it lies in the mark,
-   * and where it goes when the mark collapses into its ball.
+   * speck knows where its mark sits on the helix (at unit pitch), where it
+   * lies in the mark, and where it goes when the mark collapses into its ball.
    */
   private buildPoints(): void {
     if (this.points) {
@@ -330,7 +324,7 @@ export class SpiralScene {
     const c = new THREE.Vector3()
     let i = 0
     for (const { tap, specks } of sampled) {
-      helixPoint(tap.pos, 0, c)
+      helixPoint(tap.pos, 0, 1, c)
       const unit = unitOf(tap)
       const turn = turnOf(tap)
       const cos = Math.cos(turn) * unit
@@ -344,7 +338,8 @@ export class SpiralScene {
       for (let k = 0; k < specks.count; k++, i++) {
         const fx = specks.xs[k]
         const fy = specks.ys[k]
-        // Screen convention (y down) as the canvas placed them, then flipped.
+        // Screen convention (x right, y down) as the canvas placed them; the
+        // shader turns that into the turn's plane. Stored as (right, up).
         const x = fx * cos - fy * sin
         const y = fx * sin + fy * cos
         centers[i * 3] = c.x
@@ -388,12 +383,6 @@ export class SpiralScene {
     this.buildPoints()
   }
 
-  setBeats(beats: number): void {
-    if (beats === this.beats) return
-    this.beats = beats
-    this.buildSpokes()
-  }
-
   /** REVERB, 0..1. */
   setScatter(amount: number): void {
     this.pointMaterial.uniforms.uScatter.value = amount
@@ -405,6 +394,8 @@ export class SpiralScene {
     this.blendFrom = this.blend
     this.blendTarget = mode === 'arrange' ? 1 : 0
     this.blendStart = now
+    // Arriving in ARRANGE, the screen is centred on the turn you were on.
+    if (mode === 'arrange') this.scroll = this.clampScroll((this.current + 0.5) * this.pitch())
   }
 
   getMode(): Mode {
@@ -418,7 +409,50 @@ export class SpiralScene {
     this.dpr = dpr
     this.renderer.setPixelRatio(1)
     this.renderer.setSize(this.width, this.height, false)
+    this.headMaterial.uniforms.uSize.value = HEAD_PX * dpr
     if (this.inkScale() !== inkBefore) this.buildPoints()
+    this.scroll = this.clampScroll(this.scroll)
+  }
+
+  // ── ARRANGE's view along the song ─────────────────────────────────────
+
+  /** The width of the screen at the target, in ring radii, in ARRANGE. */
+  private frameWidth(): number {
+    const aspect = this.width / this.height
+    return aspect < 1 ? ARRANGE.frame : ARRANGE.frame * aspect
+  }
+
+  /** The turns' spacing along the axis: `visible` of them across the screen. */
+  private pitch(): number {
+    return this.frameWidth() / this.visible
+  }
+
+  private clampScroll(x: number): number {
+    const half = this.frameWidth() / 2
+    const length = TURNS * this.pitch()
+    if (length <= half * 2) return length / 2
+    return clamp(x, half, length - half)
+  }
+
+  /** Scroll the song by a drag of `dx` canvas px — the helix follows the
+      finger, so a drag to the left shows what comes later. */
+  panByPixels(dx: number): void {
+    this.scroll = this.clampScroll(this.scroll - dx * this.worldPerPixel())
+  }
+
+  /** Pinch: `ratio` > 1 spreads the turns (fewer across the screen), < 1
+      packs them. The turn under the middle of the screen stays put. */
+  zoomBy(ratio: number): void {
+    const before = this.pitch()
+    this.visible = clamp(this.visible / ratio, MIN_VISIBLE, MAX_VISIBLE)
+    this.scroll = this.clampScroll((this.scroll / before) * this.pitch())
+  }
+
+  /** Ring radii per canvas px at the target, in ARRANGE's pose. */
+  private worldPerPixel(): number {
+    const aspect = this.width / this.height
+    const vFrame = aspect < 1 ? ARRANGE.frame / aspect : ARRANGE.frame
+    return vFrame / this.height
   }
 
   // ── Frames ────────────────────────────────────────────────────────────
@@ -428,19 +462,17 @@ export class SpiralScene {
     return this.blend !== this.blendTarget && now - this.blendStart < TRANSITION_MS + 50
   }
 
-  private pose(): Pose {
-    const u = easeInOut(this.blend)
-    const mid = -((TURNS - 1) * PITCH) / 2
-    return {
-      fov: lerp(CREATE_FOV, ARRANGE_FOV, u),
-      elevation: lerp(0, ARRANGE_ELEVATION, u),
-      targetZ: lerp(-(this.current + 0.5) * PITCH, mid, u),
-      frame: lerp(CREATE_FRAME, ARRANGE_FRAME, u),
-    }
-  }
-
   private placeCamera(): void {
-    const { fov, elevation, targetZ, frame } = this.pose()
+    const u = easeInOut(this.blend)
+    const fov = lerp(CREATE.fov, ARRANGE.fov, u)
+    const yaw = lerp(CREATE.yaw, ARRANGE.yaw, u)
+    const elevation = lerp(CREATE.elevation, ARRANGE.elevation, u)
+    const frame = lerp(CREATE.frame, ARRANGE.frame, u)
+    const pitch = this.pitch()
+    // CREATE looks at the current turn; ARRANGE at wherever the song is
+    // scrolled to.
+    const targetX = lerp((this.current + 0.5) * pitch, this.scroll, u)
+
     const aspect = this.width / this.height
     // `frame` spans the SHORTER side, as the canvas's ring did.
     const vFrame = aspect < 1 ? frame / aspect : frame
@@ -449,13 +481,14 @@ export class SpiralScene {
     this.camera.fov = fov
     this.camera.aspect = aspect
     this.camera.near = Math.max(0.05, distance * 0.05)
-    this.camera.far = distance * 4 + TURNS * PITCH
+    this.camera.far = distance * 4 + TURNS * pitch
     this.camera.updateProjectionMatrix()
-    const target = new THREE.Vector3(0, 0, targetZ)
+    const target = new THREE.Vector3(targetX, 0, 0)
+    // On the axis (+X) at yaw 0; swung round toward +Z as the yaw opens.
     this.camera.position.set(
-      0,
+      targetX + Math.cos(elevation) * Math.cos(yaw) * distance,
       Math.sin(elevation) * distance,
-      targetZ + Math.cos(elevation) * distance,
+      Math.cos(elevation) * Math.sin(yaw) * distance,
     )
     this.camera.up.set(0, 1, 0)
     this.camera.lookAt(target)
@@ -480,18 +513,21 @@ export class SpiralScene {
     this.lastHead = head
 
     const morph = easeInOut(this.blend)
+    const pitch = this.pitch()
     this.pointMaterial.uniforms.uMorph.value = morph
     this.pointMaterial.uniforms.uCurrent.value = this.current
+    this.pointMaterial.uniforms.uPitch.value = pitch
     this.lineMaterial.uniforms.uMorph.value = morph
     this.lineMaterial.uniforms.uCurrent.value = this.current
+    this.helix.scale.x = pitch
 
-    // The spokes and the sweep sit in the plane the playhead is passing
-    // through; stopped, they rest mid-turn where the canvas drew them.
-    const planeZ = -(this.current + (head ?? 0.5)) * PITCH
-    if (this.spokes) this.spokes.position.z = planeZ
-    this.head.position.z = planeZ
+    // The light on the helix, where the loop is now.
     this.head.visible = head !== null
-    this.headMaterial.uniforms.uHead.value = head ?? 0
+    if (head !== null) {
+      const p = helixPoint(head, this.current, pitch)
+      this.headPosition.setXYZ(0, p.x, p.y, p.z)
+      this.headPosition.needsUpdate = true
+    }
 
     this.placeCamera()
     this.renderer.render(this.scene, this.camera)
@@ -502,7 +538,7 @@ export class SpiralScene {
   /** Where a loop position on the current turn lands on the canvas, in
       canvas px from the top-left. */
   project(pos: number): { x: number; y: number } {
-    const p = helixPoint(pos, this.current).project(this.camera)
+    const p = helixPoint(pos, this.current, this.pitch()).project(this.camera)
     return { x: ((p.x + 1) / 2) * this.width, y: ((1 - p.y) / 2) * this.height }
   }
 
@@ -534,7 +570,7 @@ export class SpiralScene {
 
   dispose(): void {
     this.points?.geometry.dispose()
-    this.spokes?.geometry.dispose()
+    this.helix.geometry.dispose()
     this.head.geometry.dispose()
     this.pointMaterial.dispose()
     this.lineMaterial.dispose()

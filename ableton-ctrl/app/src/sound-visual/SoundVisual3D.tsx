@@ -5,6 +5,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from 'react'
 import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useSession as useRhythmicIntent } from '../rhythmic-intent/session.tsx'
@@ -30,12 +31,13 @@ const MAX_TAPS = 64
  * pattern, the snapshots and the pointer; the scene owns every frame.
  *
  * `mode` is CREATE — the ring, where marks are made and moved — or ARRANGE,
- * the whole song as a helix, for looking at. The scene animates between them.
+ * the whole song as a helix, for looking at: dragged along, pinched to show
+ * more or fewer of its passes. The scene animates between them.
  */
 export function SoundVisual3D({ mode }: { mode: Mode }) {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
-  const { rendered, playhead, removeTap, moveTap, beatsPerLoop } = useRhythmicIntent()
+  const { rendered, playhead, removeTap, moveTap } = useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sceneRef = useRef<SpiralScene | null>(null)
   const rafRef = useRef(0)
@@ -140,11 +142,6 @@ export function SoundVisual3D({ mode }: { mode: Mode }) {
   }, [marks])
 
   useEffect(() => {
-    sceneRef.current?.setBeats(beatsPerLoop)
-    schedule()
-  }, [beatsPerLoop])
-
-  useEffect(() => {
     sceneRef.current?.setScatter((fx.reverb - FX_MIN) / (FX_MAX - FX_MIN))
     schedule()
   }, [fx.reverb])
@@ -181,12 +178,28 @@ export function SoundVisual3D({ mode }: { mode: Mode }) {
   )
   const [grabbing, setGrabbing] = useState(false)
   const [hovering, setHovering] = useState(false)
+  // ARRANGE: every finger on the glass, so one drags the song along and two
+  // pinch its turns closer or further apart.
+  const fingersRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<number | null>(null)
+
+  const fingerSpan = () => {
+    const [a, b] = [...fingersRef.current.values()]
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : null
+  }
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (event.button !== 0 || mode !== 'create') return
     const scene = sceneRef.current
     const point = pointerAt(event)
     if (!scene || !point) return
+    if (mode === 'arrange') {
+      event.currentTarget.setPointerCapture(event.pointerId)
+      fingersRef.current.set(event.pointerId, point)
+      pinchRef.current = fingerSpan()
+      setGrabbing(true)
+      return
+    }
+    if (event.button !== 0) return
     const id = scene.markAt(point.x, point.y)
     if (!id) return
     const tap = renderedRef.current.find((t) => t.id === id)
@@ -205,6 +218,20 @@ export function SoundVisual3D({ mode }: { mode: Mode }) {
     const scene = sceneRef.current
     const point = pointerAt(event)
     if (!scene || !point) return
+    const fingers = fingersRef.current
+    if (fingers.has(event.pointerId)) {
+      const was = fingers.get(event.pointerId)!
+      fingers.set(event.pointerId, point)
+      if (fingers.size >= 2) {
+        const span = fingerSpan()
+        if (span && pinchRef.current) scene.zoomBy(span / pinchRef.current)
+        pinchRef.current = span
+      } else {
+        scene.panByPixels(point.x - was.x)
+      }
+      schedule()
+      return
+    }
     const drag = dragRef.current
     if (!drag) {
       setHovering(mode === 'create' && scene.markAt(point.x, point.y) !== null)
@@ -218,9 +245,25 @@ export function SoundVisual3D({ mode }: { mode: Mode }) {
   }
 
   const endDrag = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (fingersRef.current.delete(event.pointerId)) {
+      pinchRef.current = fingerSpan()
+      if (fingersRef.current.size === 0) setGrabbing(false)
+      return
+    }
     if (dragRef.current?.pointerId !== event.pointerId) return
     dragRef.current = null
     setGrabbing(false)
+  }
+
+  /** A trackpad: two fingers scroll the song along; a pinch (which arrives as
+      a wheel with ctrl held) spreads or packs its turns. */
+  const handleWheel = (event: ReactWheelEvent<HTMLCanvasElement>) => {
+    const scene = sceneRef.current
+    if (!scene || mode !== 'arrange') return
+    const scale = (canvasRef.current?.width ?? 1) / (canvasRef.current?.clientWidth || 1)
+    if (event.ctrlKey) scene.zoomBy(Math.exp(-event.deltaY * 0.01))
+    else scene.panByPixels(-(Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY) * scale)
+    schedule()
   }
 
   const handleDoubleClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
@@ -236,12 +279,13 @@ export function SoundVisual3D({ mode }: { mode: Mode }) {
     <div className="sv3-screen">
       <canvas
         ref={canvasRef}
-        className={`sv3-canvas${grabbing ? ' sv3-canvas--grabbing' : hovering ? ' sv3-canvas--grab' : ''}`}
+        className={`sv3-canvas${grabbing ? ' sv3-canvas--grabbing' : hovering || mode === 'arrange' ? ' sv3-canvas--grab' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onPointerLeave={() => setHovering(false)}
+        onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
       />
     </div>
