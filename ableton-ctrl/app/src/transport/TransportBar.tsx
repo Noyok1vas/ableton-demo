@@ -177,13 +177,14 @@ function DragValue({
  * three groups held apart by space rather than rules:
  *
  *   PROJECT          TRANSPORT          CLOCK
- *   Project.01   |    ●○   ▶     |   148 BPM   4/4   /4
+ *   Project.01   |    ●○  |  ▶     |   148 BPM   4/4   /4
  *
  * The project's name (double-click to rename); the metronome and PLAY /
  * STOP, the group in the middle of the bar; then the tempo and the beats of
  * the meter — each dragged up and down, or double-clicked and typed — and
  * the division, the note value that counts as a beat, which a click moves
- * on through /2 /4 /8 /16. Whatever is being changed is lit.
+ * on through /2 /4 /8 /16. Whatever is being changed is lit, and so are
+ * the metronome while it is on and PLAY while the loop plays.
  *
  * PLAY restarts the pattern from its top and STOP keeps it, so stopping is
  * never destructive — the + beside this bar is what starts a new one.
@@ -269,8 +270,11 @@ export function TransportBar() {
               : 'Metronome — a click on every beat while the loop plays'
           }
         >
-          <IconMetronome lit={lit} size={30} />
+          <span className="tp-mark tp-mark--icon">
+            <IconMetronome lit={lit} size={30} />
+          </span>
         </button>
+        <span className="tp-sep" aria-hidden />
         <button
           type="button"
           className={`tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
@@ -283,7 +287,9 @@ export function TransportBar() {
             playing ? 'Stop — the pattern stays. Key: Enter' : 'Play the loop from the top. Key: Enter'
           }
         >
-          {playing ? <IconStop size={22} /> : <IconPlay size={26} />}
+          <span className="tp-mark tp-mark--icon">
+            {playing ? <IconStop size={22} /> : <IconPlay size={26} />}
+          </span>
         </button>
       </div>
 
