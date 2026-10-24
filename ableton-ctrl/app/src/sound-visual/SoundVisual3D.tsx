@@ -220,14 +220,18 @@ export function SoundVisual3D({
   )
   const [grabbing, setGrabbing] = useState(false)
   const [hovering, setHovering] = useState(false)
-  // ARRANGE: every finger on the glass, so one drags the song along and two
-  // pinch its turns closer or further apart.
+  // ARRANGE: every finger on the glass. One turns the camera round the helix
+  // to see it in the round; two slide the song along (their midpoint) and
+  // pinch its turns closer or further apart (their spread). Once a second
+  // finger lands, the gesture stays a two-finger one until every finger is
+  // up, so lifting one does not jerk the camera.
   const fingersRef = useRef(new Map<number, { x: number; y: number }>())
-  const pinchRef = useRef<number | null>(null)
+  const twoRef = useRef<{ mid: number; span: number } | null>(null)
+  const twoFingeredRef = useRef(false)
 
-  const fingerSpan = () => {
+  const pair = () => {
     const [a, b] = [...fingersRef.current.values()]
-    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : null
+    return a && b ? { mid: (a.x + b.x) / 2, span: Math.hypot(a.x - b.x, a.y - b.y) } : null
   }
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -235,11 +239,16 @@ export function SoundVisual3D({
     const point = pointerAt(event)
     if (!scene || !point) return
     if (mode === 'arrange') {
-      event.currentTarget.setPointerCapture(event.pointerId)
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        /* a pointer the browser no longer counts as down — nothing to capture */
+      }
       fingersRef.current.set(event.pointerId, point)
-      pinchRef.current = fingerSpan()
-      // The song is the finger's while it is down: the view stops following
-      // the playhead.
+      if (fingersRef.current.size >= 2) twoFingeredRef.current = true
+      twoRef.current = pair()
+      // The view is the hand's while it is down: it stops following the
+      // playhead, and goes home a moment after the hand lets go.
       scene.setHolding(true)
       setGrabbing(true)
       return
@@ -267,12 +276,16 @@ export function SoundVisual3D({
     if (fingers.has(event.pointerId)) {
       const was = fingers.get(event.pointerId)!
       fingers.set(event.pointerId, point)
-      if (fingers.size >= 2) {
-        const span = fingerSpan()
-        if (span && pinchRef.current) scene.zoomBy(span / pinchRef.current)
-        pinchRef.current = span
+      if (twoFingeredRef.current) {
+        const now = pair()
+        const before = twoRef.current
+        if (now && before) {
+          scene.panByPixels(now.mid - before.mid)
+          if (before.span > 0) scene.zoomBy(now.span / before.span)
+        }
+        twoRef.current = now
       } else {
-        scene.panByPixels(point.x - was.x)
+        scene.orbitBy(point.x - was.x, point.y - was.y)
       }
       schedule()
       return
@@ -291,11 +304,13 @@ export function SoundVisual3D({
 
   const endDrag = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (fingersRef.current.delete(event.pointerId)) {
-      pinchRef.current = fingerSpan()
+      twoRef.current = pair()
       if (fingersRef.current.size === 0) {
-        // Let go: the view stays put a moment, then follows again.
+        // Let go: the view stays put a moment, then goes home.
+        twoFingeredRef.current = false
         sceneRef.current?.setHolding(false)
         setGrabbing(false)
+        schedule()
       }
       return
     }
@@ -304,8 +319,9 @@ export function SoundVisual3D({
     setGrabbing(false)
   }
 
-  /** A trackpad: two fingers scroll the song along; a pinch (which arrives as
-      a wheel with ctrl held) spreads or packs its turns. */
+  /** A trackpad: two fingers scroll the song along, as two fingers do on the
+      glass; a pinch (which arrives as a wheel with ctrl held) spreads or
+      packs its turns. A click-drag turns the camera, as one finger does. */
   const handleWheel = (event: ReactWheelEvent<HTMLCanvasElement>) => {
     const scene = sceneRef.current
     if (!scene || mode !== 'arrange') return
