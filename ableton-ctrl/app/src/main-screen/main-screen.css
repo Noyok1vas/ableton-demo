@@ -79,7 +79,12 @@
    the right; the stack itself stays level. Later sheets sit over earlier
    ones, outlines only, so every edge shows through. */
 .ms-stack {
-  position: relative;
+  /* Centred on the screen itself, not on the room the bottom row's buttons
+     leave: it has one button to its left and two to its right. */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
   flex: 0 0 auto;
   touch-action: none;
   cursor: pointer;
