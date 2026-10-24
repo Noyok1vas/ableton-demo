@@ -1,14 +1,20 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 
-/** One sheet's size and the step between sheets, in device units. */
+/** One sheet's size and the step between sheets, in device units, in the
+    design's proportions: a sheet about 1.85 times as tall as it is wide,
+    each next one a little over two-thirds of a sheet along. */
 const SHEET_W = 20
-const SHEET_H = 44
-const STEP = 13
+const SHEET_H = 37
+const STEP = 14
+/** How far a sheet's right edge stands above its left: the design's frames
+    rise about 0.6 of their width. Every sheet is sheared on its own, so the
+    stack stays level rather than climbing. */
+const RISE = 12
 
 /**
- * The song's sections as a stack of sheets, one per pass of the loop, seen
- * at an angle the way ARRANGE sees the turns of the helix: upright frames
- * sheared so they rise to the right, each overlapping the one behind it.
+ * The song's sections as a stack of sheets, one per pass of the loop: upright
+ * frames, each sheared so it rises to the right, standing side by side on
+ * one level and overlapping the one behind.
  * The section on screen is filled; sliding a finger across the stack lights
  * the sheet it is over (and the same section on the visual above), and
  * lifting it there opens that section in CREATE.
@@ -54,7 +60,13 @@ export function SectionStack({
       className="ms-stack"
       role="group"
       aria-label="Sections"
-      style={{ width, height: SHEET_H }}
+      style={
+        {
+          width,
+          height: SHEET_H + RISE,
+          '--sheet-skew': `${-Math.atan(RISE / SHEET_W)}rad`,
+        } as CSSProperties
+      }
       onPointerDown={onPointerDown}
       onPointerMove={(event) => onHighlight(sectionAt(event))}
       onPointerUp={onPointerUp}
@@ -66,7 +78,7 @@ export function SectionStack({
         <span
           key={i}
           className={`ms-sheet${i === current ? ' ms-sheet--current' : i === highlight ? ' ms-sheet--lit' : ''}`}
-          style={{ left: i * STEP, width: SHEET_W, height: SHEET_H }}
+          style={{ left: i * STEP, top: RISE / 2, width: SHEET_W, height: SHEET_H }}
         />
       ))}
     </div>
