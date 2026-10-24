@@ -45,7 +45,7 @@ export const ShapeCanvas = forwardRef<ShapeCanvasHandle, { shape: ShapeParams; p
         }
         const px = Math.min(w, h) / (2 * SPAN)
         ctx.clearRect(0, 0, w, h)
-        printSand(ctx, sand, w / 2, h / 2, px, GRAIN_PX * Math.max(0.7, px / pourPx), 1, alpha)
+        printSand(ctx, sand, w / 2, h / 2, px, GRAIN_PX * Math.max(0.7, px / pourPx), 1, alpha, '#ffffff')
       }
       paint()
       const observer = new ResizeObserver(paint)

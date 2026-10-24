@@ -8,7 +8,7 @@ import type {
 } from './types.ts'
 
 export const PAGES: Page[] = [
-  { id: 'rhythmic-intent', name: 'Rhythmic intent' },
+  { id: 'hardware', name: 'Hardware' },
   { id: 'chladni', name: 'Chladni 1' },
   { id: 'chladni-2', name: 'Chladni 2' },
   { id: 'chladni-editor', name: 'Chladni Editor' },
@@ -16,22 +16,10 @@ export const PAGES: Page[] = [
 
 /** Each page owns its windows. */
 export const INITIAL_WINDOWS: Record<PageId, WindowState[]> = {
-  // Demo build, laid out as the drum synth it is becoming. The two SOFTWARE
-  // windows are the screens — Sound Source (the small system display) and the
-  // Main Screen, which carries the transport, the Collection and the Sound
-  // Visual. Everything else is HARDWARE: Master Control and FX down the left,
-  // and along the bottom the two mod strips beside the pads, the pads exactly
-  // as wide as the Main Screen above them. The Mixer is left out of this
-  // beginner-level layout (the window still exists), as are March / Rhythmic
-  // intent / Sound Intent / Ripple / March Family — their sessions still mount.
-  'rhythmic-intent': [
-    { id: 'src-1', kind: 'sound-source', title: 'Sound Source', x: 64, y: 64, w: 700, h: 420 },
-    { id: 'mk-1', kind: 'master', title: 'Master Control', x: 64, y: 500, w: 700, h: 508 },
-    { id: 'fx-1', kind: 'fx', title: 'FX', x: 64, y: 1024, w: 700, h: 480 },
-    { id: 'ms-1', kind: 'main-screen', title: 'Main Screen', x: 800, y: 64, w: 1470, h: 1440 },
-    { id: 'mod-1', kind: 'mod-strips', title: 'Mod Strip', x: 64, y: 1520, w: 700, h: 836 },
-    { id: 'sel-1', kind: 'selector', title: 'Sound Selector', x: 800, y: 1520, w: 1470, h: 836 },
-  ],
+  // The instrument itself: the rendered hardware with the UI on its screens
+  // (device/DeviceShell), drawn full-screen rather than as windows on the
+  // canvas. Nothing here to drag.
+  hardware: [],
   // The Chladni marks beside the hand-drawn ones, for comparison only — not
   // part of the instrument, so nothing on this page records.
   chladni: [

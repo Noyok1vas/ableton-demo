@@ -4,7 +4,32 @@
     {
       "name": "rhythmic-intent",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "ableton-ctrl/app", "--", "--port", "5173", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "ableton-ctrl/app",
+        "--",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "demo-device",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "ableton-ctrl/app",
+        "--",
+        "--port",
+        "5173",
+        "--strictPort",
+        "--host"
+      ],
       "port": 5173
     }
   ]

@@ -7,24 +7,24 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: 88px;
-  padding: 0 56px;
+  height: var(--pill-h);
+  padding: 0 var(--space-4);
   background: var(--surface);
-  border: 1.5px solid var(--ink-pure);
-  border-radius: 44px;
+  border: var(--stroke-strong) solid var(--ink-pure);
+  border-radius: var(--radius-pill);
 }
 
 .ag-input {
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
-  padding: 0 40px;
+  padding: 0 var(--space-5);
   background: none;
   border: 0;
   outline: none;
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 22px;
+  font-size: var(--type-s);
   font-weight: 400;
   text-align: center;
 }
@@ -40,7 +40,7 @@
 /* Sits just after the centred placeholder, and steps aside once typing. */
 .ag-icon {
   position: absolute;
-  left: calc(50% + 150px);
+  left: calc(50% + 140px);
   top: 50%;
   transform: translateY(-50%);
   display: grid;

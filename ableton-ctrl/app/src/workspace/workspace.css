@@ -2,11 +2,49 @@
    page-switch dropdown. Black/white/light-grey only, radius 0, 1px lines. */
 
 .workspace {
+  /* The canvas keeps the light black/white/light-grey tokens it was built
+     with on the ChladniPattern branch; the device's dark ones stay outside. */
+  color-scheme: light;
+  --canvas: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f3f4f5;
+  --line-fine: #eceded;
+  --line-strong: #171a1d;
+  --text: #171a1d;
+  --text-muted: #8a8f93;
+  --ink-pure: #000000;
+  --accent: #171a1d;
+  --hw-line: #aeb3b7;
+  --hw-title: #e3e5e7;
+  --font-ui: Inter, 'Helvetica Neue', -apple-system, system-ui, sans-serif;
+  --motion-fast: 0.2s ease-in-out;
+  --motion-base: 0.3s ease-out;
+  color: var(--text);
+  font-family: var(--font-ui);
+
   position: fixed;
   inset: 0;
   overflow: hidden;
   background: var(--canvas);
   overscroll-behavior: none;
+}
+
+/* The Chladni Editor keeps the device's dark tokens (design/tokens.css):
+   white sand on black, like the screen. */
+.workspace--dark {
+  color-scheme: dark;
+  --canvas: #000000;
+  --surface: #000000;
+  --surface-2: #1b1d1f;
+  --line-fine: #2b2e31;
+  --line-strong: #f2f3f4;
+  --text: #f2f3f4;
+  --text-muted: #8a8f93;
+  --ink-pure: #ffffff;
+  --accent: #f2f3f4;
+  --hw-line: #5a5f63;
+  --hw-title: #26292b;
+  --font-ui: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 /* ── Canvas surface ─────────────────────────────────── */

@@ -3,6 +3,7 @@ import { CanvasSurface } from './CanvasSurface.tsx'
 import { DraggableWindow } from './DraggableWindow.tsx'
 import { ZoomControl } from './ZoomControl.tsx'
 import { PageMenu } from './PageMenu.tsx'
+import { DeviceShell } from '../device/DeviceShell.tsx'
 import { INITIAL_WINDOWS, PAGES } from './pages.ts'
 import type { PageId, View, WindowKind, WindowState } from './types.ts'
 import { MAX_SCALE } from './types.ts'
@@ -137,7 +138,7 @@ function surfaceSize() {
 }
 
 export function Workspace() {
-  const [pageId, setPageId] = useState<PageId>('rhythmic-intent')
+  const [pageId, setPageId] = useState<PageId>('hardware')
   const [view, setView] = useState<View>(INITIAL_VIEW)
   const [windowsByPage, setWindowsByPage] =
     useState<Record<PageId, WindowState[]>>(INITIAL_WINDOWS)
@@ -215,8 +216,19 @@ export function Workspace() {
     [pageId],
   )
 
+  // The Hardware page is the device, not a canvas: nothing to pan or zoom,
+  // only the page menu floating over it.
+  if (pageId === 'hardware') {
+    return (
+      <>
+        <DeviceShell />
+        <PageMenu pages={PAGES} currentId={pageId} onSelect={setPageId} />
+      </>
+    )
+  }
+
   return (
-    <div className="workspace">
+    <div className={`workspace${pageId === 'chladni-editor' ? ' workspace--dark' : ''}`}>
       <CanvasSurface view={view} onViewChange={onViewChange}>
         {windows.map((w) => (
           <DraggableWindow

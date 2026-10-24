@@ -1,32 +1,56 @@
-/* Transport pill + Mixer. The pill is the Main Screen's top bar: rounded
-   outside (it floats over the canvas), square inside — every control in it is
-   the same hairline square the rest of the instrument uses. */
+/* Transport pill + Mixer. The pill is the screen's top bar: a translucent
+   grey bar on the glass, square inside — every control in it is the same
+   hairline square the rest of the instrument uses. Sized for touch: every
+   square is --hit-min and joined groups share their borders. The controls
+   are wider than the pill, so they scroll sideways inside it; the pill
+   lights while a finger is on it. */
 
 .tp-bar {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  height: 88px;
-  padding: 0 56px;
-  background: var(--surface);
-  border: 1.5px solid var(--ink-pure);
-  border-radius: 44px;
+  height: var(--pill-h);
+  overflow: hidden;
+  background: var(--bar-fill);
+  border-radius: var(--radius-pill);
+  opacity: var(--bar-opacity);
+  transition: opacity var(--motion-fast);
+}
+
+.tp-bar--active {
+  opacity: var(--bar-opacity-active);
+}
+
+/* The controls, in one row that scrolls sideways; no scrollbar, the pill's
+   rounded ends are the hint. Fingers pan it, buttons still press. */
+.tp-scroll {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: 0 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+.tp-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.tp-scroll > * {
+  flex: 0 0 auto;
 }
 
 .tp-group {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-}
-
-.tp-divider {
-  flex: 0 0 auto;
-  width: 1px;
-  height: 40px;
-  background: var(--line-fine);
+  gap: var(--space-2);
 }
 
 /* Shared button base for everything pressable in the pill and the Mixer. */
@@ -51,13 +75,19 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: var(--hit-min);
+  height: var(--hit-min);
   padding: 0;
 }
 
-.tp-btn:hover:not(:disabled),
-.mx-switch:hover {
+@media (hover: hover) {
+  .tp-btn:hover:not(:disabled),
+  .mx-switch:hover {
+    background: var(--surface-2);
+  }
+}
+
+.tp-btn:active:not(:disabled) {
   background: var(--surface-2);
 }
 
@@ -87,13 +117,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 92px;
-  height: 52px;
+  width: 76px;
+  height: var(--hit-min);
   border: 1px solid var(--line-strong);
   background: var(--surface);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 24px;
+  font-size: var(--type-s);
   font-weight: 500;
 }
 
@@ -113,11 +143,14 @@
 
 .tp-divisions {
   display: flex;
-  gap: var(--space-1);
+}
+
+.tp-divisions > * + * {
+  margin-left: -1px;
 }
 
 .tp-division {
-  font-size: 14px;
+  font-size: var(--type-xs);
   font-weight: 700;
 }
 

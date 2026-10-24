@@ -1,4 +1,4 @@
-export type PageId = 'rhythmic-intent' | 'chladni' | 'chladni-2' | 'chladni-editor'
+export type PageId = 'hardware' | 'chladni' | 'chladni-2' | 'chladni-editor'
 
 export type Page = { id: PageId; name: string }
 

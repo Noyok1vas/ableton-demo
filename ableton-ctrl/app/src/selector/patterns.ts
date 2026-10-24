@@ -586,43 +586,104 @@ export const PATTERNS: Pattern[] = [
     printed feel than per-device-pixel noise would. */
 export const TILE_SIZE = 180
 
-/**
- * Rasterize one pattern at character `c` into an offscreen canvas of
- * TILE_SIZE². The grain is a per-pixel jitter weighted by ink*(1-ink), so flat
- * white and the solid core stay clean and the transitions break up.
- *
- * Called by SoundPreview whenever a sound's character changes — one function
- * for the pads, the rack and the large view, so they never drift apart.
- */
-export function renderPatternTile(pattern: Pattern, c: number): HTMLCanvasElement {
-  const size = TILE_SIZE
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return canvas
-
+/** Fill rows [from, to) of a `size`² tile's pixels with pattern at `c`,
+    writing from the start of `data` (row `from` is its first row). The grain is
+    a per-pixel jitter weighted by ink*(1-ink), so flat white and the solid core
+    stay clean and the transitions break up. It is a fixed function of the
+    pixel, not a fresh roll: redrawn at a new character, a tile keeps its grain
+    and only its shape moves — no boiling while a strip is dragged. */
+export function fillRows(
+  pattern: Pattern,
+  c: number,
+  size: number,
+  data: Uint8ClampedArray,
+  from: number,
+  to: number,
+): void {
   const { x: ax, y: ay } = pattern.anchor
-  const image = ctx.createImageData(size, size)
-  const data = image.data
-  for (let py = 0; py < size; py++) {
+  for (let py = from; py < to; py++) {
     // +0.5 samples pixel centres; the *2-1 maps the tile to [-1,1].
     const ny = ((py + 0.5) / size) * 2 - 1 + ay
     for (let px = 0; px < size; px++) {
       const nx = ((px + 0.5) / size) * 2 - 1 + ax
       const v = pattern.field(nx, ny, c)
-      const noise = (Math.random() - 0.5) * pattern.grain * (v * (1 - v) * 4)
+      const noise = (hash2(px, py) - 0.5) * pattern.grain * (v * (1 - v) * 4)
       const ink = clamp01(v + noise) * pattern.maxInk
       // Black ink at `ink` opacity rather than an opaque grey: identical on a
       // white ground, and on any other ground (a grey pad) it shows the mark
       // and nothing of the tile around it.
-      const i = (py * size + px) * 4
+      const i = ((py - from) * size + px) * 4
       data[i] = 0
       data[i + 1] = 0
       data[i + 2] = 0
       data[i + 3] = Math.round(255 * ink)
     }
   }
+}
+
+/**
+ * Rasterize one pattern at character `c` into an offscreen canvas of `size`²
+ * (TILE_SIZE unless a view asks for more).
+ *
+ * Called by SoundPreview whenever a sound's character changes — one function
+ * for the pads, the rack and the large view, so they never drift apart.
+ */
+export function renderPatternTile(
+  pattern: Pattern,
+  c: number,
+  size: number = TILE_SIZE,
+): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return canvas
+  const image = ctx.createImageData(size, size)
+  fillRows(pattern, c, size, image.data, 0, size)
   ctx.putImageData(image, 0, 0)
   return canvas
+}
+
+/** Main-thread time a sliced render may take before yielding a frame. */
+const SLICE_MS = 8
+
+/**
+ * The same tile, rasterized a few rows at a time between frames, so a large
+ * one (the 2000² audition view: hundreds of ms in one go) never stalls the
+ * pads. Calls `done` with the finished canvas; the returned function cancels.
+ */
+export function renderPatternTileSliced(
+  pattern: Pattern,
+  c: number,
+  size: number,
+  done: (tile: HTMLCanvasElement) => void,
+): () => void {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return () => {}
+  const image = ctx.createImageData(size, size)
+  let row = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const step = () => {
+    timer = null
+    const until = performance.now() + SLICE_MS
+    while (row < size && performance.now() < until) {
+      const next = Math.min(size, row + 16)
+      fillRows(pattern, c, size, image.data.subarray(row * size * 4, next * size * 4), row, next)
+      row = next
+    }
+    if (row < size) {
+      timer = setTimeout(step, 0)
+      return
+    }
+    ctx.putImageData(image, 0, 0)
+    done(canvas)
+  }
+  timer = setTimeout(step, 0)
+  return () => {
+    if (timer !== null) clearTimeout(timer)
+    timer = null
+  }
 }

@@ -1,0 +1,97 @@
+/* The device — the rendered hardware at a fixed size in device units, scaled
+   as one piece and centred inside the safe area, with the screens' UI laid
+   over the picture. Positions come from geometry.ts as custom properties. */
+
+.device-stage {
+  position: fixed;
+  inset: 0;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  /* The room the device sits in: grey, lit from above, darker toward the
+     floor — the body reads black against it. */
+  background: linear-gradient(180deg, #5a5a5c 0%, #4a4a4c 45%, #363638 100%);
+  /* No double-tap zoom anywhere; panels can still scroll. */
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.device-fit {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.device {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--device-w);
+  height: var(--device-h);
+  transform: translate(-50%, -50%) scale(var(--device-scale, 1));
+  transform-origin: 50% 50%;
+}
+
+/* The body's shadow on the room: an opaque stand-in with the body's corners
+   carries it, since a shadow on the image itself would be cast per pixel. */
+.device::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--corner);
+  background: #000;
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.55),
+    0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.device-body {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* The main screen: the UI over the dark glass set into the body. */
+.device-screen {
+  position: absolute;
+  left: var(--screen-x);
+  top: var(--screen-y);
+  width: var(--screen-size);
+  height: var(--screen-size);
+  display: flex;
+  overflow: hidden;
+}
+
+/* The deck: the pads are placed one by one from the CAD (SelectorScreen). */
+.device-deck {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Portrait only: on a touch device turned sideways, the device steps aside
+   for a note. A desktop window is landscape too, so it keeps the device. */
+.device-rotate {
+  display: none;
+}
+
+@media (orientation: landscape) and (pointer: coarse) {
+  .device-fit {
+    display: none;
+  }
+
+  .device-rotate {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    color: var(--text);
+    font-size: 22px;
+    font-weight: 500;
+  }
+}

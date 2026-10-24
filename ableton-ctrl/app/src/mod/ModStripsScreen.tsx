@@ -1,5 +1,6 @@
 import {
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -32,6 +33,7 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
   const { beginTouch, endTouch, poke } = useMod()
   const trackRef = useRef<HTMLDivElement>(null)
   const held = useRef<number | null>(null)
+  const [active, setActive] = useState(false)
 
   const valueAt = (clientY: number) => {
     const rect = trackRef.current?.getBoundingClientRect()
@@ -43,6 +45,7 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
     if (held.current !== null) return
     e.preventDefault()
     held.current = e.pointerId
+    setActive(true)
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
@@ -59,6 +62,7 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
   const release = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (held.current !== e.pointerId) return
     held.current = null
+    setActive(false)
     endTouch()
   }
 
@@ -77,7 +81,10 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
 
   const pct = `${clamp01(value) * 100}%`
   return (
-    <div className={`mod-strip${disabled ? ' mod-strip--disabled' : ''}`} data-hint={hint}>
+    <div
+      className={`mod-strip${disabled ? ' mod-strip--disabled' : ''}${active ? ' mod-strip--active' : ''}`}
+      data-hint={hint}
+    >
       <div
         ref={trackRef}
         className="mod-track"
@@ -103,16 +110,16 @@ function Strip({ value, onChange, label, hint, disabled = false }: StripProps) {
 }
 
 /**
- * The Mod Strip section: two strips beside the pads, unlabelled like the pads
- * (guiding mode names them, and the Main Screen names the sound up close).
+ * The two strips of the audition view, either side of the sound shown large
+ * on the screen. Unlabelled like the pads (guiding mode names them).
+ * screen names the sound up close).
  *
  *   left   velocity — how hard every pad plays, recorded or auditioned
  *   right  character — the selected sound's one axis (SOFT↔HARD for KICK,
  *          CLOSED↔OPEN for HAT, …); sounds without one leave it idle
  *
- * Hold either strip and press a pad: the pad auditions instead of recording,
- * and the Main Screen shows that sound large, changing as the strips move.
- * Let go and, a moment later, the pads record again.
+ * They appear while a pad is held long, and touching one keeps the view up.
+ * Let go of everything and, a moment later, the pads record again.
  */
 export function ModStripsScreen() {
   const { gesture, character, setSelectedCharacter, velocity, setVelocity } = useSelector()
@@ -122,20 +129,18 @@ export function ModStripsScreen() {
   const velocityValue = (velocity - VELOCITY_MIN) / (VELOCITY_MAX - VELOCITY_MIN)
 
   return (
-    // Instrument controls: two fingers here (strip + pad) are playing, not a
-    // pinch of the canvas.
-    <div className="mod-screen" data-no-pinch>
+    <div className="mod-screen">
       <Strip
         value={velocityValue}
         onChange={(v) => setVelocity(VELOCITY_MIN + v * (VELOCITY_MAX - VELOCITY_MIN))}
         label="Velocity"
-        hint="Velocity — how hard the pads play. Hold it and press a pad to audition without recording"
+        hint="Velocity — how hard the pads play"
       />
       <Strip
         value={axis ? character[gesture] : 0}
         onChange={setSelectedCharacter}
         label={`${name} character`}
-        hint={`${name}: ${CHARACTER_NOTE[gesture]} Hold it and press a pad to audition.`}
+        hint={`${name}: ${CHARACTER_NOTE[gesture]}`}
         disabled={!axis}
       />
     </div>

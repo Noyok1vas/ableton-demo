@@ -15,17 +15,16 @@ import { useSession } from '../rhythmic-intent/session.tsx'
 import type { PatternId } from '../selector/patterns.ts'
 
 /**
- * How long audition mode outlasts the last touch of a strip or pad. On a touch
- * screen the strip is simply held; this is for everyone else — a mouse has to
- * let go of the strip before it can reach a pad, and must not drop back into
- * recording on the way there.
+ * How long audition mode outlasts the last touch of a strip or pad — long
+ * enough to let go of a long-pressed pad and reach a strip on the screen, or
+ * another pad, without dropping back into recording on the way there.
  */
 export const MOD_LINGER_MS = 2000
 
 export type ModValue = {
-  /** Audition mode: a strip is being touched, or was a moment ago. While it
-      is on, the pads sound and preview without recording, and the Main Screen
-      shows the rack preview instead of the circular sequencer. */
+  /** Audition mode: a pad is held long or a strip is touched, or was a moment
+      ago. While it is on, the pads sound and preview without recording, and
+      the screen shows the rack preview instead of the circular sequencer. */
   active: boolean
   /** The same, read at call time rather than at render — what a press asks,
       so a strip and a pad touched in the same instant still audition. */
@@ -33,7 +32,8 @@ export type ModValue = {
   /** The sound shown large on the Main Screen — the last pad pressed while
       auditioning. Null shows the whole rack. */
   focus: PatternId | null
-  /** A strip was pressed / released. Counted, so two strips can be held. */
+  /** A strip or a held pad was pressed / released. Counted, so several can
+      be held at once. */
   beginTouch: () => void
   endTouch: () => void
   /** A strip moved (or was nudged from the keyboard). */
@@ -42,6 +42,9 @@ export type ModValue = {
       velocity and its own character, and brings its visual up large. Nothing
       is recorded. */
   audition: (id: PatternId, accented?: boolean) => void
+  /** Bring a sound up large and enter audition mode without sounding it — a
+      long-pressed pad, whose note already played on the press. */
+  present: (id: PatternId) => void
 }
 
 const ModContext = createContext<ModValue | null>(null)
@@ -53,12 +56,12 @@ export function useMod(): ModValue {
 }
 
 /**
- * The mod strips' shared state — the two-handed mode of the instrument.
+ * Audition mode's shared state — the two-handed mode of the instrument.
  *
- * One hand on a strip (velocity or character), the other on the pads: the
- * pads then audition rather than record, which is how a sound is shaped before
- * it is played into the loop. Lives above the tap trigger, which asks it
- * whether a press should record or audition.
+ * Hold a pad long and it auditions rather than records; the screen shows the
+ * sound large between two strips (velocity, character), so the other hand can
+ * shape it before it is played into the loop. Lives above the tap trigger,
+ * which asks it whether a press should record or audition.
  */
 export function ModSession({ children }: { children: ReactNode }) {
   const { setGesture, character, currentVelocity } = useSelector()
@@ -139,11 +142,20 @@ export function ModSession({ children }: { children: ReactNode }) {
     }
   }, [active, suspendMetronome])
 
+  const present = useCallback(
+    (id: PatternId) => {
+      setGesture(id)
+      setFocus(id)
+      keepAlive()
+    },
+    [setGesture, keepAlive],
+  )
+
   const isActive = useCallback(() => activeRef.current, [])
 
   const value = useMemo<ModValue>(
-    () => ({ active, isActive, focus, beginTouch, endTouch, poke: keepAlive, audition }),
-    [active, isActive, focus, beginTouch, endTouch, keepAlive, audition],
+    () => ({ active, isActive, focus, beginTouch, endTouch, poke: keepAlive, audition, present }),
+    [active, isActive, focus, beginTouch, endTouch, keepAlive, audition, present],
   )
   return <ModContext.Provider value={value}>{children}</ModContext.Provider>
 }

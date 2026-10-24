@@ -1,8 +1,9 @@
-/* Main Screen — the canvas full-bleed, the controls floating over it.
+/* The screen — the Sound Visual full-bleed, the controls floating over it.
 
-   The side columns sit 10% in from each edge; the pills fill the width
-   between them. The Collection window floats on the left, centred under the
-   left column's buttons, between the top row and the bottom row. */
+   The circle buttons sit --edge in from the frame; the pills fill the width
+   between them. A panel floats on the left (Collection) or the right
+   (Settings), between the top row and the bottom row. Sizes are device units
+   (design/system.md). */
 
 .ms-screen {
   position: relative;
@@ -11,11 +12,10 @@
   height: 100%;
   min-height: 0;
   display: flex;
-  background: var(--surface);
-  --ms-side: 10%;
-  --ms-circle: 68px;
-  --ms-row-gap: 44px;
-  --ms-edge: 40px;
+  /* No surface of its own: the glass in the hardware render is the screen. */
+  background: none;
+  /* The band the rows leave free: panels and the audition strips fill it. */
+  --ms-band: calc(var(--edge) + var(--pill-h) + var(--space-4));
 }
 
 /* Only the controls take the pointer; the canvas gets everything between. */
@@ -26,7 +26,7 @@
 }
 
 .ms-overlay > * > *,
-.ms-library {
+.ms-panel {
   pointer-events: auto;
 }
 
@@ -36,15 +36,16 @@
   right: 0;
   display: flex;
   align-items: center;
-  gap: var(--ms-row-gap);
-  padding: 0 var(--ms-side);
+  gap: var(--hit-gap);
+  height: var(--pill-h);
+  padding: 0 var(--edge);
   pointer-events: none;
 }
 
 /* Playing into the ring: the bars fade back and stay usable; pointing at one
    brings it straight back. */
 .ms-row {
-  transition: opacity 400ms ease;
+  transition: opacity var(--motion-quiet);
 }
 
 .ms-overlay--quiet .ms-row {
@@ -61,11 +62,16 @@
 }
 
 .ms-row--top {
-  top: var(--ms-edge);
+  top: var(--edge);
 }
 
 .ms-row--bottom {
-  bottom: var(--ms-edge);
+  bottom: var(--edge);
+}
+
+/* Holds the bottom row's ends apart now it has no pill. */
+.ms-spacer {
+  flex: 1 1 auto;
 }
 
 /* The round buttons at either end of each row. */
@@ -73,11 +79,11 @@
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: var(--ms-circle);
-  height: var(--ms-circle);
+  width: var(--circle);
+  height: var(--circle);
   padding: 0;
   background: var(--surface);
-  border: 1.5px solid var(--ink-pure);
+  border: var(--stroke-strong) solid var(--ink-pure);
   border-radius: 50%;
   color: var(--ink-pure);
   cursor: pointer;
@@ -87,7 +93,13 @@
     color var(--motion-fast);
 }
 
-.ms-circle:hover:not(:disabled) {
+@media (hover: hover) {
+  .ms-circle:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+}
+
+.ms-circle:active:not(:disabled) {
   background: var(--surface-2);
 }
 
@@ -103,26 +115,47 @@
   color: var(--surface);
 }
 
-/* ── The Collection, floating ───────────────────────── */
+/* ── Panels, floating ───────────────────────────────── */
 
-.ms-library {
+.ms-panel {
   position: absolute;
-  /* Centred on the left column's buttons, a little wider than the gap. */
-  left: max(16px, calc(var(--ms-side) + var(--ms-circle) / 2 - 190px));
-  width: 380px;
-  top: calc(var(--ms-edge) + 88px + 32px);
-  bottom: calc(var(--ms-edge) + 88px + 32px);
+  top: var(--ms-band);
+  bottom: var(--ms-band);
+  width: 400px;
   z-index: 1;
   display: flex;
   overflow: hidden;
   background: var(--surface);
-  border: 1.5px solid var(--ink-pure);
-  border-radius: 40px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
-  animation: ms-library-in 140ms ease-out;
+  border: var(--stroke-strong) solid var(--ink-pure);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 12px 40px rgba(255, 255, 255, 0.06);
+  animation: ms-panel-in 140ms ease-out;
 }
 
-@keyframes ms-library-in {
+.ms-panel--left {
+  left: var(--edge);
+}
+
+.ms-panel--right {
+  right: var(--edge);
+}
+
+/* Auditioning owns the screen: the panel steps aside (and comes back), and
+   the ring fades out under the rack preview, which has no surface to hide
+   it with. */
+.ms-overlay--audition .ms-panel {
+  display: none;
+}
+
+.ms-screen .sv-canvas {
+  transition: opacity 220ms ease;
+}
+
+.ms-screen--audition .sv-canvas {
+  opacity: 0;
+}
+
+@keyframes ms-panel-in {
   from {
     opacity: 0;
     transform: translateY(8px);
@@ -131,4 +164,21 @@
     opacity: 1;
     transform: none;
   }
+}
+
+/* ── Toast: one line the instrument needs you to read ─ */
+
+.ms-toast {
+  position: absolute;
+  left: 50%;
+  bottom: var(--ms-band);
+  transform: translateX(-50%);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--ink-pure);
+  color: var(--surface);
+  border-radius: var(--radius-pill);
+  font-size: var(--type-xs);
+  font-weight: 500;
+  white-space: nowrap;
 }
