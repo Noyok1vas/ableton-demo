@@ -1,21 +1,20 @@
 /* Transport bar + Mixer. The bar is the screen's top row between the two
-   round buttons: as tall as they are and cut into the glass the same way —
-   a faint dark pill with its shadow falling in from the top-left. Inside,
-   no boxes: grey mono type and glyphs, parted by hairline rules, with PLAY
-   in the bar's exact middle. */
+   round buttons: as tall as they are and cut into the glass the same way.
+   Inside, three groups — Project, Transport, Clock — held apart by space,
+   with only a faint rule between groups. The Transport group sits in the
+   bar's middle; Project keeps to the left and Clock to the right. Grey mono
+   type and glyphs on one centre line; whatever is being changed is lit. */
 
 .tp-bar {
   flex: 1 1 auto;
   min-width: 0;
   display: grid;
-  /* Every cell one share wide and the name two, parted by hairlines: three
-     shares either side of PLAY, so PLAY sits in the bar's middle. */
-  grid-template-columns:
-    minmax(0, 2fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr) 1px minmax(0, 1fr)
-    1px minmax(0, 1fr) 1px minmax(0, 1fr);
+  /* The middle group's own width, with equal sides about it, so it sits in
+     the bar's middle whatever the sides hold. */
+  grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
   align-items: center;
   height: var(--circle);
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-5);
   border-radius: var(--radius-pill);
   background: var(--engrave-fill);
   box-shadow: var(--engrave-shadow);
@@ -23,17 +22,37 @@
      Chladni pages as on the screen. */
   color: color-mix(in srgb, var(--text) 62%, transparent);
   font-family: var(--font-ui);
+  font-size: var(--type-s);
+  font-weight: 500;
+  line-height: 1;
 }
 
-.tp-side {
-  display: contents;
+.tp-group {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
-/* The hairlines between cells. */
-.tp-rule {
+.tp-group--project {
+  justify-content: flex-start;
+}
+
+.tp-group--transport {
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+}
+
+.tp-group--clock {
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
+/* Between groups only, and quiet: a short hairline. */
+.tp-sep {
   width: 1px;
-  height: 64%;
-  background: color-mix(in srgb, var(--text) 32%, transparent);
+  height: 36%;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
 }
 
 .tp-cell {
@@ -41,11 +60,14 @@
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 var(--space-2);
 }
 
 .tp-btn {
+  height: 100%;
+  min-width: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   background: none;
   border: 0;
   color: inherit;
@@ -62,7 +84,6 @@
   }
 }
 
-.tp-btn:active:not(:disabled),
 .tp-btn--on {
   color: var(--text);
 }
@@ -72,80 +93,64 @@
   cursor: default;
 }
 
-/* The project's name: as much of it as the side has room for. */
+/* Text set on the centre line: the name, the values, the division. A little
+   room either side, so the highlight block has a margin round the glyphs. */
+.tp-mark {
+  display: inline-block;
+  padding: 3px 6px;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+/* Being changed — dragged, typed, or clicked on to the next division — the
+   text is lit: full white on a grey block. */
+.tp-drag--on .tp-mark,
+.tp-drag:focus-visible .tp-mark,
+.tp-division:active .tp-mark,
+.tp-input {
+  background: color-mix(in srgb, var(--text) 26%, transparent);
+  color: var(--text);
+}
+
 .tp-cell--name {
-  justify-content: flex-start;
-  padding: 0 var(--space-1) 0 20px;
+  max-width: 100%;
   cursor: text;
 }
 
 .tp-name {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: var(--type-s);
-  font-weight: 500;
   user-select: none;
 }
 
 /* Tempo and meter: dragged up and down, so the finger owns the gesture. */
 .tp-drag {
-  gap: 6px;
-  align-items: baseline;
+  gap: 2px;
   touch-action: none;
   cursor: ns-resize;
   user-select: none;
-}
-
-.tp-drag > * {
-  align-self: center;
-}
-
-.tp-drag--on,
-.tp-drag:focus-visible {
-  color: var(--text);
   outline: none;
-}
-
-.tp-value {
-  font-size: var(--type-s);
-  font-weight: 500;
-  white-space: nowrap;
 }
 
 .tp-suffix {
   font-size: 11px;
-  font-weight: 500;
   letter-spacing: 0.06em;
-  align-self: flex-end;
-  margin-bottom: 25px;
+  align-self: center;
+  transform: translateY(3px);
 }
 
-.tp-division {
-  font-size: var(--type-xs);
-  font-weight: 700;
-  letter-spacing: 0.4px;
-}
-
-/* A value or the name, being typed. */
+/* A value or the name, being typed: the same block as the lit text. */
 .tp-input {
-  width: 4.2ch;
-  padding: 0;
+  padding: 3px 6px;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 50%, transparent);
-  background: none;
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: var(--type-s);
-  font-weight: 500;
-  text-align: center;
-  outline: none;
-}
-
-.tp-input--name {
-  width: 100%;
+  border-radius: 0;
+  font: inherit;
   text-align: left;
+  outline: none;
 }
 
 /* ── Metronome: the dots trade places on every beat while it is on ── */
