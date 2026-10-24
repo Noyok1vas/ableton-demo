@@ -49,8 +49,9 @@ const BASE_ALPHA = 0.7
 /** The helix's own ink; brighter than the canvas's 0.08 because here it is
     white on black, where the same alpha reads fainter. */
 const GRID_ALPHA = 0.14
-/** Radius of the ball a mark becomes, in ring radii, before the mark's size. */
-const BALL_RADIUS = 0.048
+/** Radius of the ball a mark becomes, in ring radii, before the mark's size.
+    Only ARRANGE's: a mark in CREATE is drawn at its full size regardless. */
+const BALL_RADIUS = 0.03
 /** The share of a mark's specks that print its ball — most of them, packed
     into that small a disc, so it prints solid. */
 const BALL_SHARE = 0.6
@@ -65,6 +66,9 @@ const TRANSITION_MS = 650
     canvas buys more specks. */
 const REF_MIN_DIM = 500
 const MAX_INK = 4
+/** The speck the canvas's ink was tuned with, at a device pixel and the ink
+    correction's square root — see `inkScale`. */
+const SPECK_SCALE = 0.6
 
 /** A camera pose: `yaw` swings the camera off the axis, round the vertical;
     `elevation` lifts it. The lens is orthographic, so there is no distance. */
@@ -364,10 +368,21 @@ export class SpiralScene {
     this.scene.add(this.spokes)
   }
 
-  /** Ink correction for a canvas larger than the reference; 1 at or below. */
+  /**
+   * How many times its nominal count each mark is printed with — the 2D
+   * canvas's own correction, kept so a mark prints as solid as it did there.
+   * The ink correction for a canvas larger than the reference, times the
+   * tuned speck's area over the real one's: the speck the look was tuned
+   * with is at least a device pixel, while a mark's grain cell is usually
+   * smaller, so the finer grain is printed with that many more specks.
+   */
   private inkScale(): number {
-    const css = Math.min(this.width, this.height) / this.dpr
-    return Math.min(MAX_INK, Math.max(1, css / REF_MIN_DIM))
+    const minDim = Math.min(this.width, this.height)
+    const ink = Math.min(MAX_INK, Math.max(1, minDim / this.dpr / REF_MIN_DIM))
+    const speckDot = SPECK_SIZE * CIRCLE_RADIUS * minDim
+    const tunedDot = Math.max(1, Math.max(1, Math.round(this.dpr)) * Math.sqrt(ink) * SPECK_SCALE)
+    const r = tunedDot / speckDot
+    return ink * r * r
   }
 
   /**
