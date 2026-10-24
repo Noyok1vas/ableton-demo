@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { TransportBar } from '../transport/TransportBar.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
-import { SoundVisualScreen } from '../sound-intent/SoundVisualScreen.tsx'
+import { SoundVisual3D, type Mode } from '../sound-visual/SoundVisual3D.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
 import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useGuide } from '../guide/session.tsx'
@@ -55,6 +55,9 @@ export function MainScreen() {
   const { status, source } = useSoundEngine()
   const needsUnlock = source === 'builtin' && !status.ready
   const [panel, setPanel] = useState<Panel | null>(restorePanel)
+  // CREATE is the ring; ARRANGE is the whole song, for looking at. The Sound
+  // Visual moves its camera between the two.
+  const [mode, setMode] = useState<Mode>('create')
   const toggle = (which: Panel) => setPanel((open) => (open === which ? null : which))
 
   // While you are playing into the ring — tapping, or dragging a mark — the
@@ -99,7 +102,7 @@ export function MainScreen() {
       onPointerDownCapture={onCanvasPress}
       onPointerUpCapture={onCanvasPress}
     >
-      <SoundVisualScreen controls={false} />
+      <SoundVisual3D mode={mode} />
       <RackPreview />
 
       <div
@@ -162,6 +165,29 @@ export function MainScreen() {
           >
             <IconList />
           </button>
+          <span className="ms-spacer" aria-hidden />
+          <div className="ms-mode" role="group" aria-label="View">
+            <button
+              type="button"
+              className={`ms-mode-option${mode === 'create' ? ' ms-mode-option--on' : ''}`}
+              aria-pressed={mode === 'create'}
+              onClick={() => setMode('create')}
+              onKeyUp={swallowSpace}
+              data-hint="Create — the ring: one pass of the loop, where marks are made and moved"
+            >
+              CREATE
+            </button>
+            <button
+              type="button"
+              className={`ms-mode-option${mode === 'arrange' ? ' ms-mode-option--on' : ''}`}
+              aria-pressed={mode === 'arrange'}
+              onClick={() => setMode('arrange')}
+              onKeyUp={swallowSpace}
+              data-hint="Arrange — the whole song as a helix, every mark a dot sized by how hard it was played"
+            >
+              ARRANGE
+            </button>
+          </div>
           <span className="ms-spacer" aria-hidden />
           <button
             type="button"

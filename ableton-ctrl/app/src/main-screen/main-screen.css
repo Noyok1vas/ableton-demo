@@ -69,9 +69,42 @@
   bottom: var(--edge);
 }
 
-/* Holds the bottom row's ends apart now it has no pill. */
+/* Holds the bottom row's ends apart, either side of the view switch. */
 .ms-spacer {
   flex: 1 1 auto;
+}
+
+/* CREATE | ARRANGE: a two-way pill in the bottom row's middle. */
+.ms-mode {
+  flex: 0 0 auto;
+  display: flex;
+  height: var(--circle);
+  padding: 0;
+  border: var(--stroke-strong) solid var(--ink-pure);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ms-mode-option {
+  display: grid;
+  place-items: center;
+  min-width: 168px;
+  padding: 0 var(--space-5);
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--type-s);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+.ms-mode-option--on {
+  background: var(--ink-pure);
+  color: var(--surface);
 }
 
 /* The round buttons at either end of each row. */
@@ -147,11 +180,13 @@
   display: none;
 }
 
-.ms-screen .sv-canvas {
+.ms-screen .sv-canvas,
+.ms-screen .sv3-canvas {
   transition: opacity 220ms ease;
 }
 
-.ms-screen--audition .sv-canvas {
+.ms-screen--audition .sv-canvas,
+.ms-screen--audition .sv3-canvas {
   opacity: 0;
 }
 
