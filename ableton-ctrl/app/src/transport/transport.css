@@ -36,16 +36,18 @@
 
 .tp-group--project {
   justify-content: flex-start;
+  padding-right: var(--space-3);
 }
 
 .tp-group--transport {
   gap: var(--space-4);
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-4);
 }
 
 .tp-group--clock {
   justify-content: flex-end;
   gap: var(--space-4);
+  padding-left: var(--space-3);
 }
 
 /* Between groups only, and quiet: a short hairline. */
@@ -104,11 +106,20 @@
     color var(--motion-fast);
 }
 
-/* Being changed — dragged, typed, or clicked on to the next division — the
-   text is lit: full white on a grey block. */
+/* An icon's block is a little squarer than a word's. */
+.tp-mark--icon {
+  display: grid;
+  place-items: center;
+  padding: 6px 8px;
+}
+
+/* Being changed — dragged, typed, or clicked on to the next division — or
+   on — the metronome armed, the loop playing — it is lit: full white on a
+   grey block. */
 .tp-drag--on .tp-mark,
 .tp-drag:focus-visible .tp-mark,
 .tp-division:active .tp-mark,
+.tp-btn--on .tp-mark,
 .tp-input {
   background: color-mix(in srgb, var(--text) 26%, transparent);
   color: var(--text);
@@ -150,6 +161,13 @@
   border-radius: 0;
   font: inherit;
   text-align: left;
+  outline: none;
+}
+
+/* The block is the only sign of focus here: no ring round it. (The page's
+   own focus ring comes later in the cascade, hence the extra weight.) */
+.tp-input:focus-visible,
+.tp-drag:focus-visible {
   outline: none;
 }
 

@@ -63,6 +63,9 @@
 
 .ms-row--top {
   top: var(--edge);
+  /* The bar stands as far from the buttons beside it as they stand from
+     the screen's edge. */
+  gap: var(--edge);
 }
 
 .ms-row--bottom {
