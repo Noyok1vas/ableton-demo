@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import { TransportBar } from '../transport/TransportBar.tsx'
 import { CollectionPanel } from '../rhythmic-intent/CollectionPanel.tsx'
 import { SoundVisual3D, type Mode } from '../sound-visual/SoundVisual3D.tsx'
+import { TURNS } from '../sound-visual/scene.ts'
+import { SectionStack } from './SectionStack.tsx'
 import { useSession } from '../rhythmic-intent/session.tsx'
 import { useSoundIntent } from '../sound-intent/session.tsx'
 import { useGuide } from '../guide/session.tsx'
@@ -9,7 +11,7 @@ import { useMod } from '../mod/session.tsx'
 import { useSoundEngine } from '../transport/session.tsx'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { loadSaved, useSaved } from '../persist.ts'
-import { IconList, IconPlus, IconSliders, IconSparkle, IconUndo } from './icons.tsx'
+import { IconGlobe, IconList, IconPlus, IconSliders, IconSparkle, IconUndo } from './icons.tsx'
 import { RackPreview } from './RackPreview.tsx'
 import './main-screen.css'
 
@@ -38,7 +40,8 @@ function restorePanel(): Panel | null {
  * controls float over it in two rows, all icons:
  *
  *   top     +  new pattern · [transport pill] · ↶ undo
- *   bottom  ≡  Collection                     · ⚙ Settings · ✦ guiding mode
+ *   bottom  ≡  Collection  · [section stack]  · ⚙ Settings · ✦ guiding mode
+ *   left    ◍  arrange — the song as a helix, on or off
  *
  * Collection floats over the left of the screen, Settings over the right;
  * only one is open at a time. Guiding mode is the words the icons leave out:
@@ -56,8 +59,12 @@ export function MainScreen() {
   const needsUnlock = source === 'builtin' && !status.ready
   const [panel, setPanel] = useState<Panel | null>(restorePanel)
   // CREATE is the ring; ARRANGE is the whole song, for looking at. The Sound
-  // Visual moves its camera between the two.
+  // Visual swings its camera between the two. `section` is the pass of the
+  // song the ring shows, carried on by the playhead or chosen on the stack;
+  // `highlight` the one a finger on the stack is over.
   const [mode, setMode] = useState<Mode>('create')
+  const [section, setSection] = useState(0)
+  const [highlight, setHighlight] = useState<number | null>(null)
   const toggle = (which: Panel) => setPanel((open) => (open === which ? null : which))
 
   // While you are playing into the ring — tapping, or dragging a mark — the
@@ -102,7 +109,12 @@ export function MainScreen() {
       onPointerDownCapture={onCanvasPress}
       onPointerUpCapture={onCanvasPress}
     >
-      <SoundVisual3D mode={mode} />
+      <SoundVisual3D
+        mode={mode}
+        section={section}
+        highlight={highlight}
+        onSection={setSection}
+      />
       <RackPreview />
 
       <div
@@ -136,6 +148,20 @@ export function MainScreen() {
           </button>
         </div>
 
+        <div className="ms-side">
+          <button
+            type="button"
+            className={`ms-circle${mode === 'arrange' ? ' ms-circle--on' : ''}`}
+            aria-label="Arrange"
+            aria-pressed={mode === 'arrange'}
+            onClick={() => setMode(mode === 'arrange' ? 'create' : 'arrange')}
+            onKeyUp={swallowSpace}
+            data-hint="Arrange — the whole song as a helix, every mark a dot sized by how hard it was played. Press again for the ring"
+          >
+            <IconGlobe />
+          </button>
+        </div>
+
         {panel === 'collection' && (
           <div className="ms-panel ms-panel--left" role="dialog" aria-label="Collection">
             <CollectionPanel />
@@ -166,28 +192,16 @@ export function MainScreen() {
             <IconList />
           </button>
           <span className="ms-spacer" aria-hidden />
-          <div className="ms-mode" role="group" aria-label="View">
-            <button
-              type="button"
-              className={`ms-mode-option${mode === 'create' ? ' ms-mode-option--on' : ''}`}
-              aria-pressed={mode === 'create'}
-              onClick={() => setMode('create')}
-              onKeyUp={swallowSpace}
-              data-hint="Create — the ring: one pass of the loop, where marks are made and moved"
-            >
-              CREATE
-            </button>
-            <button
-              type="button"
-              className={`ms-mode-option${mode === 'arrange' ? ' ms-mode-option--on' : ''}`}
-              aria-pressed={mode === 'arrange'}
-              onClick={() => setMode('arrange')}
-              onKeyUp={swallowSpace}
-              data-hint="Arrange — the whole song as a helix, every mark a dot sized by how hard it was played"
-            >
-              ARRANGE
-            </button>
-          </div>
+          <SectionStack
+            count={TURNS}
+            current={section}
+            highlight={highlight}
+            onHighlight={setHighlight}
+            onSelect={(next) => {
+              setSection(next)
+              setMode('create')
+            }}
+          />
           <span className="ms-spacer" aria-hidden />
           <button
             type="button"

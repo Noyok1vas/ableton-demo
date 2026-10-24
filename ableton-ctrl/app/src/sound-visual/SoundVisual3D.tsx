@@ -34,10 +34,23 @@ const MAX_TAPS = 64
  * the whole song as a helix, for looking at: dragged along, pinched to show
  * more or fewer of its passes. The scene animates between them.
  */
-export function SoundVisual3D({ mode }: { mode: Mode }) {
+export function SoundVisual3D({
+  mode,
+  section,
+  highlight,
+  onSection,
+}: {
+  mode: Mode
+  /** The pass of the song CREATE shows; the playhead moves it on. */
+  section: number
+  /** The pass the stack's finger is over, lit on the helix. */
+  highlight: number | null
+  /** The playhead has carried the song on to another pass. */
+  onSection: (section: number) => void
+}) {
   const { onTap, params: soundParams } = useSoundIntent()
   const { params: fx } = useFx()
-  const { rendered, playhead, removeTap, moveTap } = useRhythmicIntent()
+  const { rendered, playhead, removeTap, moveTap, beatsPerLoop } = useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sceneRef = useRef<SpiralScene | null>(null)
   const rafRef = useRef(0)
@@ -145,6 +158,28 @@ export function SoundVisual3D({ mode }: { mode: Mode }) {
     sceneRef.current?.setScatter((fx.reverb - FX_MIN) / (FX_MAX - FX_MIN))
     schedule()
   }, [fx.reverb])
+
+  useEffect(() => {
+    sceneRef.current?.setBeats(beatsPerLoop)
+    schedule()
+  }, [beatsPerLoop])
+
+  useEffect(() => {
+    sceneRef.current?.setCurrent(section)
+    schedule()
+  }, [section])
+
+  useEffect(() => {
+    sceneRef.current?.setHighlight(highlight)
+    schedule()
+  }, [highlight])
+
+  const onSectionRef = useRef(onSection)
+  onSectionRef.current = onSection
+  useEffect(() => {
+    sceneRef.current?.setOnCurrent((turn) => onSectionRef.current(turn))
+    return () => sceneRef.current?.setOnCurrent(null)
+  }, [])
 
   useEffect(() => {
     sceneRef.current?.setMode(mode, performance.now())

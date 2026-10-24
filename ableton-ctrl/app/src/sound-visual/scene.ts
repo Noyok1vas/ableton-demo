@@ -7,12 +7,13 @@
  * axis — which is what CREATE is: a camera on the axis with a
  * near-orthographic lens, framing the current turn exactly as the canvas
  * framed its ring, every other turn faded out. ARRANGE swings the same camera
- * round to the side, a little above, and brings it in until a turn nearly
- * fills the screen's height: the song runs off both edges, and is scrolled
- * along and pinched tighter or looser (the turns' spacing, not the lens) to
- * show three to eight of its passes. Every mark collapses into a flat grainy
- * dot sized by how hard it was played. Switching modes is one camera move
- * between those two poses, with the marks morphing on the way.
+ * round to the side, a little above, at the same scale: the song runs off
+ * both edges, and is scrolled along and pinched tighter or looser (the
+ * turns' spacing, never the lens) to show three to eight of its passes.
+ * Every mark collapses into a small solid dot sized by how hard it was
+ * played, hung on the helix. Switching modes is one swing of the camera
+ * between those two poses, with the marks morphing on the way. The lens is
+ * orthographic throughout — no perspective, as the canvas had none.
  *
  * Drawn flat on purpose: white specks on the glass, the same ink as the 2D
  * canvas and the pads — nothing lit, no volume. The playhead is one point of
@@ -49,9 +50,13 @@ const BASE_ALPHA = 0.7
     white on black, where the same alpha reads fainter. */
 const GRID_ALPHA = 0.14
 /** Radius of the ball a mark becomes, in ring radii, before the mark's size. */
-const BALL_RADIUS = 0.085
-/** The share of a mark's specks that print its ball. */
-const BALL_SHARE = 0.18
+const BALL_RADIUS = 0.048
+/** The share of a mark's specks that print its ball — most of them, packed
+    into that small a disc, so it prints solid. */
+const BALL_SHARE = 0.6
+/** The section the finger is over on the stack: a sheet of this much white
+    through that turn. */
+const HIGHLIGHT_ALPHA = 0.1
 /** The playhead's light, in CSS px across. */
 const HEAD_PX = 14
 /** The camera move, and the morph with it. */
@@ -61,20 +66,18 @@ const TRANSITION_MS = 650
 const REF_MIN_DIM = 500
 const MAX_INK = 4
 
-/** A camera pose. `frame` is the height of the view at the target, in ring
-    radii; the distance follows from it and the lens, so a pose can open its
-    lens without the target plane changing size. `yaw` swings the camera off
-    the axis, round the vertical; `elevation` lifts it. */
-type Pose = { fov: number; yaw: number; elevation: number; frame: number }
+/** A camera pose: `yaw` swings the camera off the axis, round the vertical;
+    `elevation` lifts it. The lens is orthographic, so there is no distance. */
+type Pose = { yaw: number; elevation: number }
 
-const CREATE: Pose = { fov: 8, yaw: 0, elevation: 0, frame: 1 / CIRCLE_RADIUS }
-const ARRANGE: Pose = {
-  fov: 30,
-  yaw: (78 * Math.PI) / 180,
-  elevation: (12 * Math.PI) / 180,
-  // A turn is two radii tall; this leaves a little glass above and below.
-  frame: 2.4,
-}
+const CREATE: Pose = { yaw: 0, elevation: 0 }
+/** Not quite side-on, so a turn reads as a narrow loop rather than a line. */
+const ARRANGE: Pose = { yaw: (78 * Math.PI) / 180, elevation: (10 * Math.PI) / 180 }
+/** The view's height in ring radii, both poses: the ring at CIRCLE_RADIUS of
+    the shorter side, as the canvas drew it. */
+const FRAME = 1 / CIRCLE_RADIUS
+/** Where the camera sits along its line of sight; only has to clear the song. */
+const CAMERA_DISTANCE = 30
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u
@@ -119,7 +122,8 @@ const POINT_VERT = /* glsl */ `
     // The ball faces the camera whatever the pose: a flat dot, not a sphere.
     mv.xy += aBall * uMorph;
     gl_Position = projectionMatrix * mv;
-    float px = uDot * uProj / -mv.z;
+    // Orthographic: uProj is simply pixels per ring radius.
+    float px = uDot * uProj;
     gl_PointSize = max(1.0, px);
     // A speck smaller than a pixel prints lighter instead of larger.
     float sub = min(1.0, px);
@@ -159,6 +163,17 @@ const LINE_FRAG = /* glsl */ `
   }
 `
 
+/** The beat grid's spokes, CREATE's alone: gone by the time the camera is
+    round the side. */
+const SPOKE_VERT = /* glsl */ `
+  uniform float uMorph;
+  varying float vAlpha;
+  void main() {
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vAlpha = ${GRID_ALPHA} * (1.0 - uMorph);
+  }
+`
+
 /** The playhead: one soft point of light, a fixed size on screen. */
 const HEAD_VERT = /* glsl */ `
   uniform float uSize;
@@ -181,16 +196,22 @@ const HEAD_FRAG = /* glsl */ `
 export class SpiralScene {
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
-  private camera = new THREE.PerspectiveCamera(CREATE.fov, 1, 0.1, 100)
+  private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, CAMERA_DISTANCE * 2 + 40)
   private points: THREE.Points | null = null
   private pointMaterial: THREE.ShaderMaterial
   private lineMaterial: THREE.ShaderMaterial
+  private spokeMaterial: THREE.ShaderMaterial
   private helix: THREE.Line
+  private spokes: THREE.LineSegments | null = null
+  private beats = 8
+  private sheet: THREE.Mesh
+  private highlight: number | null = null
   private head: THREE.Points
   private headMaterial: THREE.ShaderMaterial
   private headPosition: THREE.BufferAttribute
 
   private marks: readonly MarkTap[] = []
+  private onCurrent: ((turn: number) => void) | null = null
   private width = 1
   private height = 1
   private dpr = 1
@@ -249,6 +270,14 @@ export class SpiralScene {
       depthTest: false,
       depthWrite: false,
     })
+    this.spokeMaterial = new THREE.ShaderMaterial({
+      vertexShader: SPOKE_VERT,
+      fragmentShader: LINE_FRAG,
+      uniforms: { uMorph: { value: 0 } },
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    })
     this.headMaterial = new THREE.ShaderMaterial({
       vertexShader: HEAD_VERT,
       fragmentShader: HEAD_FRAG,
@@ -260,6 +289,26 @@ export class SpiralScene {
 
     this.helix = this.buildHelix()
     this.scene.add(this.helix)
+    this.buildSpokes()
+
+    // The sheet through a turn that the stack's finger is over: a square of
+    // glass a little larger than the ring, in the turn's plane.
+    const sheetGeometry = new THREE.PlaneGeometry(2.6, 2.6)
+    sheetGeometry.rotateY(Math.PI / 2)
+    this.sheet = new THREE.Mesh(
+      sheetGeometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: HIGHLIGHT_ALPHA,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    )
+    this.sheet.visible = false
+    this.sheet.renderOrder = -1
+    this.scene.add(this.sheet)
 
     const headGeometry = new THREE.BufferGeometry()
     this.headPosition = new THREE.BufferAttribute(new Float32Array(3), 3)
@@ -292,6 +341,27 @@ export class SpiralScene {
     const line = new THREE.Line(geometry, this.lineMaterial)
     line.frustumCulled = false
     return line
+  }
+
+  /** The beat grid: spokes from the axis, in the current turn's plane, as the
+      canvas drew them — reaching past the ring to the edge of the glass. */
+  private buildSpokes(): void {
+    if (this.spokes) {
+      this.scene.remove(this.spokes)
+      this.spokes.geometry.dispose()
+    }
+    const reach = 3.2
+    const positions = new Float32Array(this.beats * 6)
+    for (let beat = 0; beat < this.beats; beat++) {
+      const theta = (beat / this.beats) * Math.PI * 2 - Math.PI / 2
+      // Screen-right is -Z and screen-up +Y, as everywhere here.
+      positions.set([0, 0, 0, 0, -Math.sin(theta) * reach, -Math.cos(theta) * reach], beat * 6)
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    this.spokes = new THREE.LineSegments(geometry, this.spokeMaterial)
+    this.spokes.frustumCulled = false
+    this.scene.add(this.spokes)
   }
 
   /** Ink correction for a canvas larger than the reference; 1 at or below. */
@@ -383,6 +453,31 @@ export class SpiralScene {
     this.buildPoints()
   }
 
+  setBeats(beats: number): void {
+    if (beats === this.beats) return
+    this.beats = beats
+    this.buildSpokes()
+  }
+
+  /** Which pass of the song is shown in CREATE and lit on the helix. Set by
+      the stack; advanced by the playhead; reported back through `onCurrent`. */
+  setCurrent(turn: number): void {
+    this.current = clamp(Math.round(turn), 0, TURNS - 1)
+  }
+
+  getCurrent(): number {
+    return this.current
+  }
+
+  setOnCurrent(listener: ((turn: number) => void) | null): void {
+    this.onCurrent = listener
+  }
+
+  /** The section the stack's finger is over, or none. */
+  setHighlight(turn: number | null): void {
+    this.highlight = turn
+  }
+
   /** REVERB, 0..1. */
   setScatter(amount: number): void {
     this.pointMaterial.uniforms.uScatter.value = amount
@@ -416,10 +511,15 @@ export class SpiralScene {
 
   // ── ARRANGE's view along the song ─────────────────────────────────────
 
-  /** The width of the screen at the target, in ring radii, in ARRANGE. */
-  private frameWidth(): number {
+  /** The view's height in ring radii: FRAME spans the SHORTER side. */
+  private frameHeight(): number {
     const aspect = this.width / this.height
-    return aspect < 1 ? ARRANGE.frame : ARRANGE.frame * aspect
+    return aspect < 1 ? FRAME / aspect : FRAME
+  }
+
+  /** The width of the screen, in ring radii. */
+  private frameWidth(): number {
+    return this.frameHeight() * (this.width / this.height)
   }
 
   /** The turns' spacing along the axis: `visible` of them across the screen. */
@@ -448,11 +548,9 @@ export class SpiralScene {
     this.scroll = this.clampScroll((this.scroll / before) * this.pitch())
   }
 
-  /** Ring radii per canvas px at the target, in ARRANGE's pose. */
+  /** Ring radii per canvas px. */
   private worldPerPixel(): number {
-    const aspect = this.width / this.height
-    const vFrame = aspect < 1 ? ARRANGE.frame / aspect : ARRANGE.frame
-    return vFrame / this.height
+    return this.frameHeight() / this.height
   }
 
   // ── Frames ────────────────────────────────────────────────────────────
@@ -464,37 +562,32 @@ export class SpiralScene {
 
   private placeCamera(): void {
     const u = easeInOut(this.blend)
-    const fov = lerp(CREATE.fov, ARRANGE.fov, u)
     const yaw = lerp(CREATE.yaw, ARRANGE.yaw, u)
     const elevation = lerp(CREATE.elevation, ARRANGE.elevation, u)
-    const frame = lerp(CREATE.frame, ARRANGE.frame, u)
     const pitch = this.pitch()
     // CREATE looks at the current turn; ARRANGE at wherever the song is
     // scrolled to.
     const targetX = lerp((this.current + 0.5) * pitch, this.scroll, u)
 
-    const aspect = this.width / this.height
-    // `frame` spans the SHORTER side, as the canvas's ring did.
-    const vFrame = aspect < 1 ? frame / aspect : frame
-    const half = (fov * Math.PI) / 360
-    const distance = vFrame / 2 / Math.tan(half)
-    this.camera.fov = fov
-    this.camera.aspect = aspect
-    this.camera.near = Math.max(0.05, distance * 0.05)
-    this.camera.far = distance * 4 + TURNS * pitch
+    const vFrame = this.frameHeight()
+    const hFrame = this.frameWidth()
+    this.camera.left = -hFrame / 2
+    this.camera.right = hFrame / 2
+    this.camera.top = vFrame / 2
+    this.camera.bottom = -vFrame / 2
     this.camera.updateProjectionMatrix()
     const target = new THREE.Vector3(targetX, 0, 0)
     // On the axis (+X) at yaw 0; swung round toward +Z as the yaw opens.
     this.camera.position.set(
-      targetX + Math.cos(elevation) * Math.cos(yaw) * distance,
-      Math.sin(elevation) * distance,
-      Math.cos(elevation) * Math.sin(yaw) * distance,
+      targetX + Math.cos(elevation) * Math.cos(yaw) * CAMERA_DISTANCE,
+      Math.sin(elevation) * CAMERA_DISTANCE,
+      Math.cos(elevation) * Math.sin(yaw) * CAMERA_DISTANCE,
     )
     this.camera.up.set(0, 1, 0)
     this.camera.lookAt(target)
     this.camera.updateMatrixWorld()
-    // Pixels per world unit at unit depth, for the specks' size.
-    this.pointMaterial.uniforms.uProj.value = this.height / (2 * Math.tan(half))
+    // Pixels per ring radius, for the specks' size.
+    this.pointMaterial.uniforms.uProj.value = this.height / vFrame
   }
 
   frame(now: number): void {
@@ -509,6 +602,7 @@ export class SpiralScene {
     const head = this.playhead()
     if (head !== null && this.lastHead !== null && head < this.lastHead - 0.5) {
       this.current = (this.current + 1) % TURNS
+      this.onCurrent?.(this.current)
     }
     this.lastHead = head
 
@@ -519,7 +613,13 @@ export class SpiralScene {
     this.pointMaterial.uniforms.uPitch.value = pitch
     this.lineMaterial.uniforms.uMorph.value = morph
     this.lineMaterial.uniforms.uCurrent.value = this.current
+    this.spokeMaterial.uniforms.uMorph.value = morph
     this.helix.scale.x = pitch
+    // The grid sits in the plane the playhead is passing through; stopped,
+    // mid-turn, where the canvas drew it.
+    if (this.spokes) this.spokes.position.x = (this.current + (head ?? 0.5)) * pitch
+    this.sheet.visible = this.highlight !== null
+    if (this.highlight !== null) this.sheet.position.x = (this.highlight + 0.5) * pitch
 
     // The light on the helix, where the loop is now.
     this.head.visible = head !== null
@@ -571,9 +671,13 @@ export class SpiralScene {
   dispose(): void {
     this.points?.geometry.dispose()
     this.helix.geometry.dispose()
+    this.spokes?.geometry.dispose()
+    this.sheet.geometry.dispose()
+    ;(this.sheet.material as THREE.Material).dispose()
     this.head.geometry.dispose()
     this.pointMaterial.dispose()
     this.lineMaterial.dispose()
+    this.spokeMaterial.dispose()
     this.headMaterial.dispose()
     this.renderer.dispose()
   }

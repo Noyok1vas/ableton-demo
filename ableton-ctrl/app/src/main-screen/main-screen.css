@@ -74,37 +74,39 @@
   flex: 1 1 auto;
 }
 
-/* CREATE | ARRANGE: a two-way pill in the bottom row's middle. */
-.ms-mode {
+/* The sections, a stack of sheets in the bottom row's middle. */
+.ms-stack {
   flex: 0 0 auto;
-  display: flex;
   height: var(--circle);
-  padding: 0;
-  border: var(--stroke-strong) solid var(--ink-pure);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.ms-mode-option {
-  display: grid;
-  place-items: center;
-  min-width: 168px;
-  padding: 0 var(--space-5);
-  background: none;
-  border: 0;
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: var(--type-s);
-  font-weight: 900;
-  letter-spacing: 0.04em;
+  width: auto;
+  overflow: visible;
+  touch-action: none;
   cursor: pointer;
-  transition: background var(--motion-fast), color var(--motion-fast);
 }
 
-.ms-mode-option--on {
-  background: var(--ink-pure);
-  color: var(--surface);
+.ms-sheet {
+  fill: transparent;
+  stroke: var(--ink-pure);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  transition: fill var(--motion-fast);
+}
+
+.ms-sheet--lit {
+  fill: rgba(255, 255, 255, 0.1);
+}
+
+.ms-sheet--current {
+  fill: var(--text-muted);
+}
+
+/* The left edge: the one switch between the ring and the song. */
+.ms-side {
+  position: absolute;
+  left: var(--edge);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
 }
 
 /* The round buttons at either end of each row. */
@@ -216,4 +218,29 @@
   font-size: var(--type-xs);
   font-weight: 500;
   white-space: nowrap;
+}
+
+/* ── Buttons, engraved ─────────────────────────────────
+   Every round control is a shape cut into the glass rather than drawn on
+   it: a faint dark disc with its own shadow falling in from the top-left.
+   No outline. An "on" state lifts the disc toward white. */
+.ms-circle,
+.ms-circle:hover:not(:disabled) {
+  background: rgba(22, 22, 22, 0.3);
+  border: 0;
+  box-shadow:
+    inset 4px 4px 4px rgba(12, 12, 12, 0.25),
+    inset -1px -1px 1px rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.ms-circle:disabled {
+  color: var(--text-muted);
+  box-shadow: inset 4px 4px 4px rgba(12, 12, 12, 0.18);
+}
+
+.ms-circle--on,
+.ms-circle--on:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text);
 }

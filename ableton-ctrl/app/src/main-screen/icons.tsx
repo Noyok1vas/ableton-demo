@@ -71,6 +71,17 @@ export function IconSparkle({ size = 24, filled = false }: IconProps & { filled?
   )
 }
 
+/** SF Symbols' globe: the song as a whole, turned to be looked round. */
+export function IconGlobe({ size = 24 }: IconProps) {
+  return (
+    <svg {...svg(size)}>
+      <circle cx="12" cy="12" r="8.5" />
+      <ellipse cx="12" cy="12" rx="3.6" ry="8.5" />
+      <path d="M3.5 12h17M5 7.5h14M5 16.5h14" />
+    </svg>
+  )
+}
+
 /** Solid glyphs for the transport — they read at a glance where outlines don't. */
 export function IconPlay({ size = 20 }: IconProps) {
   return (
