@@ -62,6 +62,9 @@ function EditField({
       className={`tp-input num ${className ?? ''}`}
       autoFocus
       aria-label={label}
+      // As wide as what is typed, so the highlight hugs the text.
+      // (plus the block's padding, which the width includes).
+      style={{ width: `calc(${Math.max(2, draft.length) + 0.5}ch + 12px)` }}
       value={draft}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setDraft(e.target.value)}
@@ -161,7 +164,7 @@ function DragValue({
           }}
         />
       ) : (
-        <span className="tp-value num">{display}</span>
+        <span className="tp-value tp-mark num">{display}</span>
       )}
       {suffix && <span className="tp-suffix">{suffix}</span>}
     </div>
@@ -170,15 +173,17 @@ function DragValue({
 
 /**
  * Transport — the clock, as the bar across the top of the Main Screen,
- * engraved into the glass like the round buttons either side of it:
+ * engraved into the glass like the round buttons either side of it, in
+ * three groups held apart by space rather than rules:
  *
- *   Project.01 | ●○ | ▶ | 148 BPM | 4/4 | /4
+ *   PROJECT          TRANSPORT          CLOCK
+ *   Project.01   |    ●○   ▶     |   148 BPM   4/4   /4
  *
- * The project's name (double-click to rename), the metronome, PLAY / STOP in
- * the middle of the bar, then the tempo and the beats of the meter — each
- * dragged up and down, or double-clicked and typed — and the division, the
- * note value that counts as a beat, which a click moves on through
- * /2 /4 /8 /16.
+ * The project's name (double-click to rename); the metronome and PLAY /
+ * STOP, the group in the middle of the bar; then the tempo and the beats of
+ * the meter — each dragged up and down, or double-clicked and typed — and
+ * the division, the note value that counts as a beat, which a click moves
+ * on through /2 /4 /8 /16. Whatever is being changed is lit.
  *
  * PLAY restarts the pattern from its top and STOP keeps it, so stopping is
  * never destructive — the + beside this bar is what starts a new one.
@@ -222,7 +227,7 @@ export function TransportBar() {
 
   return (
     <div className="tp-bar" role="toolbar" aria-label="Transport">
-      <div className="tp-side tp-side--left">
+      <div className="tp-group tp-group--project" role="group" aria-label="Project">
         <div
           className="tp-cell tp-cell--name"
           title={naming ? undefined : name}
@@ -233,7 +238,6 @@ export function TransportBar() {
             <EditField
               initial={name}
               label="Project name"
-              className="tp-input--name"
               onDone={(text) => {
                 setNaming(false)
                 const next = text?.trim().slice(0, NAME_MAX)
@@ -241,13 +245,17 @@ export function TransportBar() {
               }}
             />
           ) : (
-            <span className="tp-name">{name}</span>
+            <span className="tp-name tp-mark">{name}</span>
           )}
         </div>
-        <span className="tp-rule" aria-hidden />
+      </div>
+
+      <span className="tp-sep" aria-hidden />
+
+      <div className="tp-group tp-group--transport" role="group" aria-label="Transport">
         <button
           type="button"
-          className={`tp-cell tp-btn tp-metronome${metronome ? ' tp-btn--on' : ''}${
+          className={`tp-btn tp-metronome${metronome ? ' tp-btn--on' : ''}${
             freeRunning ? ' tp-metronome--free' : ''
           }`}
           style={{ '--beat': `${beatSeconds}s` } as CSSProperties}
@@ -261,28 +269,27 @@ export function TransportBar() {
               : 'Metronome — a click on every beat while the loop plays'
           }
         >
-          <IconMetronome lit={lit} size={34} />
+          <IconMetronome lit={lit} size={30} />
+        </button>
+        <button
+          type="button"
+          className={`tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
+          aria-label={playing ? 'Stop' : 'Play'}
+          aria-pressed={playing}
+          disabled={!hasPattern}
+          onClick={togglePlay}
+          onKeyUp={swallowSpace}
+          data-hint={
+            playing ? 'Stop — the pattern stays. Key: Enter' : 'Play the loop from the top. Key: Enter'
+          }
+        >
+          {playing ? <IconStop size={22} /> : <IconPlay size={26} />}
         </button>
       </div>
 
-      <span className="tp-rule" aria-hidden />
-      <button
-        type="button"
-        className={`tp-cell tp-btn tp-play${playing ? ' tp-btn--on' : ''}`}
-        aria-label={playing ? 'Stop' : 'Play'}
-        aria-pressed={playing}
-        disabled={!hasPattern}
-        onClick={togglePlay}
-        onKeyUp={swallowSpace}
-        data-hint={
-          playing ? 'Stop — the pattern stays. Key: Enter' : 'Play the loop from the top. Key: Enter'
-        }
-      >
-        {playing ? <IconStop size={28} /> : <IconPlay size={32} />}
-      </button>
-      <span className="tp-rule" aria-hidden />
+      <span className="tp-sep" aria-hidden />
 
-      <div className="tp-side tp-side--right">
+      <div className="tp-group tp-group--clock" role="group" aria-label="Clock">
         <DragValue
           value={bpm}
           display={String(bpm)}
@@ -293,7 +300,6 @@ export function TransportBar() {
           hint="Tempo — drag up or down, or double-click to type it"
           className="tp-bpm"
         />
-        <span className="tp-rule" aria-hidden />
         <DragValue
           value={meter.beats}
           display={`${meter.beats}/${meter.unit}`}
@@ -303,16 +309,15 @@ export function TransportBar() {
           hint="Time signature — drag up or down for more or fewer beats, or double-click to type it"
           className="tp-meter"
         />
-        <span className="tp-rule" aria-hidden />
         <button
           type="button"
-          className="tp-cell tp-btn tp-division num"
+          className="tp-btn tp-division num"
           aria-label={`Division /${meter.unit}`}
           onClick={nextUnit}
           onKeyUp={swallowSpace}
           data-hint={`Division /${meter.unit} — a 1/${meter.unit} note counts as one beat. Click for the next`}
         >
-          /{meter.unit}
+          <span className="tp-mark">/{meter.unit}</span>
         </button>
       </div>
     </div>
