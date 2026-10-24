@@ -1,15 +1,16 @@
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 
-/** One sheet's size and the step between sheets, in device units, in the
+/** One sheet's size and the step between sheets, in device units — one and
+    a half times the design's frame, the outline left at its weight — in the
     design's proportions: a sheet about 1.85 times as tall as it is wide,
     each next one a little over two-thirds of a sheet along. */
-const SHEET_W = 20
-const SHEET_H = 37
-const STEP = 14
+const SHEET_W = 30
+const SHEET_H = 55.5
+const STEP = 21
 /** How far a sheet's right edge stands above its left: the design's frames
     rise about 0.6 of their width. Every sheet is sheared on its own, so the
     stack stays level rather than climbing. */
-const RISE = 12
+const RISE = 18
 
 /**
  * The song's sections as a stack of sheets, one per pass of the loop: upright
