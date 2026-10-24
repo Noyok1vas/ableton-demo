@@ -156,11 +156,19 @@
   z-index: 1;
   display: flex;
   overflow: hidden;
-  background: var(--surface);
-  border: var(--stroke-strong) solid var(--ink-pure);
+  color: var(--text);
+  background: var(--engrave-fill);
+  border: 0;
   border-radius: var(--radius-panel);
-  box-shadow: 0 12px 40px rgba(255, 255, 255, 0.06);
+  box-shadow: var(--engrave-shadow);
   animation: ms-panel-in 140ms ease-out;
+}
+
+/* The panel is the same cut as the top bar. What sits in it is the glass,
+   not a second black sheet. */
+.ms-panel .collection,
+.ms-panel .ss-screen {
+  background: transparent;
 }
 
 .ms-panel--left {
@@ -186,53 +194,107 @@
   right: var(--edge);
 }
 
-/* The assistant: one question, along the bottom, over the ring. */
-.ms-assist {
+/* The assistant: the same engraved pill as the top bar, along the bottom. */
+.ms-assist-wrap {
   position: absolute;
   left: 50%;
   bottom: calc(var(--ms-band) + var(--space-2));
   translate: -50% 0;
   z-index: 2;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
-  box-sizing: border-box;
-  width: min(560px, calc(100% - 2 * var(--edge)));
-  max-height: 240px;
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  overflow: auto;
-  background: var(--surface);
-  border: var(--stroke-strong) solid var(--ink-pure);
-  border-radius: var(--radius-panel);
-  box-shadow: 0 12px 40px rgba(255, 255, 255, 0.06);
-  pointer-events: auto;
+  width: min(640px, calc(100% - 2 * var(--edge)));
+  pointer-events: none;
   animation: ms-panel-in 140ms ease-out;
 }
 
+.ms-assist-wrap > * {
+  pointer-events: auto;
+}
+
+.ms-assist-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + var(--space-3));
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--engrave-fill);
+  box-shadow: var(--engrave-shadow);
+  color: var(--text);
+  font-size: var(--type-xs);
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+  animation: ms-panel-in 140ms ease-out;
+}
+
+/* The first-run line sits above the bar, and above the reply when one is up. */
+.ms-overlay:has(.ms-assist-wrap) .ms-toast {
+  bottom: calc(var(--ms-band) + var(--circle) + var(--space-4));
+}
+
+.ms-overlay:has(.ms-assist-pop) .ms-toast {
+  bottom: calc(var(--ms-band) + var(--circle) + 96px + var(--space-4));
+}
+
+.ms-assist {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--circle);
+  margin: 0;
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--engrave-fill);
+  box-shadow: var(--engrave-shadow);
+  color: color-mix(in srgb, var(--text) 62%, transparent);
+  font-family: var(--font-ui);
+  font-size: var(--type-s);
+  font-weight: 500;
+  line-height: 1;
+}
+
 .ms-assist-mic {
+  position: relative;
+  z-index: 1;
   width: var(--hit-min);
   height: var(--hit-min);
 }
 
-.ms-assist-body {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
+.ms-assist-field {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 calc(var(--hit-min) + var(--space-4));
 }
 
-.ms-assist-line,
-.ms-assist-reply {
+.ms-assist-line {
+  width: 100%;
   margin: 0;
-  font-size: var(--type-xs);
-  line-height: 1.45;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ms-assist-line--quiet {
-  color: var(--text-muted);
+  color: color-mix(in srgb, var(--text) 62%, transparent);
 }
 
 .ms-assist-input {
@@ -243,11 +305,59 @@
   background: none;
   color: var(--text);
   font: inherit;
-  font-size: var(--type-xs);
+  text-align: center;
+}
+
+.ms-assist-input::placeholder {
+  color: color-mix(in srgb, var(--text) 62%, transparent);
 }
 
 .ms-assist-input:focus {
   outline: none;
+}
+
+.ms-assist-caret {
+  display: inline-block;
+  width: 1px;
+  height: 0.85em;
+  margin-left: 2px;
+  background: currentColor;
+  vertical-align: -1px;
+  animation: ms-caret 1s steps(1) infinite;
+}
+
+.ms-assist-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  color: var(--text);
+}
+
+.ms-assist-wave > i {
+  display: block;
+  width: 3px;
+  height: 6px;
+  border-radius: 2px;
+  background: currentColor;
+  animation: ms-wave 0.9s ease-in-out infinite;
+}
+
+.ms-assist-wave > i:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.ms-assist-wave > i:nth-child(3) {
+  animation-delay: 0.16s;
+}
+.ms-assist-wave > i:nth-child(4) {
+  animation-delay: 0.24s;
+}
+.ms-assist-wave > i:nth-child(5) {
+  animation-delay: 0.16s;
+}
+.ms-assist-wave > i:nth-child(6) {
+  animation-delay: 0.08s;
 }
 
 /* Auditioning owns the screen: the panel steps aside (and comes back), and
@@ -264,11 +374,11 @@
 .ms-overlay--audition .ms-row,
 .ms-overlay--audition .ms-side,
 .ms-overlay--audition .ms-toast,
-.ms-overlay--audition .ms-assist,
+.ms-overlay--audition .ms-assist-wrap,
 .ms-overlay--handling .ms-row,
 .ms-overlay--handling .ms-side,
 .ms-overlay--handling .ms-toast,
-.ms-overlay--handling .ms-assist,
+.ms-overlay--handling .ms-assist-wrap,
 .ms-overlay--handling .ms-panel {
   opacity: 0;
   visibility: hidden;
@@ -306,6 +416,29 @@
   }
 }
 
+@keyframes ms-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes ms-wave {
+  0%,
+  100% {
+    height: 6px;
+    opacity: 0.4;
+  }
+  50% {
+    height: 22px;
+    opacity: 1;
+  }
+}
+
 /* ── Toast: one line the instrument needs you to read ─ */
 
 .ms-toast {
@@ -315,8 +448,9 @@
   transform: translateX(-50%);
   margin: 0;
   padding: var(--space-2) var(--space-4);
-  background: var(--ink-pure);
-  color: var(--surface);
+  background: var(--engrave-fill);
+  box-shadow: var(--engrave-shadow);
+  color: var(--text);
   border-radius: var(--radius-pill);
   font-size: var(--type-xs);
   font-weight: 500;

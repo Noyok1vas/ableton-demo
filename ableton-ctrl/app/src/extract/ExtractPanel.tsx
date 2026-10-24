@@ -40,14 +40,86 @@ function tapsToHits(taps: readonly Tap[], duration: number): ImportedHit[] {
   }))
 }
 
-/** The one bar, laid on the ring once per bar of the loop, in this kit's sounds. */
-function toHits(result: ExtractionResult, character: CharacterState): ImportedHit[] {
-  const steps = Math.max(1, result.steps)
+/** The one bar, quantized onto the sequencer's own bar and opened on the
+    hit the rhythm starts on, then laid once per bar of the loop. */
+function toHits(
+  result: ExtractionResult,
+  character: CharacterState,
+  stepsPerBar: number,
+): ImportedHit[] {
+  const fitted = fitToBar(result, stepsPerBar)
   const hits: ImportedHit[] = []
   for (let bar = 0; bar < BARS_PER_LOOP; bar++) {
-    for (const hit of result.pattern) hits.push(place(hit, steps, bar, character))
+    for (const hit of fitted) hits.push(place(hit, stepsPerBar, bar, character))
   }
   return hits
+}
+
+const modStep = (n: number, m: number) => ((n % m) + m) % m
+
+/**
+ * Fold the analysis onto exactly one bar of `stepsPerBar` sixteenths, then
+ * rotate it so the downbeat — the note the rhythm starts on — is step 0.
+ * A bar that is a step short or long walks off the beat by the second bar;
+ * one that opens on an off-beat kick does the same against the sequencer's
+ * own starting point.
+ */
+function fitToBar(result: ExtractionResult, stepsPerBar: number): PatternHit[] {
+  const src = Math.max(1, result.steps)
+  const slots = new Map<string, PatternHit>()
+  for (const hit of result.pattern) {
+    const step = modStep(Math.round((hit.step / src) * stepsPerBar), stepsPerBar)
+    const next = { ...hit, step }
+    const key = `${hit.drum}:${step}`
+    const prev = slots.get(key)
+    if (!prev || prev.velocity < hit.velocity) slots.set(key, next)
+  }
+  const hits = [...slots.values()]
+  if (hits.length === 0) return []
+  const turn = downbeatOf(hits, stepsPerBar)
+  return hits.map((hit) => ({ ...hit, step: modStep(hit.step - turn, stepsPerBar) }))
+}
+
+/** How many steps to rotate so the rhythm's start lands on step 0. A kick on
+    the one wins; a snare on two and four confirms it; an off-beat kick loses. */
+function downbeatOf(hits: readonly PatternHit[], stepsPerBar: number): number {
+  let best = 0
+  let bestScore = -Infinity
+  for (let r = 0; r < stepsPerBar; r++) {
+    let score = 0
+    for (const hit of hits) {
+      const s = modStep(hit.step - r, stepsPerBar)
+      const w = 0.5 + hit.velocity
+      const beat = Math.floor(s / 4)
+      const onBeat = s % 4 === 0
+      if (hit.drum === 'kick') {
+        if (s === 0) score += 3 * w
+        else if (onBeat && beat === 2) score += 1.2 * w
+        else if (onBeat) score += 0.5 * w
+        else score -= 0.4 * w
+      } else if (hit.drum === 'snare') {
+        if ((beat === 1 || beat === 3) && onBeat) score += 1.7 * w
+        else if (s === 0) score -= 0.5 * w
+      } else if (hit.drum === 'cymbal' && s === 0) {
+        score += w
+      }
+    }
+    if (score > bestScore + 1e-9) {
+      bestScore = score
+      best = r
+    }
+  }
+  return best
+}
+
+/** The detected tempo, moved by octaves until one bar of it is one bar of
+    the tempo already running. A doubled tempo folds two bars into one, and
+    the copy laid on the second bar then falls off the beat. */
+function tempoForBar(detected: number, current: number): number {
+  let bpm = detected
+  while (bpm > current * Math.SQRT2 && bpm / 2 >= BPM_MIN) bpm /= 2
+  while (bpm * Math.SQRT2 < current && bpm * 2 <= BPM_MAX) bpm *= 2
+  return Math.round(Math.min(BPM_MAX, Math.max(BPM_MIN, bpm)))
 }
 
 function place(hit: PatternHit, steps: number, bar: number, character: CharacterState): ImportedHit {
@@ -76,7 +148,7 @@ export function ExtractPanel({
   onKept: () => void
   onLive: (live: 'idle' | 'recording' | 'reading' | 'preview') => void
 }) {
-  const { importPattern, setParam, setView, capture, loopDuration, params, view, playing, togglePlay } =
+  const { importPattern, setParam, setView, capture, loopDuration, params, view, playing, togglePlay, meter } =
     useSession()
   const { bpm, setBpm } = useSoundEngine()
   const { character } = useSelector()
@@ -94,8 +166,8 @@ export function ExtractPanel({
   const playedRef = useRef(false)
   const characterRef = useRef(character)
   characterRef.current = character
-  const api = useRef({ importPattern, setBpm, setParam, setView, bpm, loopDuration, params, view })
-  api.current = { importPattern, setBpm, setParam, setView, bpm, loopDuration, params, view }
+  const api = useRef({ importPattern, setBpm, setParam, setView, bpm, loopDuration, params, view, meter })
+  api.current = { importPattern, setBpm, setParam, setView, bpm, loopDuration, params, view, meter }
 
   useEffect(() => {
     onLive(phase === 'error' ? 'idle' : phase)
@@ -186,9 +258,18 @@ export function ExtractPanel({
         return
       }
       remember()
-      const next = Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(result.bpm)))
-      importPattern(toHits(result, characterRef.current))
-      setBpm(next)
+      const now = api.current
+      const stepsPerBar = Math.max(1, now.meter.beats * 4)
+      const next = tempoForBar(result.bpm, now.bpm)
+      const hits = toHits(result, characterRef.current, stepsPerBar)
+      // The bar length follows the tempo, and it only updates once React has
+      // rendered it. Place the hits after that, or they are measured against
+      // the old bar and the second copy lands off the beat.
+      now.setBpm(next)
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)))
+      })
+      api.current.importPattern(hits)
       setTempo(next)
       setPhase('preview')
     } catch {

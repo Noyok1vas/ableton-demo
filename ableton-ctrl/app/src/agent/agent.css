@@ -7,11 +7,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  height: var(--pill-h);
+  height: var(--circle);
   padding: 0 var(--space-4);
-  background: var(--surface);
-  border: var(--stroke-strong) solid var(--ink-pure);
+  background: var(--engrave-fill);
+  border: 0;
+  box-shadow: var(--engrave-shadow);
   border-radius: var(--radius-pill);
+  color: color-mix(in srgb, var(--text) 62%, transparent);
 }
 
 .ag-input {

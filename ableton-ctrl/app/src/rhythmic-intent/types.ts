@@ -63,8 +63,9 @@ export const loopDurationFor = (bpm: number, meter: Meter) =>
 export const gridDivisionsFor = (meter: Meter) => meter.beats * 4 * BARS_PER_LOOP
 
 /** The song, for now: the loop's pattern laid end to end this many times.
-    The first take fills every section; an edit after that changes only the
-    section it was made in, which is how the song gets its variations. */
+    The take being recorded fills every section; the first time another
+    section is opened, that take is frozen, and an edit after that changes
+    only the section it was made in. */
 export const SECTIONS = 8
 
 /** How the screen shows the loop: CREATE is one section, as a ring, played

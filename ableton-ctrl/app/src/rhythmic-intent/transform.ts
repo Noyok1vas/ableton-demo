@@ -25,6 +25,35 @@ export function applyPhase(pos: number, phaseSteps: number, divisions: number): 
   return wrap(pos + phaseSteps / divisions)
 }
 
+/**
+ * The raw loop position (0..1) that tightness and phase draw at `shown`, or
+ * as close as the grid pull can land. A drag stores this, so letting go does
+ * not throw the mark off the place the finger left it.
+ *
+ * Tightness cannot draw every position — between two grid lines there is a
+ * gap the pull never reaches — so a shown position in that gap clamps to the
+ * nearer edge of the cell.
+ */
+export function rawForShown(
+  shown: number,
+  tightness: number,
+  phaseSteps: number,
+  divisions: number,
+): number {
+  const d = Math.max(1, divisions)
+  const t = Math.min(1, Math.max(0, tightness / 100))
+  const unphased = wrap(shown - phaseSteps / d)
+  const nearest = Math.round(unphased * d) / d
+  if (t >= 0.999) return wrap(nearest)
+  let raw = (unphased - t * nearest) / (1 - t)
+  const half = 0.5 / d
+  const lo = nearest - half + 1e-6
+  const hi = nearest + half - 1e-6
+  if (raw < lo) raw = lo
+  else if (raw > hi) raw = hi
+  return wrap(raw)
+}
+
 /* Velocities within this range of each other count as "similar", which lets
    spatial spread break the tie instead of raw velocity order. */
 const VELOCITY_TIE_EPSILON = 0.1

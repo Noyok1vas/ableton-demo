@@ -14,6 +14,7 @@ import { FX_MAX, FX_MIN } from '../fx/types.ts'
 import { seedFromId, shortestStep, wrapPos, type MarkTap } from './marks.ts'
 import { SpiralScene } from './scene.ts'
 import type { RenderedTap } from '../rhythmic-intent/types.ts'
+import { rawForShown } from '../rhythmic-intent/transform.ts'
 import './sound-visual.css'
 
 export type { Mode } from './scene.ts'
@@ -56,6 +57,8 @@ export function SoundVisual3D({
     removeTap,
     moveTap,
     beatsPerLoop,
+    params,
+    gridDivisions,
   } = useRhythmicIntent()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sceneRef = useRef<SpiralScene | null>(null)
@@ -84,7 +87,7 @@ export function SoundVisual3D({
   // renders it, joined with the snapshots, so the marks move with the knobs
   // and DENSITY drops the ones it silences. A tap copied into several
   // sections keeps one id, and so one look, in all of them.
-  const toMarks = (taps: readonly RenderedTap[]): MarkTap[] =>
+  const toMarks = (taps: readonly RenderedTap[], held: { id: string; pos: number } | null): MarkTap[] =>
     taps
       .filter((t) => t.kept)
       .slice(-MAX_TAPS)
@@ -101,13 +104,19 @@ export function SoundVisual3D({
           }
           snapshotsRef.current.set(t.id, snapshot)
         }
-        return { id: t.id, pos: t.finalPos, velocity: t.velocity, ...snapshot }
+        // While a mark is held it is drawn where the finger is, not where the
+        // 1/16 grid has pulled it. The pull is what made a slow drag jump
+        // every time the nearest line changed.
+        const pos = held?.id === t.id ? held.pos : t.finalPos
+        return { id: t.id, pos, velocity: t.velocity, ...snapshot }
       })
+  // The place a held mark is drawn. Null when nothing is being dragged.
+  const [held, setHeld] = useState<{ id: string; pos: number } | null>(null)
   const songMarks = useMemo(
-    () => songRendered.map(toMarks),
-    // toMarks reads only refs.
+    () => songRendered.map((sectionTaps) => toMarks(sectionTaps, held)),
+    // toMarks reads only refs besides `held`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [songRendered],
+    [songRendered, held],
   )
   const renderedRef = useRef(rendered)
   renderedRef.current = rendered
@@ -218,7 +227,7 @@ export function SoundVisual3D({
     return { x: (event.clientX - rect.left) * scale, y: (event.clientY - rect.top) * scale }
   }
 
-  const dragRef = useRef<{ pointerId: number; id: string; pos: number; cursor: number } | null>(
+  const dragRef = useRef<{ pointerId: number; id: string; origin: number; cursor: number; pos: number } | null>(
     null,
   )
   const [grabbing, setGrabbing] = useState(false)
@@ -262,12 +271,18 @@ export function SoundVisual3D({
     if (!id) return
     const tap = renderedRef.current.find((t) => t.id === id)
     if (!tap) return
+    const cursor = scene.loopPosAt(point.x, point.y)
     dragRef.current = {
       pointerId: event.pointerId,
       id,
-      pos: tap.rawPos,
-      cursor: scene.loopPosAt(point.x, point.y),
+      // Follow the mark from where it is drawn, one-to-one with the finger.
+      // The raw position underneath is written when the finger lets go, so
+      // the grid pull does not stutter the mark on the way around.
+      origin: tap.finalPos,
+      cursor,
+      pos: tap.finalPos,
     }
+    setHeld({ id, pos: tap.finalPos })
     setGrabbing(true)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -301,9 +316,8 @@ export function SoundVisual3D({
     }
     if (event.pointerId !== drag.pointerId) return
     const cursor = scene.loopPosAt(point.x, point.y)
-    drag.pos = wrapPos(drag.pos + shortestStep(cursor - drag.cursor))
-    drag.cursor = cursor
-    moveTap(drag.id, drag.pos)
+    drag.pos = wrapPos(drag.origin + shortestStep(cursor - drag.cursor))
+    setHeld({ id: drag.id, pos: drag.pos })
   }
 
   const endDrag = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -320,8 +334,14 @@ export function SoundVisual3D({
       return
     }
     if (dragRef.current?.pointerId !== event.pointerId) return
+    const drag = dragRef.current
     dragRef.current = null
+    setHeld(null)
     setGrabbing(false)
+    // A press that did not travel leaves the mark where the grid already put
+    // it. Writing it again would only re-quantize a note that had not moved.
+    if (Math.abs(shortestStep(drag.pos - drag.origin)) < 1e-4) return
+    moveTap(drag.id, rawForShown(drag.pos, params.tightness, params.phase, gridDivisions))
   }
 
   /** A trackpad: two fingers scroll the song along, as two fingers do on the

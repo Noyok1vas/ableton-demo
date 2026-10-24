@@ -6,9 +6,10 @@
   z-index: 100;
   max-width: 260px;
   padding: var(--space-2) var(--space-3);
-  background: var(--ink-pure);
-  color: var(--surface);
-  border-radius: 10px;
+  background: var(--engrave-fill);
+  box-shadow: var(--engrave-shadow);
+  color: var(--text);
+  border-radius: var(--radius-pill);
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 500;

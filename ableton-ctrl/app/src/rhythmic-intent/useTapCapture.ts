@@ -39,6 +39,10 @@ export type TapCapture = {
       does not — the loop keeps its downbeat, so the engine's grid and this
       clock stay one. An empty one leaves the loop ready for a fresh take. */
   replace: (taps: readonly Tap[]) => void
+  /** The taps as they are this instant, including one just filed that React
+      has not re-rendered yet. Switching sections reads this, so the section
+      being left keeps the hit that landed in the same moment. */
+  current: () => readonly Tap[]
 }
 
 let sequence = 0
@@ -293,5 +297,7 @@ export function useTapCapture(
 
   useEffect(() => stopTimers, [stopTimers])
 
-  return { state, taps, progress, pass, tap, remove, move, undo, anchor, reset, load, replace }
+  const current = useCallback(() => tapsRef.current, [])
+
+  return { state, taps, progress, pass, tap, remove, move, undo, anchor, reset, load, replace, current }
 }

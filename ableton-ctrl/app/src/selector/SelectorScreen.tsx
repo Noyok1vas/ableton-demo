@@ -15,6 +15,12 @@ const FLASH_MS = 90
 /** How long a pad is held before it turns from a hit into an audition.
     Mirrored as --long-press in design/tokens.css. */
 const LONG_PRESS_MS = 400
+/** A second contact this soon, on this pad or the one beside it, is the same
+    finger seen twice — a palm, or the touch and its mouse echo — not a second
+    note. A hardware pad is not that sensitive. A finger on a pad further
+    away still plays: two hands do that on purpose. */
+const GHOST_MS = 70
+const MOUSE_AFTER_TOUCH_MS = 500
 /** The pad's round screen, in device units, and how much of it a mark may
     fill: at full velocity a mark is drawn VELOCITY_MAX_SIZE (1.3) of its
     tile, so the tile is held to 1/1.3 of the circle and the mark's widest
@@ -55,6 +61,10 @@ export function SelectorScreen() {
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Several pads can be held at once, one entry per finger.
   const presses = useRef(new Map<number, Press>())
+  // Recent hits, so a fat finger or a touch's mouse echo cannot fire the
+  // neighbouring pad as a second pitch.
+  const hits = useRef<{ at: number; index: number }[]>([])
+  const lastTouch = useRef(0)
 
   useEffect(() => {
     const held = presses.current
@@ -75,8 +85,22 @@ export function SelectorScreen() {
   }
 
   // pointerdown, not click: a tap has to land at press time, not on release.
-  const handlePointerDown = (id: PatternId) => (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePointerDown = (id: PatternId, index: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
     e.preventDefault()
+    const now = performance.now()
+    // A touch already played this. The compatibility click that follows it
+    // must not play it again.
+    if (e.pointerType === 'mouse' && now - lastTouch.current < MOUSE_AFTER_TOUCH_MS) return
+    if (e.pointerType !== 'mouse') lastTouch.current = now
+    hits.current = hits.current.filter((hit) => now - hit.at < GHOST_MS)
+    const neighbour = (other: number) => {
+      const col = Math.abs((index % 4) - (other % 4))
+      const row = Math.abs(Math.floor(index / 4) - Math.floor(other / 4))
+      return Math.max(col, row) <= 1
+    }
+    if (hits.current.some((hit) => neighbour(hit.index))) return
+    hits.current.push({ at: now, index })
+
     try {
       e.currentTarget.setPointerCapture(e.pointerId)
     } catch {
@@ -145,7 +169,7 @@ export function SelectorScreen() {
                 .join(' ')}
               aria-pressed={isSelected}
               aria-label={pattern.label}
-              onPointerDown={handlePointerDown(pattern.id)}
+              onPointerDown={handlePointerDown(pattern.id, index)}
               onPointerUp={release}
               onPointerCancel={release}
               // A long press must not open the system's context menu.

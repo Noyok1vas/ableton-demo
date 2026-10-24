@@ -355,8 +355,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
 
   // ── The song ─────────────────────────────────────────────────────
   // The working pattern (the capture) is always the OPEN section. Until the
-  // first take closes, every change to it is laid across all the sections;
-  // after that, a change belongs to the open section alone.
+  // first other section is opened, every change is laid across all of them.
+  // After that, a change belongs to the open section alone.
   const [song, setSong] = useState<Tap[][]>(() => restored.song.sections.map((s) => [...s]))
   const songRef = useRef(song)
   songRef.current = song
@@ -418,21 +418,30 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     restored.song.sections[restored.song.current] ?? restored.pattern.taps,
   )
 
-  // The open section follows the capture. Declared before the effect that
-  // closes the first take, so the take's last change still reaches them all.
+  // The open section follows the capture. Until the take is closed — the
+  // first time another section is opened — every change is laid across all
+  // eight sections, so the passage just recorded is the whole song. Closing
+  // the first pass of the loop does not do this: a groove is usually played
+  // in over more than one pass, and those later hits belong in every section
+  // too. Each section gets its own copies, so a later edit of one cannot
+  // change what another still holds, and a voice cannot fall off in the copy.
   const captureTapsForSong = capture.taps
   useEffect(() => {
+    const copies = () => captureTapsForSong.map((tap) => ({ ...tap }))
     if (!takenRef.current) {
-      setSong(Array.from({ length: SECTIONS }, () => [...captureTapsForSong]))
+      const laid = copies()
+      const next = Array.from({ length: SECTIONS }, () => laid.map((tap) => ({ ...tap })))
+      songRef.current = next
+      setSong(next)
     } else {
       const open = selectedRef.current
-      setSong((prev) => prev.map((s, i) => (i === open ? [...captureTapsForSong] : s)))
+      setSong((prev) => {
+        const next = prev.map((section, i) => (i === open ? copies() : section))
+        songRef.current = next
+        return next
+      })
     }
   }, [captureTapsForSong])
-  const captureStateForSong = capture.state
-  useEffect(() => {
-    if (captureStateForSong === 'complete' && captureTapsForSong.length > 0) takenRef.current = true
-  }, [captureStateForSong, captureTapsForSong])
 
   // …and keeps up with it afterwards: the loop stays open, so every addition,
   // undo and deletion belongs to the same entry rather than spawning a new one.
@@ -554,14 +563,23 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   }, [loopDuration, engineRetimeLoop])
 
   // ARRANGE plays the whole song through; CREATE loops the open section.
+  // `playingRef` rather than the `playing` this render closed over: audition
+  // runs its effect first and stops the loop in the same commit that also
+  // changed the pattern (a held pad takes its note back). Reading the state
+  // would start the loop again after that stop, so shaping a sound would
+  // never actually silence it. The next render, with playing false, would
+  // then return without stopping what this one had just restarted.
   useEffect(() => {
-    if (!playing) return
+    if (!playingRef.current) {
+      engineStopLoop()
+      return
+    }
     if (view === 'arrange') engineStartLoop(songEvents(songRendered, offset), loopDuration * SECTIONS)
     else engineStartLoop(loopEvents(rendered), loopDuration)
     // `engineId` keeps a running loop alive across a source switch: the send
     // functions keep their identity when the engine underneath changes, so
     // without it the new engine would never be told what to play.
-  }, [playing, view, rendered, songRendered, offset, loopDuration, engineStartLoop, engineId])
+  }, [playing, view, rendered, songRendered, offset, loopDuration, engineStartLoop, engineStopLoop, engineId])
 
   useEffect(() => () => engineStopLoop(), [engineStopLoop])
 
@@ -733,7 +751,9 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
       setSelected(0)
       viewRef.current = 'create'
       setViewState('create')
-      setParams((prev) => ({ ...prev, phase: 0, density: 100 }))
+      // On the grid, and locked there: an extracted bar is already quantized,
+      // and a half pull toward the sixteenths would walk the second bar off it.
+      setParams((prev) => ({ ...prev, phase: 0, density: 100, tightness: 100 }))
       // Null selection so the finished pattern is filed as its own temporary
       // entry, rather than overwriting a saved one.
       setSelection(null)
@@ -751,20 +771,33 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     [captureMove, loopDuration],
   )
 
-  const { replace: captureReplace, pass } = capture
+  const { replace: captureReplace, pass, current: captureCurrent } = capture
   const passRef = useRef(pass)
   passRef.current = pass
 
-  /** Make section `k` the working pattern, keeping the loop's clock. */
+  /** Make section `k` the working pattern, keeping the loop's clock. The
+      first time a section other than the one being recorded is opened, the
+      take is frozen into every section. After that, only the open one
+      changes. The taps are copied, voice and character included, so opening
+      a section cannot strip the sound off the one just left. */
   const selectSection = useCallback(
     (k: number) => {
       const next = mod(Math.round(k), SECTIONS)
       if (next === selectedRef.current) return
+      const tapsNow = captureCurrent().map((tap) => ({ ...tap }))
+      const songNext = !takenRef.current
+        ? Array.from({ length: SECTIONS }, () => tapsNow.map((tap) => ({ ...tap })))
+        : songRef.current.map((sectionTaps, i) =>
+            i === selectedRef.current ? tapsNow : sectionTaps.map((tap) => ({ ...tap })),
+          )
+      if (!takenRef.current) takenRef.current = true
+      songRef.current = songNext
+      setSong(songNext)
       selectedRef.current = next
       setSelected(next)
-      captureReplace(songRef.current[next] ?? [])
+      captureReplace((songNext[next] ?? []).map((tap) => ({ ...tap })))
     },
-    [captureReplace],
+    [captureCurrent, captureReplace],
   )
 
   const playheadOn = playing && capture.state !== 'ready'
