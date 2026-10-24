@@ -73,9 +73,9 @@ import {
 const LOOKAHEAD_S = 1.5
 const TICK_MS = 25
 
-/** Cap matching the bridge's MAX_LOOP_EVENTS, so a pattern that plays under
-    one source can't be denser under the other. */
-const MAX_LOOP_EVENTS = 128
+/** Enough for a whole song: every section of an arrangement is one long loop
+    here. (The bridge keeps its own, smaller cap for a single pattern.) */
+const MAX_LOOP_EVENTS = 1024
 
 /** A five-bar March at a 1/16 grid across three voices. */
 const MAX_MARCH_EVENTS = 5 * 16 * 3
@@ -442,7 +442,8 @@ export class WebAudioEngine implements SoundEngine {
   ): void {
     const wasRunning = this.main.running
     this.main.events = [...events].sort((a, b) => a.pos - b.pos).slice(0, MAX_LOOP_EVENTS)
-    this.main.period = clamp(barDuration, 0.25, 30)
+    // Up to a whole song at a slow tempo, not just one pass of the loop.
+    this.main.period = clamp(barDuration, 0.25, 600)
     this.main.running = true
 
     // A loop starting from nothing lays down the grid — and a March already

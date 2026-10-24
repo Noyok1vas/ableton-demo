@@ -63,6 +63,15 @@ export const loopDurationFor = (bpm: number, meter: Meter) =>
 /** The 1/16-note grid across the loop: 32 steps in 4/4, 12 in 3/8. */
 export const gridDivisionsFor = (meter: Meter) => sixteenthsPerBar(meter) * BARS_PER_LOOP
 
+/** The song, for now: the loop's pattern laid end to end this many times.
+    The first take fills every section; an edit after that changes only the
+    section it was made in, which is how the song gets its variations. */
+export const SECTIONS = 8
+
+/** How the screen shows the loop: CREATE is one section, as a ring, played
+    on its own; ARRANGE is the whole song, as a helix, played through. */
+export type ViewMode = 'create' | 'arrange'
+
 /** MIDI note every tap/loop hit plays on. Adjustable via the PITCH pad so
     the mapping isn't nailed to one key. Constrained to the 16 notes of a
     standard Ableton Drum Rack's 4×4 pad grid (C1..D#2), selected bottom-left

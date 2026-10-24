@@ -9,6 +9,9 @@ export type TapCapture = {
       — through the first pass and every pass after it — so the playhead is
       always somewhere, not just while recording or playing. */
   progress: number
+  /** Whole passes of the loop since the clock was anchored. The song counts
+      its sections with this, so it turns over exactly when `progress` wraps. */
+  pass: number
   /** Record one tap where the loop clock stands, played with the sound
       identity `voice` at character `character` (and, from Chladni 2, with
       the knobs `drum`) — all copied onto the tap and never read again from
@@ -38,6 +41,10 @@ export type TapCapture = {
   reset: () => void
   /** Replace the current pattern with an already-captured one (state → complete). */
   load: (taps: readonly Tap[]) => void
+  /** Swap in another section of the same song: the taps change, the clock
+      does not — the loop keeps its downbeat, so the engine's grid and this
+      clock stay one. An empty one leaves the loop ready for a fresh take. */
+  replace: (taps: readonly Tap[]) => void
 }
 
 let sequence = 0
@@ -80,6 +87,7 @@ export function useTapCapture(
   const [state, setState] = useState<CaptureState>(initialState)
   const [taps, setTaps] = useState<Tap[]>(() => [...(initial ?? [])])
   const [progress, setProgress] = useState(0)
+  const [pass, setPass] = useState(0)
 
   const stateRef = useRef<CaptureState>(initialState)
   const tapsRef = useRef<Tap[]>(taps)
@@ -108,6 +116,7 @@ export function useTapCapture(
       if (!clockRef.current) return
       const elapsed = (performance.now() - startRef.current) / 1000
       setProgress((((elapsed / durationRef.current) % 1) + 1) % 1)
+      setPass(Math.max(0, Math.floor(elapsed / durationRef.current)))
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
@@ -155,6 +164,7 @@ export function useTapCapture(
       setCaptureState('recording')
       setAllTaps([tap])
       setProgress(0)
+    setPass(0)
 
       timeoutRef.current = setTimeout(finalize, durationRef.current * 1000)
       startClock()
@@ -192,6 +202,7 @@ export function useTapCapture(
         stopTimers()
         setCaptureState('ready')
         setProgress(0)
+        setPass(0)
       }
     },
     [setAllTaps, setCaptureState, stopTimers],
@@ -217,6 +228,7 @@ export function useTapCapture(
 
   const anchor = useCallback(() => {
     startRef.current = performance.now()
+    setPass(0)
     // A restored pattern arrives with its clock stopped; this is where it starts.
     if (stateRef.current !== 'ready') startClock()
   }, [startClock])
@@ -226,6 +238,7 @@ export function useTapCapture(
     setCaptureState('ready')
     setAllTaps([])
     setProgress(0)
+    setPass(0)
   }, [setAllTaps, setCaptureState, stopTimers])
 
   const load = useCallback(
@@ -237,7 +250,29 @@ export function useTapCapture(
       // and its loop turns from here.
       startRef.current = performance.now()
       setProgress(0)
+    setPass(0)
       startClock()
+    },
+    [clearFinalize, setAllTaps, setCaptureState, startClock],
+  )
+
+  const replace = useCallback(
+    (pattern: readonly Tap[]) => {
+      if (pattern.length === 0) {
+        clearFinalize()
+        setCaptureState('ready')
+        setAllTaps([])
+        return
+      }
+      const wasReady = stateRef.current === 'ready'
+      clearFinalize()
+      setCaptureState('complete')
+      setAllTaps([...pattern])
+      // A loop that had emptied out has no clock to keep: this one starts now.
+      if (wasReady) {
+        startRef.current = performance.now()
+        startClock()
+      }
     },
     [clearFinalize, setAllTaps, setCaptureState, startClock],
   )
@@ -262,5 +297,5 @@ export function useTapCapture(
 
   useEffect(() => stopTimers, [stopTimers])
 
-  return { state, taps, progress, tap, remove, move, undo, anchor, reset, load }
+  return { state, taps, progress, pass, tap, remove, move, undo, anchor, reset, load, replace }
 }
