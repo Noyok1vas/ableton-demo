@@ -42,24 +42,8 @@
   pointer-events: none;
 }
 
-/* Playing into the ring: the bars fade back and stay usable; pointing at one
-   brings it straight back. */
-.ms-row {
-  transition: opacity var(--motion-quiet);
-}
-
-.ms-overlay--quiet .ms-row {
-  opacity: 0.2;
-}
-
-/* Hover only where there is a real pointer: a touch leaves :hover stuck on
-   the last button pressed, which would pin that bar at full strength. */
-@media (hover: hover) {
-  .ms-overlay--quiet .ms-row:hover {
-    opacity: 1;
-    transition-duration: 150ms;
-  }
-}
+/* The bars stay as they are while you play into the ring: tapping a pad
+   dims nothing. */
 
 .ms-row--top {
   top: var(--edge);
@@ -89,6 +73,8 @@
   top: 50%;
   translate: -50% -50%;
   flex: 0 0 auto;
+  /* Quieter than the buttons' own glyphs, which it would otherwise outshine. */
+  opacity: 0.7;
   touch-action: none;
   cursor: pointer;
 }
@@ -194,10 +180,15 @@
 
 /* …and so does every button on the glass — the two rows, the globe, the
    toast — leaving the visual and the two sliders. They fade rather than
-   vanish, and cannot be pressed while hidden. */
+   vanish, and cannot be pressed while hidden. The same goes while a hand is
+   on the song in ARRANGE: only the picture is left (an open panel with them). */
 .ms-overlay--audition .ms-row,
 .ms-overlay--audition .ms-side,
-.ms-overlay--audition .ms-toast {
+.ms-overlay--audition .ms-toast,
+.ms-overlay--handling .ms-row,
+.ms-overlay--handling .ms-side,
+.ms-overlay--handling .ms-toast,
+.ms-overlay--handling .ms-panel {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;

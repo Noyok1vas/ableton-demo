@@ -85,7 +85,6 @@
   --motion-press: 90ms; /* pad flash */
   --motion-fast: 0.15s ease-in-out;
   --motion-base: 0.25s ease-out;
-  --motion-quiet: 400ms ease; /* the bars stepping back while you play */
   --long-press: 400ms; /* mirrored in selector/SelectorScreen LONG_PRESS_MS */
 }
 
