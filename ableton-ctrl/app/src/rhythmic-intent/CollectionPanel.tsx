@@ -99,7 +99,7 @@ function EntryRow({
  * Clicking any row makes it the working pattern. Editing a saved pattern never
  * changes it — the edit starts a new temporary entry instead.
  */
-export function CollectionPanel() {
+export function CollectionPanel({ onLoaded }: { onLoaded?: () => void }) {
   const { temporary, saved, selection, loadEntry, savePattern, deleteSaved } = useSession()
 
   // DELETE takes two presses: the first arms it, the second moves the pattern
@@ -144,7 +144,10 @@ export function CollectionPanel() {
                 kind="saved"
                 entry={entry}
                 selected={isSelected('saved', entry.id)}
-                onLoad={() => loadEntry('saved', entry.id)}
+                onLoad={() => {
+                  loadEntry('saved', entry.id)
+                  onLoaded?.()
+                }}
                 action={
                   <button
                     type="button"
@@ -181,7 +184,10 @@ export function CollectionPanel() {
               kind="temporary"
               entry={entry}
               selected={isSelected('temporary', entry.id)}
-              onLoad={() => loadEntry('temporary', entry.id)}
+              onLoad={() => {
+                loadEntry('temporary', entry.id)
+                onLoaded?.()
+              }}
               action={
                 <button
                   type="button"

@@ -1,0 +1,72 @@
+/* The extract block: a short card beside the ring, not a page. */
+
+.xp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+}
+
+.xp-title,
+.xp-note,
+.xp-time {
+  margin: 0;
+}
+
+.xp-title {
+  font-size: var(--type-s);
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.xp-note {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+}
+
+.xp-time {
+  font-size: var(--type-l);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.xp-meter {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--line-fine);
+}
+
+.xp-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--ink-pure);
+}
+
+.xp-record {
+  margin-top: var(--space-2);
+}
+
+.xp-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ink-pure);
+}
+
+.xp-dot--stop {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.xp-actions {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}

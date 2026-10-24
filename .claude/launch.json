@@ -31,6 +31,22 @@
         "--host"
       ],
       "port": 5173
+    },
+    {
+      "name": "chladni",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "/Users/baaai/AbletonPlugin-chladni/ableton-ctrl/app",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort",
+        "--host"
+      ],
+      "port": 5174
     }
   ]
 }

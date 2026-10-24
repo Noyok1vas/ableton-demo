@@ -50,7 +50,6 @@ export function IconList({ size = 24 }: IconProps) {
   )
 }
 
-/** A four-point star with a small one beside it — the agent and the guide. */
 /** Settings: two sliders, each with its knob. */
 export function IconSliders({ size = 24 }: IconProps) {
   return (
@@ -67,6 +66,44 @@ export function IconSparkle({ size = 24, filled = false }: IconProps & { filled?
     <svg {...svg(size)} fill={filled ? 'currentColor' : 'none'}>
       <path d="M13 3c.7 4.6 2.9 6.8 7.5 7.5-4.6.7-6.8 2.9-7.5 7.5-.7-4.6-2.9-6.8-7.5-7.5C10.1 9.8 12.3 7.6 13 3Z" />
       <path d="M5.5 15.5c.3 1.8 1.2 2.7 3 3-1.8.3-2.7 1.2-3 3-.3-1.8-1.2-2.7-3-3 1.8-.3 2.7-1.2 3-3Z" />
+    </svg>
+  )
+}
+
+/** A short waveform — pull a rhythm out of a recording. */
+export function IconWave({ size = 24 }: IconProps) {
+  return (
+    <svg {...svg(size)}>
+      <path d="M2.5 12h2l2.2-5.5L10 17l2.6-8 2.2 4.5H21.5" />
+    </svg>
+  )
+}
+
+/** Keep: the take stays on the ring. */
+export function IconCheck({ size = 22 }: IconProps) {
+  return (
+    <svg {...svg(size)}>
+      <path d="M5 12.5 9.5 17 19 7" />
+    </svg>
+  )
+}
+
+/** Again: another take. */
+export function IconAgain({ size = 22 }: IconProps) {
+  return (
+    <svg {...svg(size)}>
+      <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+      <path d="M20 4.5V10h-5.5" />
+    </svg>
+  )
+}
+
+/** Ask aloud. */
+export function IconMic({ size = 22 }: IconProps) {
+  return (
+    <svg {...svg(size)}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M6.5 11a5.5 5.5 0 0 0 11 0M12 16.5V20.5" />
     </svg>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DeviceShell } from './device/DeviceShell.tsx'
-import { Workspace } from './workspace/Workspace.tsx'
+import { SoundLab } from './chladni-editor/SoundLab.tsx'
 import { SoundEngineSession } from './transport/session.tsx'
 import { RhythmicIntentSession } from './rhythmic-intent/session.tsx'
 import { SoundIntentSession } from './sound-intent/session.tsx'
@@ -15,7 +15,7 @@ import { ModSession } from './mod/session.tsx'
 import { DrumSession } from './chladni2/session.tsx'
 import { ShapeSession } from './chladni-editor/session.tsx'
 
-/** The two pages: the device, and the Chladni Editor's canvas. */
+/** The two pages: the device, and the sound laboratory. */
 type PageId = 'device' | 'chladni-editor'
 
 /** Cmd+A (Ctrl+A off a Mac) swaps between the two pages, unless focus is in
@@ -71,7 +71,7 @@ export default function App() {
                       {/* The Chladni Editor's figure and rack, kept above the
                           pages so switching away and back keeps them. */}
                       <ShapeSession>
-                        {page === 'device' ? <DeviceShell /> : <Workspace />}
+                        {page === 'device' ? <DeviceShell /> : <SoundLab />}
                       </ShapeSession>
                       <HintLayer />
                     </GuideSession>

@@ -234,6 +234,11 @@ export type Session = {
       later slider move can edit it. Returns the new tap's id, so whoever fired
       it can attach its own record to that tap. */
   handleTap: (voice?: SoundVoiceId, character?: number, velocity?: number) => string
+  /** Replace the working pattern with one made elsewhere — an extracted bar —
+      given as positions in the loop. Stops playback, puts PHASE back to 0 and
+      DENSITY to 100 so every hit sits where it was found, shows it on the
+      ring, and files it as a temporary entry so it can be saved and edited. */
+  importPattern: (hits: readonly ImportedHit[]) => void
   /** Drop one tap by id — the Sound Visual's double-click on a mark. */
   removeTap: (id: string) => void
   /** Put one tap at `pos` (0..1) of the loop — the Sound Visual's drag on a
@@ -288,6 +293,15 @@ export type Session = {
   openSection: (section: number) => void
   /** Every section of the song as it plays — the open one live. */
   songRendered: RenderedTap[][]
+}
+
+/** One hit of a pattern made elsewhere, as importPattern takes it. `pos` is
+    0..1 of the loop. */
+export type ImportedHit = {
+  pos: number
+  velocity: number
+  voice?: SoundVoiceId
+  character?: number
 }
 
 const SessionContext = createContext<Session | null>(null)
@@ -702,6 +716,33 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     [saved, setSelection],
   )
 
+  const importPattern = useCallback(
+    (hits: readonly ImportedHit[]) => {
+      stopLoop()
+      const duration = loopDurationRef.current
+      const taps: Tap[] = hits.map((h) => ({
+        id: newId('tap'),
+        time: Math.min(Math.max(0, h.pos) * duration, duration * 0.999999),
+        velocity: Math.min(1, Math.max(0, h.velocity)),
+        voice: h.voice,
+        character: h.character,
+      }))
+      // A new take: the bar fills the song, and the ring is what you see.
+      takenRef.current = false
+      selectedRef.current = 0
+      setSelected(0)
+      viewRef.current = 'create'
+      setViewState('create')
+      setParams((prev) => ({ ...prev, phase: 0, density: 100 }))
+      // Null selection so the finished pattern is filed as its own temporary
+      // entry, rather than overwriting a saved one.
+      setSelection(null)
+      if (taps.length === 0) captureReset()
+      else captureLoad(taps)
+    },
+    [stopLoop, captureLoad, captureReset, setSelection],
+  )
+
   const moveTap = useCallback(
     (id: string, pos: number) => {
       forkRef.current()
@@ -793,6 +834,7 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
     pitch,
     setPitch,
     handleTap,
+    importPattern,
     removeTap,
     moveTap,
     undoTap,

@@ -10,7 +10,10 @@ import { useMod } from '../mod/session.tsx'
 import { useSoundEngine } from '../transport/session.tsx'
 import { SoundSourceScreen } from '../transport/SoundSourceScreen.tsx'
 import { loadSaved, useSaved } from '../persist.ts'
-import { IconGlobe, IconList, IconPlus, IconSliders, IconSparkle, IconUndo } from './icons.tsx'
+import { ExtractPanel } from '../extract/ExtractPanel.tsx'
+import { AssistDock } from '../agent/AssistDock.tsx'
+import type { GrooveContext } from '../agent/groove.ts'
+import { IconGlobe, IconList, IconPlus, IconSliders, IconSparkle, IconUndo, IconWave } from './icons.tsx'
 import { RackPreview } from './RackPreview.tsx'
 import './main-screen.css'
 
@@ -21,7 +24,9 @@ const swallowSpace = (e: KeyboardEvent) => {
 }
 
 /** The screen's panels — at most one is open. */
-type Panel = 'collection' | 'settings'
+type Panel = 'collection' | 'settings' | 'extract'
+
+type ExtractLive = 'idle' | 'recording' | 'reading' | 'preview'
 
 function restorePanel(): Panel | null {
   const saved = loadSaved('ui.panel')
@@ -34,24 +39,29 @@ function restorePanel(): Panel | null {
  * controls float over it in two rows, all icons:
  *
  *   top     +  new pattern · [transport pill] · ↶ undo
- *   bottom  ≡  Collection  · [section stack]  · ⚙ Settings · ✦ guiding mode
+ *   bottom  ≡  Collection  · [section stack]  · ⚙ Settings · ✦ assistant
  *   left    ◍  arrange — the song as a helix, on or off
+ *   right   ∿  extract — one bar from a short take
  *
- * Collection floats over the left of the screen, Settings over the right;
- * only one is open at a time. Guiding mode is the words the icons leave out:
- * while it is on, pointing at any control explains it.
+ * Collection, Settings and Extract each float over the ring, and only one is
+ * open. Loading a pattern, or keeping an extracted bar, closes its block.
+ * The assistant is the star: while it is on, pointing at a control explains
+ * it, and a short block at the bottom takes one spoken question. The ring
+ * stays underneath all of them.
  *
  * While a pad is held long (audition) the sequencer gives way to the rack
  * preview (see RackPreview), and the panels step aside for it.
  */
 export function MainScreen() {
-  const { clearPattern, undoTap, canUndo, hasPattern, view, setView, section, openSection } =
+  const { clearPattern, undoTap, canUndo, hasPattern, view, setView, section, openSection, rendered } =
     useSession()
   const { on: guiding, setOn: setGuiding } = useGuide()
   const { active: auditioning } = useMod()
-  const { status, source } = useSoundEngine()
+  const { status, source, bpm } = useSoundEngine()
   const needsUnlock = source === 'builtin' && !status.ready
   const [panel, setPanel] = useState<Panel | null>(restorePanel)
+  const [extractLive, setExtractLive] = useState<ExtractLive>('idle')
+  const [fromTake, setFromTake] = useState(false)
   // CREATE is one section, as a ring; ARRANGE is the whole song (the session
   // keeps which, since it decides what plays). `highlight` is the section a
   // finger on the stack is over.
@@ -61,7 +71,7 @@ export function MainScreen() {
   const [handling, setHandling] = useState(false)
   const toggle = (which: Panel) => setPanel((open) => (open === which ? null : which))
 
-  useSaved('ui.panel', panel)
+  useSaved('ui.panel', panel === 'extract' ? null : panel)
 
   // Escape closes the open panel, as it would any floating window.
   useEffect(() => {
@@ -89,7 +99,10 @@ export function MainScreen() {
             className="ms-circle"
             aria-label="New pattern"
             disabled={!hasPattern}
-            onClick={clearPattern}
+            onClick={() => {
+              clearPattern()
+              setFromTake(false)
+            }}
             onKeyUp={swallowSpace}
             data-hint="New pattern — clears the ring. The loop you had stays in the Collection"
           >
@@ -123,14 +136,37 @@ export function MainScreen() {
           </button>
         </div>
 
+        <div className="ms-side ms-side--right">
+          <button
+            type="button"
+            className={`ms-circle${panel === 'extract' ? ' ms-circle--on' : ''}`}
+            aria-label="Extract"
+            aria-expanded={panel === 'extract'}
+            onClick={() => toggle('extract')}
+            onKeyUp={swallowSpace}
+            data-hint="Extract — record 10 to 15 seconds and pull one bar of drums onto the ring"
+          >
+            <IconWave />
+          </button>
+        </div>
+
         {panel === 'collection' && (
           <div className="ms-panel ms-panel--left" role="dialog" aria-label="Collection">
-            <CollectionPanel />
+            <CollectionPanel onLoaded={() => setPanel(null)} />
           </div>
         )}
         {panel === 'settings' && (
           <div className="ms-panel ms-panel--right" role="dialog" aria-label="Settings">
             <SoundSourceScreen />
+          </div>
+        )}
+        {panel === 'extract' && (
+          <div className="ms-panel ms-panel--extract">
+            <ExtractPanel
+              onClose={() => setPanel(null)}
+              onKept={() => setFromTake(true)}
+              onLive={setExtractLive}
+            />
           </div>
         )}
 
@@ -180,15 +216,27 @@ export function MainScreen() {
           <button
             type="button"
             className={`ms-circle${guiding ? ' ms-circle--on' : ''}`}
-            aria-label="Guiding mode"
+            aria-label="Assistant"
             aria-pressed={guiding}
             onClick={() => setGuiding(!guiding)}
             onKeyUp={swallowSpace}
-            data-hint="Guiding mode is on — point at any control to see what it does. Press to turn off"
+            data-hint="Assistant is on — point at a control, or ask from the bar below. Press to close"
           >
             <IconSparkle filled={guiding} />
           </button>
         </div>
+
+        {guiding && (
+          <AssistDock
+            context={{
+              view,
+              bpm,
+              taps: rendered.map((tap) => ({ pos: tap.finalPos, voice: tap.voice, kept: tap.kept })),
+              live: panel === 'extract' ? extractLive : null,
+              fromTake,
+            } satisfies GrooveContext}
+          />
+        )}
       </div>
     </div>
   )
