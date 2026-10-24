@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
-import { GRAIN_PX, pour, printSand } from '../chladni2/sand.ts'
+import { GRAIN_PX, pour } from '../chladni2/sand.ts'
+import { printSandGl } from './sandGl.ts'
 import { buildShape, shapeAlpha, shapeFills, type ShapeParams } from './shape.ts'
 
 /** Body units from the centre to the canvas's nearer edge. */
@@ -9,7 +10,8 @@ export type ShapeCanvasHandle = { pulse: () => void }
 
 /**
  * A shape, poured as sand and printed to fill its canvas. Poured once per
- * change of shape at `pourPx` px per body unit; a resize only reprints.
+ * change of shape at `pourPx` px per body unit; a resize only reprints. The
+ * printing is three.js's, so the figure is in the same ink as the ring.
  */
 export const ShapeCanvas = forwardRef<ShapeCanvasHandle, { shape: ShapeParams; pourPx: number; className?: string }>(
   function ShapeCanvas({ shape, pourPx, className }, ref) {
@@ -32,8 +34,7 @@ export const ShapeCanvas = forwardRef<ShapeCanvasHandle, { shape: ShapeParams; p
 
     useEffect(() => {
       const canvas = canvasRef.current
-      const ctx = canvas?.getContext('2d')
-      if (!canvas || !ctx) return
+      if (!canvas) return
       const paint = () => {
         const dpr = window.devicePixelRatio || 1
         const rect = canvas.getBoundingClientRect()
@@ -44,8 +45,8 @@ export const ShapeCanvas = forwardRef<ShapeCanvasHandle, { shape: ShapeParams; p
           canvas.height = h
         }
         const px = Math.min(w, h) / (2 * SPAN)
-        ctx.clearRect(0, 0, w, h)
-        printSand(ctx, sand, w / 2, h / 2, px, GRAIN_PX * Math.max(0.7, px / pourPx), 1, alpha, '#ffffff')
+        // Through three.js, like the Sound Visual's specks (see sandGl.ts).
+        printSandGl(canvas, sand, w / 2, h / 2, px, GRAIN_PX * Math.max(0.7, px / pourPx), 1, alpha)
       }
       paint()
       const observer = new ResizeObserver(paint)
