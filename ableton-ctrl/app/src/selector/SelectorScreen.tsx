@@ -28,7 +28,15 @@ const MOUSE_AFTER_TOUCH_MS = 500
 const PAD_SCREEN = u(PAD_SCREEN_MM)
 const PAD_SCREEN_FIT = 1 / 1.3
 
-/** One finger on one pad. `holding` once it counts as held for audition. */
+/** Keys 1–8 play the pads, row-major (top row 1–4, bottom row 5–8). A
+    keyboard is the stand-in for the instrument's eight mechanical pads: wired
+    to the Raspberry Pi's GPIO as the keys 1–8 (Linux's gpio-key overlay, see
+    ableton-ctrl/pi/README.md), they arrive here as key presses and play
+    exactly what a finger does — a tap records, a hold auditions. */
+const PAD_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8']
+
+/** One finger (or key) on one pad. `holding` once it counts as held for
+    audition. */
 type Press = { timer: ReturnType<typeof setTimeout> | null; holding: boolean }
 
 /**
@@ -60,8 +68,9 @@ export function SelectorScreen() {
   const auditioning = mod.active
   const [flashing, setFlashing] = useState<PatternId | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Several pads can be held at once, one entry per finger.
-  const presses = useRef(new Map<number, Press>())
+  // Several pads can be held at once, one entry per finger (its pointerId)
+  // or per key (its code).
+  const presses = useRef(new Map<number | string, Press>())
   // Recent hits, so a fat finger or a touch's mouse echo cannot fire the
   // neighbouring pad as a second pitch.
   const hits = useRef<{ at: number; index: number }[]>([])
@@ -83,6 +92,46 @@ export function SelectorScreen() {
     setFlashing(id)
     if (flashTimer.current !== null) clearTimeout(flashTimer.current)
     flashTimer.current = setTimeout(() => setFlashing(null), FLASH_MS)
+  }
+
+  /** A pad goes down — by finger or by key. `who` keys the press so its own
+      release finds it. */
+  const press = (who: number | string, id: PatternId) => {
+    // Pass `id` explicitly: setGesture hasn't re-rendered yet, so the session's
+    // own view of the selection is still the previous mark.
+    setGesture(id)
+    flash(id)
+    haptic()
+
+    // Already auditioning: this press auditions too, and holding it keeps
+    // the view up.
+    if (modRef.current.isActive()) {
+      fireTap(id)
+      modRef.current.beginTouch()
+      presses.current.set(who, { timer: null, holding: true })
+      return
+    }
+
+    // Otherwise it records now, on the press, so a tap is never late — and
+    // if the finger stays down, the note is taken back and the pad auditions.
+    const tapId = fireTap(id)
+    const entry: Press = { timer: null, holding: false }
+    entry.timer = setTimeout(() => {
+      entry.timer = null
+      entry.holding = true
+      if (tapId) removeTap(tapId)
+      modRef.current.beginTouch()
+      modRef.current.present(id)
+    }, LONG_PRESS_MS)
+    presses.current.set(who, entry)
+  }
+
+  const releasePress = (who: number | string) => {
+    const entry = presses.current.get(who)
+    if (!entry) return
+    presses.current.delete(who)
+    if (entry.timer !== null) clearTimeout(entry.timer)
+    if (entry.holding) modRef.current.endTouch()
   }
 
   // pointerdown, not click: a tap has to land at press time, not on release.
@@ -107,42 +156,43 @@ export function SelectorScreen() {
     } catch {
       /* synthetic pointer — nothing to capture */
     }
-    // Pass `id` explicitly: setGesture hasn't re-rendered yet, so the session's
-    // own view of the selection is still the previous mark.
-    setGesture(id)
-    flash(id)
-    haptic()
+    press(e.pointerId, id)
+  }
 
-    // Already auditioning: this press auditions too, and holding it keeps
-    // the view up.
-    if (modRef.current.isActive()) {
-      fireTap(id)
-      modRef.current.beginTouch()
-      presses.current.set(e.pointerId, { timer: null, holding: true })
-      return
+  const release = (e: React.PointerEvent<HTMLButtonElement>) => releasePress(e.pointerId)
+
+  // Keys 1–8, registered once; the handlers are read through a ref so they
+  // always see this render's session. A key is a switch, not a fat finger, so
+  // no ghost filter: two hands on neighbouring pads both play.
+  const keyHandlers = useRef({ press, releasePress })
+  keyHandlers.current = { press, releasePress }
+  useEffect(() => {
+    const isTyping = () => {
+      const el = document.activeElement as HTMLElement | null
+      return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)
     }
-
-    // Otherwise it records now, on the press, so a tap is never late — and
-    // if the finger stays down, the note is taken back and the pad auditions.
-    const tapId = fireTap(id)
-    const press: Press = { timer: null, holding: false }
-    press.timer = setTimeout(() => {
-      press.timer = null
-      press.holding = true
-      if (tapId) removeTap(tapId)
-      modRef.current.beginTouch()
-      modRef.current.present(id)
-    }, LONG_PRESS_MS)
-    presses.current.set(e.pointerId, press)
-  }
-
-  const release = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const press = presses.current.get(e.pointerId)
-    if (!press) return
-    presses.current.delete(e.pointerId)
-    if (press.timer !== null) clearTimeout(press.timer)
-    if (press.holding) modRef.current.endTouch()
-  }
+    const onKeyDown = (e: KeyboardEvent) => {
+      const index = PAD_KEYS.indexOf(e.code)
+      if (index < 0 || index >= PATTERNS.length || e.repeat) return
+      if (e.metaKey || e.ctrlKey || e.altKey || isTyping()) return
+      e.preventDefault()
+      keyHandlers.current.press(e.code, PATTERNS[index].id)
+    }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (PAD_KEYS.includes(e.code)) keyHandlers.current.releasePress(e.code)
+    }
+    // Focus lost with a key down never sends its keyup: let every key go, so
+    // a hold cannot leave the audition view stuck open.
+    const onBlur = () => PAD_KEYS.forEach((code) => keyHandlers.current.releasePress(code))
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   return (
     <div className={`sel-screen${auditioning ? ' sel-screen--audition' : ''}`}>

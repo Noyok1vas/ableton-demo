@@ -54,6 +54,7 @@ import {
   resolveDrumVoice,
   resolveSoundVoice,
 } from './kit.ts'
+import { KIOSK } from '../kiosk.ts'
 
 /**
  * How far ahead of the clock notes are queued.
@@ -292,6 +293,11 @@ export class WebAudioEngine implements SoundEngine {
     // pinch leaves it suspended on iPad, and later notes scheduled after
     // resume() never sound even though the visual tap already landed.
     this.setStatus(STATUS_WAITING)
+    // The kiosk (Chromium on the Pi, launched with an autoplay policy that
+    // lets audio start unprompted) builds the graph now, so the first hit
+    // pays for neither the context nor the room. Without that policy the
+    // context simply waits suspended and the first tap resumes it, as usual.
+    if (KIOSK) this.ensureContext()
   }
 
   /** Build the graph on first use (ideally inside a gesture) and resume it. */

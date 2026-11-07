@@ -129,6 +129,11 @@ git checkout demo && git merge main && git push && git checkout main
 Vercel 项目的 Production Branch 必须设成 `demo`,否则(配合上面那条 main 开关)
 什么都不会部署。
 
+### Raspberry Pi 硬件版(physical-demo 分支)
+
+同一个 App 作为独立硬件的屏幕,在 Raspberry Pi 5 + 720×720 触控屏上以 Chromium kiosk
+全屏运行、完全离线。部署、更新、退出 kiosk 和日志见 [pi/README.md](pi/README.md)。
+
 ---
 
 ## 1. Python 环境

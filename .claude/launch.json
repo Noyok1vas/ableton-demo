@@ -47,6 +47,14 @@
         "--host"
       ],
       "port": 5174
+    },
+    {
+      "name": "pi-serve",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "ableton-ctrl/pi/serve.mjs"
+      ],
+      "port": 4173
     }
   ]
 }

@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# Ephnim on a Raspberry Pi — one command for the whole appliance.
+# Run as the desktop user (not root); it asks for sudo where it needs it.
+#
+#   ephnim install      first time: packages, build, web server, kiosk, boot
+#   ephnim update       git pull, rebuild, restart server and kiosk
+#   ephnim build        rebuild the app only (npm ci + npm run build)
+#   ephnim restart      restart the web server and reload the kiosk
+#   ephnim desktop      leave the kiosk now and show the desktop (this session)
+#   ephnim kiosk        start the kiosk now (from the desktop, or over SSH)
+#   ephnim enable       start the kiosk at every login (installed by install)
+#   ephnim disable      stop starting it — the normal desktop comes back
+#   ephnim audio [name] make the USB audio adapter (or the named sink) default
+#   ephnim status       what is running, what is playing where
+#   ephnim logs         web server and kiosk logs
+#   ephnim uninstall    disable + remove the web server service
+#
+# Everything it installs is listed in README.md, and all of it is removed by
+# `ephnim uninstall` (packages excepted).
+set -euo pipefail
+
+PI_DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+APP_DIR=$(cd "$PI_DIR/../app" && pwd)
+REPO_DIR=$(git -C "$PI_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$PI_DIR/../..")
+SERVICE=ephnim-web
+UNIT=/etc/systemd/system/$SERVICE.service
+PORT=4173
+URL="http://127.0.0.1:$PORT/?kiosk"
+MARK="# ephnim-kiosk"
+
+CONFIG=${XDG_CONFIG_HOME:-$HOME/.config}
+LABWC_AUTOSTART=$CONFIG/labwc/autostart
+XDG_AUTOSTART=$CONFIG/autostart/ephnim-kiosk.desktop
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/ephnim
+RUN=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ephnim
+
+say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[33m!!\033[0m %s\n' "$*" >&2; }
+die() { printf '\033[31mxx\033[0m %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -ne 0 ] || die "run as the desktop user, not root (it uses sudo itself)"
+
+# ── Packages ──────────────────────────────────────────────────────────
+
+ensure_packages() {
+  local missing=()
+  command -v node >/dev/null || missing+=(nodejs)
+  command -v npm >/dev/null || missing+=(npm)
+  command -v curl >/dev/null || missing+=(curl)
+  command -v pactl >/dev/null || missing+=(pulseaudio-utils)
+  command -v chromium >/dev/null || command -v chromium-browser >/dev/null || missing+=(chromium)
+  if [ ${#missing[@]} -gt 0 ]; then
+    say "installing: ${missing[*]}"
+    sudo apt-get update
+    sudo apt-get install -y "${missing[@]}"
+  fi
+  local major
+  major=$(node -p 'process.versions.node.split(".")[0]')
+  [ "$major" -ge 18 ] || die "Node $major is too old (Vite needs 18+): see README.md, 'Node.js'"
+}
+
+# ── Build ─────────────────────────────────────────────────────────────
+
+build() {
+  say "building the app ($APP_DIR)"
+  (cd "$APP_DIR" && npm ci --no-audit --no-fund && npm run build)
+}
+
+# ── Web server (systemd) ──────────────────────────────────────────────
+
+install_service() {
+  say "installing $SERVICE.service"
+  sudo tee "$UNIT" >/dev/null <<EOF
+# Written by $PI_DIR/ephnim — remove with \`ephnim uninstall\`.
+[Unit]
+Description=Ephnim local web server (the kiosk app)
+After=local-fs.target
+# Never give up restarting it.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=$(id -un)
+WorkingDirectory=$PI_DIR
+Environment=EPHNIM_PORT=$PORT
+ExecStart=$(command -v node) $PI_DIR/serve.mjs
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable "$SERVICE" >/dev/null
+  sudo systemctl restart "$SERVICE"
+}
+
+# ── Kiosk autostart ───────────────────────────────────────────────────
+
+enable_kiosk() {
+  chmod +x "$PI_DIR/kiosk.sh" "$PI_DIR/ephnim"
+  mkdir -p "$(dirname "$LABWC_AUTOSTART")" "$(dirname "$XDG_AUTOSTART")"
+
+  # labwc (Wayland): the session's own autostart. A file of the user's that
+  # is not ours is kept aside and put back by `disable`.
+  if [ -f "$LABWC_AUTOSTART" ] && ! grep -q "$MARK" "$LABWC_AUTOSTART"; then
+    cp "$LABWC_AUTOSTART" "$LABWC_AUTOSTART.before-ephnim"
+    say "kept your labwc autostart as $LABWC_AUTOSTART.before-ephnim"
+  fi
+  if [ -f "$LABWC_AUTOSTART.before-ephnim" ]; then
+    { cat "$LABWC_AUTOSTART.before-ephnim"; echo; } >"$LABWC_AUTOSTART"
+  else
+    : >"$LABWC_AUTOSTART"
+  fi
+  cat >>"$LABWC_AUTOSTART" <<EOF
+$MARK — added by $PI_DIR/ephnim; \`ephnim disable\` removes it.
+"$PI_DIR/kiosk.sh" &
+EOF
+
+  # X11 (and any other XDG desktop): the standard autostart entry. Under
+  # labwc both may fire; the launcher lets only one run.
+  cat >"$XDG_AUTOSTART" <<EOF
+$MARK — added by $PI_DIR/ephnim; \`ephnim disable\` removes it.
+[Desktop Entry]
+Type=Application
+Name=Ephnim kiosk
+Exec="$PI_DIR/kiosk.sh"
+X-GNOME-Autostart-enabled=true
+EOF
+  say "kiosk starts at login"
+}
+
+disable_kiosk() {
+  if [ -f "$LABWC_AUTOSTART.before-ephnim" ]; then
+    mv -f "$LABWC_AUTOSTART.before-ephnim" "$LABWC_AUTOSTART"
+  elif [ -f "$LABWC_AUTOSTART" ] && grep -q "$MARK" "$LABWC_AUTOSTART"; then
+    rm -f "$LABWC_AUTOSTART"
+  fi
+  rm -f "$XDG_AUTOSTART"
+  say "kiosk no longer starts at login (the normal desktop comes back next login)"
+}
+
+# ── Boot ──────────────────────────────────────────────────────────────
+
+configure_boot() {
+  if ! command -v raspi-config >/dev/null; then
+    warn "raspi-config not found: set 'Desktop Autologin' and 'Screen Blanking: off' yourself"
+    return
+  fi
+  say "boot to the desktop, logged in automatically; screen never blanks"
+  sudo raspi-config nonint do_boot_behaviour B4
+  sudo raspi-config nonint do_blanking 1
+}
+
+# ── Kiosk control ─────────────────────────────────────────────────────
+
+chromium_pids() { pgrep -f -- "--user-data-dir=.*/ephnim/chromium" || true; }
+
+stop_chromium() {
+  local pids
+  pids=$(chromium_pids)
+  [ -n "$pids" ] || return 1
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+}
+
+reload_kiosk() {
+  mkdir -p "$RUN"
+  touch "$RUN/restart"
+  stop_chromium || rm -f "$RUN/restart"
+}
+
+# Find the graphical session from an SSH shell.
+session_env() {
+  if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ]; then
+    local runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+    if [ -S "$runtime/wayland-0" ]; then
+      export WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=$runtime
+    elif [ -S "$runtime/wayland-1" ]; then
+      export WAYLAND_DISPLAY=wayland-1 XDG_RUNTIME_DIR=$runtime
+    else
+      export DISPLAY=:0
+    fi
+    [ -S "$runtime/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus"
+  fi
+  return 0
+}
+
+# ── Audio ─────────────────────────────────────────────────────────────
+
+audio() {
+  command -v pactl >/dev/null || die "pactl missing: sudo apt install pulseaudio-utils"
+  local want=${1:-} sink
+  echo "Output devices:"
+  pactl list short sinks | awk '{print "  " $2}'
+  if [ -n "$want" ]; then
+    sink=$want
+  else
+    sink=$(pactl list short sinks | awk '{print $2}' | grep -i usb | head -n1 || true)
+  fi
+  if [ -z "$sink" ]; then
+    warn "no USB audio output found — plug the adapter in, or pass a name from the list"
+    return 1
+  fi
+  pactl set-default-sink "$sink"
+  say "default output: $sink (remembered across reboots)"
+}
+
+# ── Status / logs ─────────────────────────────────────────────────────
+
+status() {
+  echo "web server : $(systemctl is-active "$SERVICE" 2>/dev/null || true) ($URL)"
+  if curl -fsS -o /dev/null --max-time 2 "$URL"; then echo "responding : yes"; else echo "responding : no"; fi
+  if [ -n "$(chromium_pids)" ]; then echo "kiosk      : running"; else echo "kiosk      : not running"; fi
+  if grep -qs "$MARK" "$LABWC_AUTOSTART" "$XDG_AUTOSTART"; then echo "autostart  : on"; else echo "autostart  : off"; fi
+  echo "session    : ${XDG_SESSION_TYPE:-?} $(pgrep -x labwc >/dev/null && echo '(labwc running)')"
+  if command -v pactl >/dev/null; then echo "audio out  : $(pactl get-default-sink 2>/dev/null || echo '?')"; fi
+  echo "build      : $(git -C "$REPO_DIR" log -1 --format='%h %s' 2>/dev/null | cut -c1-70)"
+}
+
+logs() {
+  echo "── web server (journalctl -u $SERVICE) ──"
+  journalctl -u "$SERVICE" -n 40 --no-pager 2>/dev/null || sudo journalctl -u "$SERVICE" -n 40 --no-pager
+  echo
+  echo "── kiosk ($STATE/kiosk.log) ──"
+  tail -n 40 "$STATE/kiosk.log" 2>/dev/null || echo "(no kiosk log yet)"
+}
+
+# ── Commands ──────────────────────────────────────────────────────────
+
+cmd=${1:-help}
+shift || true
+case "$cmd" in
+  install)
+    ensure_packages
+    build
+    install_service
+    enable_kiosk
+    configure_boot
+    audio || true
+    say "done — reboot to start Ephnim: sudo reboot"
+    ;;
+  update)
+    say "pulling $(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
+    git -C "$REPO_DIR" pull --ff-only
+    build
+    sudo systemctl restart "$SERVICE"
+    reload_kiosk
+    say "updated: $(git -C "$REPO_DIR" log -1 --format='%h %s')"
+    ;;
+  build) build ;;
+  restart)
+    sudo systemctl restart "$SERVICE"
+    reload_kiosk
+    ;;
+  desktop)
+    mkdir -p "$RUN"
+    touch "$RUN/exit-to-desktop"
+    stop_chromium || { rm -f "$RUN/exit-to-desktop"; warn "kiosk is not running"; }
+    ;;
+  kiosk)
+    session_env
+    setsid -f "$PI_DIR/kiosk.sh" >/dev/null 2>&1
+    say "kiosk starting (log: $STATE/kiosk.log)"
+    ;;
+  enable) enable_kiosk ;;
+  disable) disable_kiosk ;;
+  audio) audio "$@" ;;
+  status) status ;;
+  logs) logs ;;
+  uninstall)
+    disable_kiosk
+    stop_chromium || true
+    if [ -f "$UNIT" ]; then
+      sudo systemctl disable --now "$SERVICE" >/dev/null 2>&1 || true
+      sudo rm -f "$UNIT"
+      sudo systemctl daemon-reload
+    fi
+    say "removed. The kiosk's browser profile is left at ~/.local/share/ephnim (saved patterns live there)"
+    ;;
+  help | -h | --help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command: $cmd (try: ephnim help)" ;;
+esac
