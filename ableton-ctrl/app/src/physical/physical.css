@@ -1,0 +1,126 @@
+/* The physical demo — the main screen alone, full-bleed on a square panel
+   (4 × 4 in, 720 × 720). The UI keeps its device units and is scaled as one
+   piece to the panel; no hardware render, no room around it. */
+
+html,
+body {
+  margin: 0;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.phys-stage {
+  position: fixed;
+  inset: 0;
+  background: var(--surface);
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.phys-screen {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--phys-size);
+  height: var(--phys-size);
+  transform: translate(-50%, -50%) scale(var(--phys-scale, 1));
+  transform-origin: 50% 50%;
+  display: flex;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+/* ── The compact panel ──────────────────────────────────
+   Laid out at 720 units, one unit is one pixel on the 4 × 4 in panel
+   (180 ppi): text and controls are their real size there. Text keeps the
+   design system's scale (the smallest, --type-xs, is 18 px ≈ 2.5 mm); the
+   frame tightens round it so a 4-inch square holds the same rows.
+
+   Top row: 20 + 64 + 20 + [bar 512] + 20 + 64 + 20 = 720. */
+.phys-screen {
+  --edge: 20px;
+  --circle: 64px; /* ≈ 9 mm, a comfortable finger */
+  --pill-h: 64px;
+  --hit-min: 52px;
+  --hit-gap: 10px;
+  --radius-pill: 32px;
+  --radius-panel: 32px;
+}
+
+/* Transport bar: the same three groups, closer together. The middle group
+   no longer holds the bar's centre — Project takes what Clock leaves. */
+.phys-screen .tp-bar {
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  padding: 0 var(--space-4);
+  font-size: 20px;
+}
+
+.phys-screen .tp-group--project {
+  padding-right: var(--space-2);
+}
+
+.phys-screen .tp-group--transport {
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.phys-screen .tp-group--clock {
+  gap: var(--space-2);
+  padding-left: var(--space-2);
+}
+
+.phys-screen .tp-btn {
+  min-width: 40px;
+}
+
+.phys-screen .tp-mark--icon {
+  padding: 4px 6px;
+}
+
+.phys-screen .tp-suffix {
+  font-size: 12px;
+}
+
+/* Panels: narrower, so the ring still shows beside an open one. */
+.phys-screen .ms-panel {
+  width: 340px;
+}
+
+/* Extract keeps its own short card beside its button. */
+.phys-screen .ms-panel--extract {
+  width: 280px;
+}
+
+/* Collection: its small labels up to something readable at 4 inches. */
+.phys-screen .collection-badge {
+  font-size: 13px;
+}
+
+.phys-screen .collection-name {
+  font-size: 16px;
+}
+
+.phys-screen .collection-action {
+  width: 48px;
+  height: 48px;
+}
+
+/* Assistant hints live outside the screen (fixed, in window pixels — the
+   panel's own pixels here), so they are sized directly. */
+.hint {
+  max-width: 320px;
+  font-size: 16px;
+}
+
+/* Kiosk (?kiosk, the Raspberry Pi build — src/kiosk.ts): a touch screen
+   has no pointer, so no arrow is drawn over it, whatever the compositor. */
+html.kiosk,
+html.kiosk * {
+  cursor: none !important;
+}
+
+.phys-deck[hidden] {
+  display: none;
+}
