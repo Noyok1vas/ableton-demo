@@ -7,7 +7,7 @@
 开机 → 自动登录桌面会话(labwc / Wayland)
         ├─ systemd: ephnim-web.service ── node serve.mjs ── http://127.0.0.1:4173  (挂了 2 s 后自动重启)
         └─ 会话 autostart: kiosk.sh ── 等 server 就绪 ── chromium --kiosk http://127.0.0.1:4173/?kiosk
-                                         (崩溃自动重开;Alt+F4 / Ctrl+W 退回桌面)
+                                         (崩溃自动重开;三指按住 3 秒 / Alt+F4 / Ctrl+W 退回桌面)
 ```
 
 App 本身不变:还是 `ableton-ctrl/app` 的 Vite + React 静态页面,声音由浏览器里的 Web Audio
@@ -188,14 +188,22 @@ EPHNIM_CHROMIUM_FLAGS="--force-device-scale-factor=1"  # 额外的 Chromium 参�
 
 ## 4. 退出 kiosk、回到桌面、看日志
 
-**临时退出(本次开机)**
+**临时退出(本次开机)**,三种方式都可以:
 
-- 接一个 USB 键盘,按 **Alt+F4** 或 **Ctrl+W**:Chromium 正常关闭,桌面和任务栏随即出现
-- 或在 Mac 上 SSH 进去执行 `ephnim desktop`
+- **在屏幕上**:**三根手指同时按住屏幕 3 秒**,出现 *Leave Ephnim for the desktop?*,点
+  **Desktop**(点 **Stay** 或 10 秒不动就取消)。三指长按演奏时不会误触,屏幕上也不显示任何入口。
+  实现:`app/src/physical/KioskExit.tsx` 请求本地 server 的 `/__ephnim/desktop`,效果和 `ephnim desktop` 相同
+- 接一个 USB 键盘,按 **Alt+F4** 或 **Ctrl+W**
+- 在 Mac 上 SSH 进去执行 `ephnim desktop`
 
-触屏上没有退出方式,这是有意的:演奏时不会误退出。
+Chromium 关闭后,桌面和任务栏随即出现。
 
-**重新进入 kiosk**:在桌面终端或 SSH 里执行 `ephnim kiosk`,或者直接重启。
+**从桌面回到 kiosk**:
+
+- **双击桌面上的 Ephnim 图标**,或者从菜单 **Sound & Video → Ephnim** 打开
+  (第一次双击时如果文件管理器问要不要执行,选 **Execute**)
+- 或在桌面终端 / SSH 里执行 `ephnim kiosk`
+- 或者直接重启
 
 **长期关闭 kiosk(开机进普通桌面)**:`ephnim disable`,下次登录起就是普通桌面;
 `ephnim enable` 恢复。完全移除:`ephnim uninstall`。

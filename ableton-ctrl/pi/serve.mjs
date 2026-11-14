@@ -13,7 +13,8 @@
  * service keeps retrying until `ephnim update` has produced one.
  */
 import { createServer } from 'node:http'
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -45,6 +46,20 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
+/** The kiosk launcher's control folder (kiosk.sh: $XDG_RUNTIME_DIR/ephnim).
+    As a system service there is no XDG_RUNTIME_DIR, but it is always
+    /run/user/<uid> for the user the service runs as. */
+const RUN = join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 0}`, 'ephnim')
+
+/** The screen's own way out (the three-finger hold in the app): mark the
+    exit for the launcher and close the kiosk's Chromium — the same thing
+    `ephnim desktop` does from a shell. */
+function exitToDesktop() {
+  mkdirSync(RUN, { recursive: true })
+  writeFileSync(join(RUN, 'exit-to-desktop'), '')
+  execFile('pkill', ['-f', '--', '--user-data-dir=.*/ephnim/chromium'], () => {})
+}
+
 if (!existsSync(join(ROOT, 'index.html'))) {
   console.error(`ephnim-web: no build at ${ROOT} — run \`ableton-ctrl/pi/ephnim update\``)
   process.exit(1)
@@ -63,6 +78,24 @@ function fileFor(urlPath) {
 }
 
 const server = createServer((req, res) => {
+  if (req.url === '/__ephnim/desktop') {
+    // Only the kiosk page asks, with its own header; a page elsewhere could
+    // not send that header without a preflight, which is never answered.
+    if (req.method !== 'POST' || req.headers['x-ephnim'] !== '1') {
+      res.writeHead(403).end()
+      return
+    }
+    res.writeHead(204).end()
+    // Answer first, so the page is not torn down mid-request.
+    setTimeout(() => {
+      try {
+        exitToDesktop()
+      } catch (err) {
+        console.error(`ephnim-web: could not leave the kiosk: ${err.message}`)
+      }
+    }, 150)
+    return
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, { Allow: 'GET, HEAD' }).end()
     return

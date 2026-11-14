@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { MainScreen } from '../main-screen/MainScreen.tsx'
 import { SelectorScreen } from '../selector/SelectorScreen.tsx'
+import { KIOSK } from '../kiosk.ts'
+import { KioskExit } from './KioskExit.tsx'
 import './physical.css'
 
 /** The square the UI is laid out in, in device units: the panel's own 720
@@ -57,6 +59,7 @@ export function PhysicalShell() {
     <div ref={fitRef} className="phys-stage">
       <section className="phys-screen" style={style} aria-label="Screen">
         <MainScreen />
+        {KIOSK && <KioskExit />}
       </section>
       {/* The pads: kept for their behaviour, hidden until the physical keys
           take their place. */}

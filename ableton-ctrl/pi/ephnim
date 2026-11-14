@@ -31,6 +31,9 @@ MARK="# ephnim-kiosk"
 CONFIG=${XDG_CONFIG_HOME:-$HOME/.config}
 LABWC_AUTOSTART=$CONFIG/labwc/autostart
 XDG_AUTOSTART=$CONFIG/autostart/ephnim-kiosk.desktop
+MENU_ENTRY=${XDG_DATA_HOME:-$HOME/.local/share}/applications/ephnim.desktop
+DESKTOP_DIR=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
+DESKTOP_ICON=$DESKTOP_DIR/ephnim.desktop
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/ephnim
 RUN=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ephnim
 
@@ -127,7 +130,31 @@ Name=Ephnim kiosk
 Exec="$PI_DIR/kiosk.sh"
 X-GNOME-Autostart-enabled=true
 EOF
-  say "kiosk starts at login"
+  install_shortcuts
+  say "kiosk starts at login; the Ephnim icon on the desktop starts it again"
+}
+
+# The way back from the desktop: an Ephnim icon on it, and the same entry in
+# the menu (Sound & Video). Both just start the kiosk again.
+install_shortcuts() {
+  mkdir -p "$(dirname "$MENU_ENTRY")" "$DESKTOP_DIR"
+  cat >"$MENU_ENTRY" <<EOF
+$MARK — added by $PI_DIR/ephnim; \`ephnim uninstall\` removes it.
+[Desktop Entry]
+Type=Application
+Name=Ephnim
+Comment=Back to the instrument, full screen
+Exec="$PI_DIR/ephnim" kiosk
+Icon=audio-x-generic
+Terminal=false
+Categories=AudioVideo;Audio;
+EOF
+  cp "$MENU_ENTRY" "$DESKTOP_ICON"
+  chmod +x "$MENU_ENTRY" "$DESKTOP_ICON"
+}
+
+remove_shortcuts() {
+  rm -f "$MENU_ENTRY" "$DESKTOP_ICON"
 }
 
 disable_kiosk() {
@@ -244,6 +271,7 @@ case "$cmd" in
     say "pulling $(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
     git -C "$REPO_DIR" pull --ff-only
     build
+    install_shortcuts
     sudo systemctl restart "$SERVICE"
     reload_kiosk
     say "updated: $(git -C "$REPO_DIR" log -1 --format='%h %s')"
@@ -270,6 +298,7 @@ case "$cmd" in
   logs) logs ;;
   uninstall)
     disable_kiosk
+    remove_shortcuts
     stop_chromium || true
     if [ -f "$UNIT" ]; then
       sudo systemctl disable --now "$SERVICE" >/dev/null 2>&1 || true
