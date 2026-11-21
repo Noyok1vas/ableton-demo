@@ -11,6 +11,10 @@
 #   ephnim enable       start the kiosk at every login (installed by install)
 #   ephnim disable      stop starting it — the normal desktop comes back
 #   ephnim audio [name] make the USB audio adapter (or the named sink) default
+#   ephnim pads [on]    map the 8 GPIO switches to the pads' keys 1–8 (reboot)
+#   ephnim pads status  wiring, whether the mapping is live, each switch now
+#   ephnim pads test    show every press as it arrives (Ctrl+C to stop)
+#   ephnim pads off     remove the mapping again (reboot)
 #   ephnim status       what is running, what is playing where
 #   ephnim logs         web server and kiosk logs
 #   ephnim uninstall    disable + remove the web server service
@@ -233,6 +237,128 @@ audio() {
   say "default output: $sink (remembered across reboots)"
 }
 
+# ── Mechanical pads (GPIO) ────────────────────────────────────────────
+# Each pad is a plain switch between one GPIO and GND. The kernel's gpio-key
+# overlay turns each GPIO into a key — KEY_1 … KEY_8 — with the pin's own
+# pull-up and the driver's debounce, so Chromium sees the keys 1–8 that the
+# app already plays (SelectorScreen.tsx, PAD_KEYS). Nothing runs for it.
+#
+# Pads in the app's order (top row 1–4, bottom row 5–8); BCM numbers. The
+# defaults sit on header pins 29–40, clear of I2C, SPI and the UART. Override
+# with EPHNIM_PAD_GPIOS="a b c d e f g h" before `ephnim pads on`.
+read -r -a PAD_GPIOS <<<"${EPHNIM_PAD_GPIOS:-5 6 13 19 12 16 20 21}"
+PAD_BEGIN="# >>> ephnim pads"
+PAD_END="# <<< ephnim pads"
+
+boot_config() {
+  local f
+  for f in /boot/firmware/config.txt /boot/config.txt; do
+    [ -f "$f" ] && { echo "$f"; return; }
+  done
+  die "no /boot/firmware/config.txt — is this Raspberry Pi OS?"
+}
+
+# Header pin of a BCM GPIO (40-pin header, Pi 2 and later).
+header_pin() {
+  case $1 in
+    2) echo 3 ;; 3) echo 5 ;; 4) echo 7 ;; 5) echo 29 ;; 6) echo 31 ;; 7) echo 26 ;;
+    8) echo 24 ;; 9) echo 21 ;; 10) echo 19 ;; 11) echo 23 ;; 12) echo 32 ;; 13) echo 33 ;;
+    14) echo 8 ;; 15) echo 10 ;; 16) echo 36 ;; 17) echo 11 ;; 18) echo 12 ;; 19) echo 35 ;;
+    20) echo 38 ;; 21) echo 40 ;; 22) echo 15 ;; 23) echo 16 ;; 24) echo 18 ;; 25) echo 22 ;;
+    26) echo 37 ;; 27) echo 13 ;; *) echo "?" ;;
+  esac
+}
+
+check_pad_gpios() {
+  [ ${#PAD_GPIOS[@]} -eq 8 ] || die "EPHNIM_PAD_GPIOS needs 8 GPIOs, got ${#PAD_GPIOS[@]}: ${PAD_GPIOS[*]}"
+  local g seen=" "
+  for g in "${PAD_GPIOS[@]}"; do
+    [[ $g =~ ^[0-9]+$ ]] && [ "$g" -ge 2 ] && [ "$g" -le 27 ] || die "not a header GPIO (2–27): $g"
+    [[ $seen == *" $g "* ]] && die "GPIO $g is listed twice"
+    seen+="$g "
+  done
+}
+
+pads_block() {
+  local i g
+  echo "$PAD_BEGIN — written by $PI_DIR/ephnim; \`ephnim pads off\` removes it."
+  echo "# Pad n: switch between the GPIO below and GND. keycode 2–9 = KEY_1–KEY_8."
+  echo "[all]"
+  for i in "${!PAD_GPIOS[@]}"; do
+    g=${PAD_GPIOS[$i]}
+    echo "dtoverlay=gpio-key,gpio=$g,active_low=1,gpio_pull=up,label=PAD$((i + 1)),keycode=$((i + 2))"
+  done
+  echo "$PAD_END"
+}
+
+# config.txt without our block.
+strip_pads() { awk -v b="$PAD_BEGIN" -v e="$PAD_END" 'index($0,b)==1{skip=1} !skip{print} index($0,e)==1{skip=0}' "$1"; }
+
+pads_on() {
+  check_pad_gpios
+  local cfg tmp
+  cfg=$(boot_config)
+  [ -f "$cfg.before-ephnim-pads" ] || sudo cp "$cfg" "$cfg.before-ephnim-pads"
+  tmp=$(mktemp)
+  { strip_pads "$cfg"; pads_block; } >"$tmp"
+  if cmp -s "$tmp" "$cfg"; then
+    rm -f "$tmp"
+    say "pads already mapped in $cfg"
+  else
+    sudo cp "$tmp" "$cfg"
+    rm -f "$tmp"
+    say "pads mapped in $cfg (your previous file: $cfg.before-ephnim-pads)"
+    warn "reboot to apply: sudo reboot"
+  fi
+  pads_wiring
+}
+
+pads_off() {
+  local cfg tmp
+  cfg=$(boot_config)
+  grep -qF "$PAD_BEGIN" "$cfg" || { say "no pad mapping in $cfg"; return 0; }
+  tmp=$(mktemp)
+  strip_pads "$cfg" >"$tmp"
+  sudo cp "$tmp" "$cfg"
+  rm -f "$tmp"
+  say "pad mapping removed from $cfg — reboot to apply"
+}
+
+pads_wiring() {
+  local i g
+  echo "Wiring — one leg of each switch to its pin, the other to any GND (pins 30, 34, 39):"
+  for i in "${!PAD_GPIOS[@]}"; do
+    g=${PAD_GPIOS[$i]}
+    printf '  pad %d  key %d  GPIO%-2s  header pin %s\n' $((i + 1)) $((i + 1)) "$g" "$(header_pin "$g")"
+  done
+}
+
+pads_status() {
+  local cfg i g level
+  cfg=$(boot_config)
+  pads_wiring
+  echo
+  if grep -qF "$PAD_BEGIN" "$cfg"; then echo "config.txt : mapped ($cfg)"; else echo "config.txt : not mapped (ephnim pads on)"; fi
+  # Each overlay instance shows up as its own input device once booted.
+  local live
+  live=$(grep -c -i '^N: Name=.*gpio.key' /proc/bus/input/devices 2>/dev/null || true)
+  echo "live keys  : ${live:-0} GPIO key device(s) (8 expected after a reboot)"
+  if command -v pinctrl >/dev/null; then
+    echo "switches now (lo = pressed):"
+    for i in "${!PAD_GPIOS[@]}"; do
+      g=${PAD_GPIOS[$i]}
+      level=$(pinctrl get "$g" 2>/dev/null | sed -n 's/.*| *\(hi\|lo\).*/\1/p')
+      printf '  pad %d  GPIO%-2s %s\n' $((i + 1)) "$g" "${level:-?}"
+    done
+  fi
+}
+
+pads_test() {
+  command -v libinput >/dev/null || { say "installing libinput-tools"; sudo apt-get install -y libinput-tools; }
+  say "press each pad — expect KEY_1 … KEY_8 pressed/released. Ctrl+C to stop."
+  sudo libinput debug-events --show-keycodes | grep --line-buffered -E 'KEYBOARD_KEY'
+}
+
 # ── Status / logs ─────────────────────────────────────────────────────
 
 status() {
@@ -294,11 +420,21 @@ case "$cmd" in
   enable) enable_kiosk ;;
   disable) disable_kiosk ;;
   audio) audio "$@" ;;
+  pads)
+    case ${1:-on} in
+      on) pads_on ;;
+      off) pads_off ;;
+      status) pads_status ;;
+      test) pads_test ;;
+      *) die "ephnim pads [on|status|test|off]" ;;
+    esac
+    ;;
   status) status ;;
   logs) logs ;;
   uninstall)
     disable_kiosk
     remove_shortcuts
+    pads_off
     stop_chromium || true
     if [ -f "$UNIT" ]; then
       sudo systemctl disable --now "$SERVICE" >/dev/null 2>&1 || true
@@ -307,6 +443,6 @@ case "$cmd" in
     fi
     say "removed. The kiosk's browser profile is left at ~/.local/share/ephnim (saved patterns live there)"
     ;;
-  help | -h | --help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help | -h | --help) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0" ;;
   *) die "unknown command: $cmd (try: ephnim help)" ;;
 esac

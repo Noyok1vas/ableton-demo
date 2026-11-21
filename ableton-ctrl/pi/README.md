@@ -130,6 +130,7 @@ node ~/AbletonPlugin/ableton-ctrl/pi/serve.mjs
 | `ephnim kiosk` | 立即进入 kiosk(桌面终端或 SSH 都可以) |
 | `ephnim enable` / `disable` | 开 / 关登录时自动进入 kiosk |
 | `ephnim audio [设备名]` | 列出输出设备,把 USB 声卡(或指定设备)设为默认 |
+| `ephnim pads [on\|status\|test\|off]` | 把 8 个 GPIO 按键映射成 pad 的 1–8 键(GPIO 方案,见第 8 节;用 Pro Micro 时不需要) |
 | `ephnim status` | server、kiosk、自动启动、会话类型、音频输出、当前版本 |
 | `ephnim logs` | server 和 kiosk 的最近日志 |
 | `ephnim uninstall` | 关闭自动启动并删除 systemd 服务 |
@@ -272,26 +273,152 @@ App 本身从不自动播放声音,交互逻辑没有改动。如果这条策略
 
 ---
 
-## 7. 以后接 8 个 GPIO 机械 pad
+## 7. 接 8 个实体按键(Pro Micro,现用)
 
 App 已经支持**键盘 1–8 触发 8 个 pad**(按行:上排 1–4,下排 5–8),走的就是手指按 pad 的同一条
 逻辑:短按录入 loop,按住超过 400 ms 进入试听,松开返回。实现在
-`app/src/selector/SelectorScreen.tsx` 的 `PAD_KEYS`,现在在 Mac 上就可以用键盘测试。
+`app/src/selector/SelectorScreen.tsx` 的 `PAD_KEYS`,在 Mac 上用键盘就能测试。
 
-所以接 GPIO 时**不需要改 App,也不需要额外的程序或依赖**:Linux 内核的 `gpio-key` overlay 能把
-每个 GPIO 变成一个按键,Chromium 收到的就是 1–8 的按键。等硬件到位,在
-`/boot/firmware/config.txt` 末尾为每个 pad 加一行(GPIO 编号按实际接线,开关一端接 GPIO、
-一端接 GND;keycode 2–9 是 Linux 的 `KEY_1`–`KEY_8`):
+8 个机械轴接在一块 Pro Micro(ATmega32U4,Type-C)上,它刷了
+`ableton-ctrl/pi/arduino/ephnim_pads/ephnim_pads.ino` 后就是一个 **USB 键盘**:按住哪个 pad 就按住
+哪个数字键,松开就松开。插到 Pi 的 USB 口即可,**Pi 上不用配置任何东西**,也不要运行 `ephnim pads`
+(那是第 8 节的 GPIO 方案)。
 
-```ini
-# Ephnim pads — 示例,尚未在硬件上验证
-dtoverlay=gpio-key,gpio=5,active_low=1,gpio_pull=up,label=PAD1,keycode=2
-dtoverlay=gpio-key,gpio=6,active_low=1,gpio_pull=up,label=PAD2,keycode=3
-# … PAD3–PAD8,keycode 4–9
+### 7.1 接线
+
+每个轴一只脚接下表的引脚,另一只脚接公共地(Pro Micro 的 GND)。用芯片内部上拉,**不需要电阻**。
+信号脚隔一个用一个,防止焊锡连在一起。
+
+| Pad | 按键 | Pro Micro 引脚 |
+|---|---|---|
+| 1 | 1 | 10 |
+| 2 | 2 | 9 |
+| 3 | 3 | 7 |
+| 4 | 4 | 5 |
+| 5 | 5 | 14 |
+| 6 | 6 | A0 |
+| 7 | 7 | A2 |
+| 8 | 8 | 2 |
+| 公共地 | — | GND |
+
+接错了不用改线,改 sketch 里的 `PAD_PINS` 顺序再刷一次。
+
+### 7.2 刷写(在 Mac 上)
+
+板子会被识别成 Arduino Micro(USB ID 2341:8037),所以用 `arduino:avr:micro` 编译。第一次要装
+官方 Keyboard 库:
+
+```bash
+CLI="/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli"
+"$CLI" lib install Keyboard
+"$CLI" compile --fqbn arduino:avr:micro ableton-ctrl/pi/arduino/ephnim_pads
+"$CLI" upload -p /dev/cu.usbmodem2101 --fqbn arduino:avr:micro ableton-ctrl/pi/arduino/ephnim_pads
 ```
 
-参数说明见 Pi 上的 `/boot/firmware/overlays/README`(搜 `gpio-key`)。重启后可以用
-`sudo evtest` 确认每个开关产生的按键。gpio-keys 驱动自带去抖。
+端口名用 `ls /dev/cu.usbmodem*` 看。刷完后它就是键盘了,在 Mac 上打开任意文本框按 pad,应该打出 1–8。
+也可以直接打开 Ephnim 的本地页面试。
+
+### 7.3 细节
+
+- **按住 = 按住键**:按下发 key down,松开发 key up,所以按住超过 400 ms 能进入试听。系统的按键重复
+  App 会忽略。
+- **去抖**:状态要稳定 5 ms 才算数。
+- **上电时就处于按下状态的键会被忽略**,直到它第一次松开。焊锡短路的键不会一直往系统里打字。
+- **两颗红色 LED(RX/TX)已关掉**。Pro Micro 的这两颗灯是低电平点亮,而 Micro 固件按高电平点亮的板子写,
+  所以原来一直亮着。sketch 把这两个脚改成了输入,USB 收发时也不会再闪。绿色电源灯直接接在 5 V 上,
+  代码关不掉,只能遮住、换大电阻或拆掉。按复位、刷写时 bootloader 自己会闪灯,这个也关不掉。
+
+## 8. 备选:按键直接接 GPIO
+
+不用 Pro Micro 时,实体按键也可以直接接 Pi 的 GPIO,由 Linux 内核的 `gpio-key` overlay 把每个 GPIO 变成一个按键
+(KEY_1–KEY_8),Chromium 收到的就是 1–8。**不改 App、不跑额外程序、不装依赖**;上拉电阻用
+GPIO 内部的,去抖由 gpio-keys 驱动完成。
+
+### 8.1 接线
+
+每个按键(轻触开关、机械轴、街机按钮都行,只要是常开开关)两只脚:一只接下表的 GPIO,另一只接
+**任意 GND**。8 个按键的 GND 脚可以串成一根线再接到 Pi 上。**不要接 3.3 V / 5 V**,也不需要外接电阻。
+
+| Pad | 按键 | GPIO (BCM) | 排针物理脚 |
+|---|---|---|---|
+| 1 | 1 | GPIO5 | 29 |
+| 2 | 2 | GPIO6 | 31 |
+| 3 | 3 | GPIO13 | 33 |
+| 4 | 4 | GPIO19 | 35 |
+| 5 | 5 | GPIO12 | 32 |
+| 6 | 6 | GPIO16 | 36 |
+| 7 | 7 | GPIO20 | 38 |
+| 8 | 8 | GPIO21 | 40 |
+| GND | — | — | 30 / 34 / 39(任选) |
+
+```
+           排针最下面 12 个脚(USB 口那一端),从 Pi 正面看
+  奇数列                      偶数列
+  29  GPIO5  ── pad 1         30  GND   ── 公共地
+  31  GPIO6  ── pad 2         32  GPIO12 ── pad 5
+  33  GPIO13 ── pad 3         34  GND
+  35  GPIO19 ── pad 4         36  GPIO16 ── pad 6
+  37  GPIO26 (空)             38  GPIO20 ── pad 7
+  39  GND                     40  GPIO21 ── pad 8
+```
+
+全部集中在排针末端 29–40 脚,避开了 I2C(2/3)、SPI(7–11)和串口(14/15);触屏走 USB、
+声音走 USB 声卡,都不占这些脚。唯一的冲突:GPIO19/20/21 是 I2S,**以后如果换成 I2S DAC 声卡
+HAT**,要把 pad 改到别的脚(见 8.3)。
+
+### 8.2 启用与测试
+
+```bash
+~/AbletonPlugin/ableton-ctrl/pi/ephnim pads
+```
+
+它把 8 行 `dtoverlay=gpio-key,…` 写进 `/boot/firmware/config.txt`(用 `# >>> ephnim pads` /
+`# <<< ephnim pads` 包起来,第一次会把原文件备份成 `config.txt.before-ephnim-pads`),并打印上面的接线表。
+重复运行不会重复写入。然后重启:
+
+```bash
+sudo reboot
+```
+
+重启后检查(可以 SSH 进去做):
+
+```bash
+~/AbletonPlugin/ableton-ctrl/pi/ephnim pads status
+```
+
+显示接线、config.txt 是否已写入,以及每个开关此刻的电平(`hi` = 松开,`lo` = 按下)——按住一个键
+再运行一次,对应那行应变成 `lo`。逐个按键看事件:
+
+```bash
+~/AbletonPlugin/ableton-ctrl/pi/ephnim pads test
+```
+
+每按一下应看到 `KEY_1 (2) pressed` / `released` 之类的行(第一次会用 apt 装 `libinput-tools`),
+Ctrl+C 退出。事件都对了,kiosk 里的 pad 就会响。
+
+### 8.3 换引脚 / 去掉
+
+用别的 GPIO:按 pad 1–8 的顺序给出 8 个 BCM 编号,再重启:
+
+```bash
+EPHNIM_PAD_GPIOS="5 6 13 19 26 16 20 21" ~/AbletonPlugin/ableton-ctrl/pi/ephnim pads
+```
+
+去掉映射(`ephnim uninstall` 也会去掉),之后重启:
+
+```bash
+~/AbletonPlugin/ableton-ctrl/pi/ephnim pads off
+```
+
+### 8.4 排查
+
+- `pads status` 里某个键一直是 `lo`:开关接成了常闭,或那根线碰到了 GND
+- 按了没反应、电平也不变:那只脚没接对——对照物理脚号,注意排针 1 脚在靠近 SD 卡的那端
+- `pads test` 有事件但 App 没反应:kiosk 窗口没有焦点(比如刚 Alt+Tab 过),点一下屏幕
+- 一次按下触发两次:开关抖动太严重,换一个开关;正常的机械开关驱动自带的去抖就够了
+
+> 以上配置已在 Mac 上用假的 config.txt 走过写入 / 重复写入 / 删除流程,**还没有在实体 Pi 5 上验证**。
+> 如果 `pads test` 没有任何事件,在 Pi 上看 `/boot/firmware/overlays/README` 里 `gpio-key` 一节核对参数。
 
 如果以后需要力度(velocity),再考虑通过 WebSocket 送进 App——现有的 bridge
 (`ableton-ctrl/bridge/`,Arduino 串口 pad)已经是这个模式,到时可以沿用。
