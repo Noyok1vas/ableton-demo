@@ -145,36 +145,16 @@ html.kiosk * {
   line-height: 1.35;
 }
 
-.kx-note {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--type-xs);
-}
 
-.kx-actions {
-  display: flex;
-  gap: var(--space-4);
-}
 
-.kx-btn {
-  min-width: 180px;
-  height: var(--pill-h);
-  padding: 0 var(--space-5);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--engrave-fill);
-  box-shadow: var(--engrave-shadow);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--type-s);
-  font-weight: 500;
-  touch-action: manipulation;
-}
 
-.kx-btn--go {
-  background: var(--ink-pure);
-  box-shadow: none;
-  color: var(--surface);
+
+.kx-exit {
+  position: absolute;
+  bottom: var(--edge);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
 }
 
 .phys-deck[hidden] {

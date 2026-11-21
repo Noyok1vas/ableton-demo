@@ -199,3 +199,13 @@ export function IconSave({ size = 18 }: IconProps) {
     </svg>
   )
 }
+
+/** Exit (kiosk only): the power mark, leave for the desktop. */
+export function IconPower({ size = 24 }: IconProps) {
+  return (
+    <svg {...svg(size)}>
+      <path d="M12 3.5v8" />
+      <path d="M7.2 6.3a7 7 0 1 0 9.6 0" />
+    </svg>
+  )
+}
