@@ -122,40 +122,12 @@ html.kiosk * {
 }
 
 /* The kiosk's way out (KioskExit): a question over the whole screen. */
-.kx {
-  position: absolute;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-5);
-  padding: var(--space-6);
-  background: rgba(0, 0, 0, 0.82);
-  color: var(--text);
-  text-align: center;
-  animation: ms-panel-in 140ms ease-out;
-}
-
-.kx-title {
-  margin: 0;
-  font-size: var(--type-m);
-  font-weight: 500;
-  line-height: 1.35;
-}
 
 
 
 
 
-.kx-exit {
-  position: absolute;
-  bottom: var(--edge);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
-}
+
 
 .phys-deck[hidden] {
   display: none;

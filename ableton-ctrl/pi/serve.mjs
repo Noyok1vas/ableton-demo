@@ -51,7 +51,8 @@ const TYPES = {
     /run/user/<uid> for the user the service runs as. */
 const RUN = join(process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 0}`, 'ephnim')
 
-/** The screen's own way out (the exit button in the app): mark the
+/** A way out for a page that asks (the app no longer shows an exit button;
+    `ephnim desktop` is the way out now): mark the
     exit for the launcher and close the kiosk's Chromium — the same thing
     `ephnim desktop` does from a shell. */
 function exitToDesktop() {

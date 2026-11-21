@@ -7,7 +7,7 @@
 开机 → 自动登录桌面会话(labwc / Wayland)
         ├─ systemd: ephnim-web.service ── node serve.mjs ── http://127.0.0.1:4173  (挂了 2 s 后自动重启)
         └─ 会话 autostart: kiosk.sh ── 等 server 就绪 ── chromium --kiosk http://127.0.0.1:4173/?kiosk
-                                         (崩溃自动重开;屏幕底部电源按钮 / Alt+F4 / Ctrl+W 退回桌面)
+                                         (崩溃自动重开;Alt+F4 / Ctrl+W / ephnim desktop 退回桌面)
 ```
 
 App 本身不变:还是 `ableton-ctrl/app` 的 Vite + React 静态页面,声音由浏览器里的 Web Audio
@@ -189,11 +189,8 @@ EPHNIM_CHROMIUM_FLAGS="--force-device-scale-factor=1"  # 额外的 Chromium 参�
 
 ## 4. 退出 kiosk、回到桌面、看日志
 
-**临时退出(本次开机)**,三种方式都可以:
+**临时退出(本次开机)**,屏幕上没有退出入口,用下面两种方式之一:
 
-- **在屏幕上**:点**屏幕底部中间的电源按钮**,kiosk 直接关闭(不再确认)。只有 kiosk 里有这个按钮,
-  Mac 和 Vercel 上看不到。实现:`app/src/physical/KioskExit.tsx` 请求本地 server 的 `/__ephnim/desktop`,
-  效果和 `ephnim desktop` 相同;几秒没关掉会显示 *Can't leave from here*
 - 接一个 USB 键盘,按 **Alt+F4** 或 **Ctrl+W**
 - 在 Mac 上 SSH 进去执行 `ephnim desktop`
 
