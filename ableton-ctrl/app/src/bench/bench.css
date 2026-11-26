@@ -1,0 +1,245 @@
+/* The workbench (/?bench): a light desk around the device's black screen.
+   Black / white / grey only, like the instrument; hairlines, no shadows. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #e8e8e9;
+}
+
+.bench {
+  --b-bg: #e8e8e9;
+  --b-panel: #ffffff;
+  --b-line: #d0d0d2;
+  --b-text: #111112;
+  --b-muted: #77777b;
+  --b-fill: #111112;
+
+  color-scheme: light;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--b-text);
+  background: var(--b-bg);
+}
+
+/* ── Stage: the screen at its real size ── */
+
+.bench-stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.bench-stage__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--b-line);
+}
+
+.bench-meta {
+  color: var(--b-muted);
+  margin-right: auto;
+}
+
+.bench-stage__canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.bench-screen {
+  flex: none;
+  background: #000;
+  outline: 1px solid var(--b-text);
+  outline-offset: 0;
+}
+
+.bench-screen__frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.bench-cal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid var(--b-line);
+}
+
+.bench-cal__card {
+  border: 1px dashed var(--b-text);
+  background: rgba(17, 17, 18, 0.06);
+  border-radius: 3mm;
+}
+
+.bench-cal .bench-slider {
+  width: 360px;
+}
+
+/* ── Panel: the tools ── */
+
+.bench-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--b-panel);
+  border-left: 1px solid var(--b-line);
+}
+
+.bench-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--b-line);
+}
+
+.bench-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.bench-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.bench-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bench-group__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--b-muted);
+}
+
+/* ── Controls ── */
+
+.bench-btn,
+.bench-seg__btn,
+.bench-tabs__tab {
+  font: inherit;
+  color: var(--b-text);
+  background: transparent;
+  border: 1px solid var(--b-line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.bench-btn:hover:not(:disabled),
+.bench-seg__btn:hover,
+.bench-tabs__tab:hover {
+  border-color: var(--b-text);
+}
+
+.bench-btn:disabled {
+  color: var(--b-muted);
+  cursor: default;
+}
+
+.bench-btn[aria-pressed='true'],
+.bench-seg__btn[aria-pressed='true'],
+.bench-tabs__tab[aria-pressed='true'],
+.bench-btn--primary:not(:disabled) {
+  background: var(--b-fill);
+  border-color: var(--b-fill);
+  color: #fff;
+}
+
+.bench-seg {
+  display: flex;
+  gap: 4px;
+}
+
+.bench-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bench-slider {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+}
+
+.bench-slider__label {
+  color: var(--b-text);
+}
+
+.bench-slider__value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-slider__unit {
+  color: var(--b-muted);
+}
+
+.bench-slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--b-fill);
+}
+
+.bench-note {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.bench-note--muted {
+  color: var(--b-muted);
+}
+
+/* ── EQ curve ── */
+
+.bench-curve {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--b-line);
+}
+
+.bench-curve__grid {
+  stroke: var(--b-line);
+  stroke-width: 0.5;
+}
+
+.bench-curve__zero {
+  stroke: var(--b-muted);
+  stroke-width: 0.75;
+}
+
+.bench-curve__line {
+  fill: none;
+  stroke: var(--b-text);
+  stroke-width: 1.5;
+}
+
+.bench-curve__label {
+  font-size: 8px;
+  fill: var(--b-muted);
+  text-anchor: middle;
+}

@@ -27,8 +27,11 @@
  *   voice ─▶ voiceGain ─┐
  *                       ▼
  *   main ──▶ mainGain ──┐
- *                       ├─▶ voices ─┬──────────────────┬─▶ sat ─▶ HP ─▶ out
+ *                       ├─▶ voices ─┬──────────────────┬─▶ sat ─▶ HP ─▶ tone ─▶ out
  *   march ─▶ marchGain ─┘           └─▶ send ─▶ room ──┘
+ *
+ * `tone` is the output tone (outputTone.ts): the speaker's EQ, the limiter and
+ * the master volume — tuned in the workbench (/?bench), not by the player.
  *
  * Each of the eight identities has its own channel fader (`voiceGain`) in
  * front of MAIN — the mixer's level, mute and solo, already resolved to one
@@ -55,6 +58,12 @@ import {
   resolveSoundVoice,
 } from './kit.ts'
 import { KIOSK } from '../kiosk.ts'
+import { dbToGain, getOutputTone, subscribeOutputTone, type OutputTone } from './outputTone.ts'
+
+/** The master level before the output tone's volume: headroom for the first
+    transient of a stack, which slips past the limiter's attack — at 0.85 a
+    dense bar still crossed full scale. */
+const MASTER_LEVEL = 0.8
 
 /**
  * How far ahead of the clock notes are queued.
@@ -248,6 +257,14 @@ export class WebAudioEngine implements SoundEngine {
   private reverbSend: GainNode | null = null
   private saturator: WaveShaperNode | null = null
   private highpass: BiquadFilterNode | null = null
+  /** Output tone (outputTone.ts): the speaker's EQ and the master volume. */
+  private toneNodes: {
+    master: GainNode
+    low: BiquadFilterNode
+    mid: BiquadFilterNode
+    high: BiquadFilterNode
+  } | null = null
+  private detachTone: (() => void) | null = null
 
   private readonly listeners = new Set<(status: EngineStatus) => void>()
   private status: EngineStatus = STATUS_WAITING
@@ -326,9 +343,7 @@ export class WebAudioEngine implements SoundEngine {
   private buildGraph(ctx: AudioContext): void {
     // Master chain, built once and left running.
     const master = ctx.createGain()
-    // Leaves headroom for the first transient of a stack, which slips past the
-    // limiter's attack: at 0.85 a dense bar still crossed full scale.
-    master.gain.value = 0.8
+    master.gain.value = MASTER_LEVEL
     master.connect(ctx.destination)
 
     // The metronome skips the room, the tone and the mixer: it is a guide for
@@ -351,10 +366,23 @@ export class WebAudioEngine implements SoundEngine {
     limiter.release.value = 0.12
     limiter.connect(master)
 
+    // Output tone: the speaker's EQ, in front of the limiter so a boost can't
+    // clip. Flat until outputTone.ts says otherwise.
+    const low = ctx.createBiquadFilter()
+    low.type = 'lowshelf'
+    const mid = ctx.createBiquadFilter()
+    mid.type = 'peaking'
+    const high = ctx.createBiquadFilter()
+    high.type = 'highshelf'
+    low.connect(mid).connect(high).connect(limiter)
+    this.toneNodes = { master, low, mid, high }
+    this.applyTone(getOutputTone(), true)
+    this.detachTone = subscribeOutputTone((tone) => this.applyTone(tone))
+
     const highpass = ctx.createBiquadFilter()
     highpass.type = 'highpass'
     highpass.frequency.value = 20 // a no-op until FX raises it
-    highpass.connect(limiter)
+    highpass.connect(low)
     this.highpass = highpass
 
     const saturator = ctx.createWaveShaper()
@@ -394,6 +422,25 @@ export class WebAudioEngine implements SoundEngine {
     reverbSend.gain.value = 0 // FX's REVERB rests at 0 — a dry room
     voiceBus.connect(reverbSend).connect(reverb)
     this.reverbSend = reverbSend
+  }
+
+  /** Retune the output tone — glided, so dragging a slider doesn't zipper. */
+  private applyTone(tone: OutputTone, immediate = false): void {
+    const nodes = this.toneNodes
+    const ctx = this.ctx
+    if (!nodes || !ctx) return
+    const set = (param: AudioParam, value: number) => {
+      if (immediate) param.value = value
+      else param.setTargetAtTime(value, ctx.currentTime, 0.02)
+    }
+    set(nodes.master.gain, MASTER_LEVEL * dbToGain(tone.volume))
+    set(nodes.low.frequency, tone.lowFreq)
+    set(nodes.low.gain, tone.lowGain)
+    set(nodes.mid.frequency, tone.midFreq)
+    set(nodes.mid.Q, tone.midQ)
+    set(nodes.mid.gain, tone.midGain)
+    set(nodes.high.frequency, tone.highFreq)
+    set(nodes.high.gain, tone.highGain)
   }
 
   /** A one-sample buffer some iOS builds need before the first real note. */
@@ -685,6 +732,9 @@ export class WebAudioEngine implements SoundEngine {
     this.reverbSend = null
     this.saturator = null
     this.highpass = null
+    this.detachTone?.()
+    this.detachTone = null
+    this.toneNodes = null
   }
 
   // ── Internals ─────────────────────────────────────────────────────
