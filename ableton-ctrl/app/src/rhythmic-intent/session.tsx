@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { transformPattern } from './transform.ts'
 import { useTapCapture, type TapCapture } from './useTapCapture.ts'
+import { markDemoPatternsSeeded, withDemoPatterns } from './demoPatterns.ts'
 import {
   beatsPerLoopFor,
   gridDivisionsFor,
@@ -126,7 +127,8 @@ function restoreRhythm(duration: number): Restored {
   const stored = isRecord(raw) ? raw : {}
   const pattern = isRecord(stored.pattern) ? stored.pattern : {}
   const taps = parseTaps(pattern.taps, pattern.duration, duration)
-  const saved = parseList(stored.saved, parseSaved)
+  // Trap, boom bap and funk arrive in Saved once, for a quick demo.
+  const saved = withDemoPatterns(parseList(stored.saved, parseSaved))
   // Every visit starts with an empty temporary half.
   const temporary: CollectionEntry[] = []
   // Only kept if it still names an entry — a temporary one never survives a
@@ -344,6 +346,8 @@ export function RhythmicIntentSession({ children }: { children: ReactNode }) {
   const [params, setParams] = useState<TransformParams>(restored.params)
   const [temporary, setTemporary] = useState<CollectionEntry[]>(restored.temporary)
   const [saved, setSaved] = useState<SavedPattern[]>(restored.saved)
+  // The demos are in `saved` now; from here on they are the user's to keep or delete.
+  useEffect(markDemoPatternsSeeded, [])
   const [selection, setSelectionState] = useState<CollectionSelection | null>(restored.selection)
   // Mirrored so an edit can tell, within the same press, whether it has
   // already forked a saved pattern (a drag edits many times per frame).

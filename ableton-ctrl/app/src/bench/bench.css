@@ -38,6 +38,7 @@ body {
 
 .bench-stage__bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
@@ -145,6 +146,7 @@ body {
   border: 1px solid var(--b-line);
   border-radius: 999px;
   padding: 6px 12px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
